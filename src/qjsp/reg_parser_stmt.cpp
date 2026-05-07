@@ -519,6 +519,13 @@ void RegParseState::parse_for_statement() {
         if (p >= update_start && p < body_start)
           cur_func->label_slots[li].pos = p + offset;
       }
+
+      // Relocate patches that reference moved instructions
+      int new_dest = (int)cur_func->instructions.size() - update_size;
+      for (auto &p : cur_func->patches) {
+        if (p.instr_idx >= update_start && p.instr_idx < body_start)
+          p.instr_idx = new_dest + (p.instr_idx - update_start);
+      }
     }
   } else {
     emit_jump(RegOp::JMP, label_cont, 0);

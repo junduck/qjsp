@@ -623,6 +623,38 @@ TEST_F(RegInterpFixture, LabeledContinue) {
   EXPECT_EQ(v.as_int32(), 3);
 }
 
+// ─── For-Loop Execution ─────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, ForLoopExecute) {
+  Value v = eval("var a=0; for(var i=0;i<3;i=i+1){a=i;} a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
+TEST_F(RegInterpFixture, ForLoopBreak) {
+  Value v = eval("var a=0; for(var i=0;i<10;i=i+1){a=i;if(i>2)break;} a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(RegInterpFixture, ForLoopContinue) {
+  Value v = eval("var a=0; for(var i=0;i<5;i=i+1){if(i==2)continue;a=i;} a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 4);
+}
+
+TEST_F(RegInterpFixture, LabeledForBreak) {
+  Value v = eval("var a=0; outer:for(var i=0;i<10;i=i+1){a=i;break outer;} a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 0);
+}
+
+TEST_F(RegInterpFixture, LabeledForContinue) {
+  Value v = eval("var a=0; outer:for(var i=0;i<3;i=i+1){a=i;continue outer;} a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
