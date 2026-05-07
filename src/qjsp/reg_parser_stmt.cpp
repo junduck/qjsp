@@ -15,6 +15,37 @@ namespace qjsp {
 void RegParseState::parse_statement() { parse_statement_or_decl(0); }
 
 void RegParseState::parse_statement_or_decl(int decl_mask) {
+  // Named label: ident : statement
+  if (lexer.token.type == TOK_IDENT &&
+      !lexer.token.u.ident.is_reserved &&
+      peek_token(true) == ':') {
+    Atom label = lexer.token.u.ident.atom;
+    next_token(); // skip ident
+    next_token(); // skip ':'
+
+    bool is_loop = (lexer.token.type == TOK_FOR ||
+                    lexer.token.type == TOK_WHILE ||
+                    lexer.token.type == TOK_DO);
+
+    if (is_loop) {
+      // For labeled loops, pass label name to the loop via pending_label
+      pending_label = label;
+      if (lexer.token.type == TOK_FOR)         parse_for_statement();
+      else if (lexer.token.type == TOK_WHILE)  parse_while_statement();
+      else                                     parse_do_statement();
+      pending_label = kAtomNull;
+    } else {
+      // Labeled regular statement: create BlockEnv with label_break only
+      BlockEnv be;
+      int lbreak = new_label();
+      cur_func->push_break(&be, label, lbreak, -1);
+      parse_statement();
+      emit_label(lbreak);
+      cur_func->pop_break();
+    }
+    return;
+  }
+
   int tok = lexer.token.type;
 
   switch (tok) {
@@ -110,11 +141,9 @@ void RegParseState::parse_try_statement() {
   int catch_label = new_label();
   int end_label = new_label();
 
-  // Reserve a high register for exception values (won't conflict with vars/temps)
   int exc_reg = 200;
 
-  // CATCH: records catch handler. If THROW fires in try body,
-  // exception goes into exc_reg and jumps to catch_label.
+  // CATCH
   cur_func->emit_jump(RegOp::CATCH, catch_label, static_cast<uint8_t>(exc_reg));
 
   // Parse try body
@@ -124,48 +153,61 @@ void RegParseState::parse_try_statement() {
   }
   next_token();
 
-  // Normal exit: pop catch handler, skip catch block
+  // Normal exit: pop catch, skip catch block, go to finally or end
   emit_iABx(RegOp::UNCATCH, 0, 0);
-  emit_jump(RegOp::JMP, end_label, 0);
+  int after_try_label = new_label();
+  emit_jump(RegOp::JMP, after_try_label, 0);
 
   // Catch block
   emit_label(catch_label);
-
-  // Parse catch clause
+  bool has_catch = false;
   if (lexer.token.type == TOK_CATCH) {
+    has_catch = true;
     next_token();
-  }
-  if (lexer.token.type == '(') {
-    next_token();
-    if (lexer.token.type == TOK_IDENT) {
-      Atom catch_name = lexer.token.u.ident.atom;
+    if (lexer.token.type == '(') {
       next_token();
-      expect(')');
-
-      push_enter_scope();
-      js_define_var(catch_name, TOK_LET);
-      LValue catch_lv;
-      for (int i = 0; i < cur_func->var_count; i++) {
-        if (cur_func->vars[static_cast<size_t>(i)].var_name == catch_name &&
-            cur_func->vars[static_cast<size_t>(i)].scope_level == cur_func->scope_level) {
-          catch_lv.kind = LValue::LOCAL;
-          catch_lv.var_idx = i;
-          break;
+      if (lexer.token.type == TOK_IDENT) {
+        Atom catch_name = lexer.token.u.ident.atom;
+        next_token();
+        expect(')');
+        push_enter_scope();
+        js_define_var(catch_name, TOK_LET);
+        LValue catch_lv;
+        for (int i = 0; i < cur_func->var_count; i++) {
+          if (cur_func->vars[static_cast<size_t>(i)].var_name == catch_name &&
+              cur_func->vars[static_cast<size_t>(i)].scope_level == cur_func->scope_level) {
+            catch_lv.kind = LValue::LOCAL;
+            catch_lv.var_idx = i;
+            break;
+          }
         }
+        emit_lvalue_store(catch_lv, {exc_reg});
+      } else if (lexer.token.type == ')') {
+        next_token();
       }
-      emit_lvalue_store(catch_lv, {exc_reg});
-    } else if (lexer.token.type == ')') {
+      expect('{');
+      while (lexer.token.type != '}') {
+        parse_statement_or_decl(1);
+      }
       next_token();
+      pop_leave_scope();
     }
+  }
+  emit_iABx(RegOp::UNCATCH, 0, 0);
+
+  // Both try (via JMP) and catch (fall through) reach this point
+  emit_label(after_try_label);
+
+  // Finally block — runs in both normal and exception paths
+  if (lexer.token.type == TOK_FINALLY) {
+    next_token();
     expect('{');
     while (lexer.token.type != '}') {
       parse_statement_or_decl(1);
     }
     next_token();
-    pop_leave_scope();
   }
 
-  emit_iABx(RegOp::UNCATCH, 0, 0);
   emit_label(end_label);
   cur_func->alloc.ensure_max(exc_reg);
 }
@@ -341,7 +383,7 @@ void RegParseState::parse_while_statement() {
   int label_cont  = new_label();
   int label_break = new_label();
 
-  cur_func->push_break(&be, kAtomNull, label_break, label_cont);
+  cur_func->push_break(&be, pending_label, label_break, label_cont);
 
   next_token();
   emit_label(label_cont);
@@ -366,7 +408,7 @@ void RegParseState::parse_do_statement() {
   int label_break = new_label();
   int label_body  = new_label();
 
-  cur_func->push_break(&be, kAtomNull, label_break, label_cont);
+  cur_func->push_break(&be, pending_label, label_break, label_cont);
 
   next_token();
   emit_label(label_body);
@@ -403,7 +445,7 @@ void RegParseState::parse_for_statement() {
       next_token();
       parse_var_decls(tok);
     } else {
-      RegSlot r = parse_assign_expr2(0);
+      (void)parse_assign_expr2(0);
       free_temp();
     }
     cur_func->close_scopes(cur_func->scope_level, block_scope_level);
@@ -417,7 +459,7 @@ void RegParseState::parse_for_statement() {
   int label_break = new_label();
 
   BlockEnv be;
-  cur_func->push_break(&be, kAtomNull, label_break, label_cont);
+  cur_func->push_break(&be, pending_label, label_break, label_cont);
 
   // ── COND ──
   if (lexer.token.type == ';') {
@@ -441,6 +483,7 @@ void RegParseState::parse_for_statement() {
     update_start = (int)cur_func->instructions.size();
 
     RegSlot upd = parse_expr();
+    (void)upd;
     free_temp();
 
     if (label_test != label_body)
@@ -458,7 +501,6 @@ void RegParseState::parse_for_statement() {
 
   // ── Move update code after body ──
   if (update_start >= 0) {
-    int body_end    = (int)cur_func->instructions.size();
     int update_size = body_start - update_start;
 
     // Copy update instructions to end
@@ -469,6 +511,14 @@ void RegParseState::parse_for_statement() {
       // Fill original positions with NOP
       for (int i = 0; i < update_size; i++)
         cur_func->instructions[static_cast<size_t>(update_start + i)] = Instruction::iABx(static_cast<uint8_t>(RegOp::NOP), 0, 0).raw;
+
+      // Relocate labels that were in the moved range
+      int offset = (int)cur_func->instructions.size() - body_start;
+      for (size_t li = 0; li < cur_func->label_slots.size(); li++) {
+        int p = cur_func->label_slots[li].pos;
+        if (p >= update_start && p < body_start)
+          cur_func->label_slots[li].pos = p + offset;
+      }
     }
   } else {
     emit_jump(RegOp::JMP, label_cont, 0);
@@ -482,6 +532,13 @@ void RegParseState::parse_for_statement() {
 void RegParseState::parse_break_continue(bool is_cont) {
   next_token();
 
+  // Check for named label: break foo / continue foo
+  Atom label_name = kAtomNull;
+  if (lexer.token.type == TOK_IDENT && !lexer.got_lf) {
+    label_name = lexer.token.u.ident.atom;
+    next_token();
+  }
+
   FunctionDef *fd = cur_func;
   int scope       = fd->scope_level;
   BlockEnv *top   = fd->top_break;
@@ -489,6 +546,11 @@ void RegParseState::parse_break_continue(bool is_cont) {
   while (top) {
     fd->close_scopes(scope, top->scope_level);
     scope = top->scope_level;
+    // Check label match
+    if (label_name != kAtomNull && top->label_name != label_name) {
+      top = top->prev;
+      continue;
+    }
     if (is_cont && top->label_cont >= 0) {
       fd->emit_jump(RegOp::JMP, top->label_cont, 0);
       goto done;
@@ -499,7 +561,6 @@ void RegParseState::parse_break_continue(bool is_cont) {
     }
     top = top->prev;
   }
-  // No matching target — fall through silently (error would be better)
 
 done:
   if (lexer.token.type == ';')

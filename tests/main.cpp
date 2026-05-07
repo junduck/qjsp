@@ -595,6 +595,34 @@ TEST_F(RegInterpFixture, ClosureMultipleCalls) {
   EXPECT_EQ(v.as_int32(), 3);
 }
 
+// ─── Finally ────────────────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, FinallyRuns) {
+  Value v = eval("var a = 0; try { a = 1; } finally { a = 2; } a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
+TEST_F(RegInterpFixture, FinallyWithCatch) {
+  Value v = eval("var a = 0; try { throw 99; } catch(e) { a = e; } finally { a = a + 1; } a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 100);
+}
+
+// ─── Named Labels ───────────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, LabeledBreak) {
+  Value v = eval("var a=0,i=0; outer:while(i<10){i=i+1;a=i;break outer;} a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(RegInterpFixture, LabeledContinue) {
+  Value v = eval("var a=0,i=0; outer:while(i<3){i=i+1;a=i;continue outer;} a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

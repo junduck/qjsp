@@ -37,7 +37,8 @@ private:
     int target_pc;
   };
   std::vector<CatchFrame> catch_stack_;
-  Value pending_exception_ = kUndefined; // side channel for exception value
+  std::vector<int> return_stack_;      // GOSUB/RET return addresses
+  Value pending_exception_ = kUndefined;
 };
 
 } // namespace qjsp

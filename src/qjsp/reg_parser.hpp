@@ -264,6 +264,8 @@ struct RegParseState {
   int alloc_temp() { return cur_func->alloc.alloc(); }
   void free_temp() { cur_func->alloc.free_last(); }
 
+  Atom pending_label = kAtomNull; // set before loop parsing for named labels
+
   // ── expression parsers ────────────────────────────────────────────────
 
   RegSlot parse_expr();

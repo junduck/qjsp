@@ -278,7 +278,7 @@ int FunctionDef::resolve_upval(Atom name) {
     return -1; // local var, not an upvalue
 
   // Mark captured in owning function
-  int upval_idx = owner->capture_var(vd);
+  owner->capture_var(vd);
 
   // Check if we already have a closure var for this
   for (size_t i = 0; i < closure_var.size(); i++) {

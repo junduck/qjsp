@@ -143,6 +143,8 @@ enum class RegOp : uint8_t {
   THROW,
   CATCH,
   UNCATCH,
+  GOSUB,
+  RET,
 
   // ── upvalue (3) ───────────────────────────────────────────────────────
   GETUPVAL,

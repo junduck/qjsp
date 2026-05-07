@@ -635,6 +635,21 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs,
         catch_stack_.pop_back();
       break;
 
+    case RegOp::GOSUB:
+      // Push return PC (current ip), jump to target
+      return_stack_.push_back(static_cast<int>(ip - reinterpret_cast<const Instruction *>(b->byte_code_buf)));
+      ip += i.sbx();
+      break;
+
+    case RegOp::RET:
+      // Pop return PC, jump back
+      if (!return_stack_.empty()) {
+        int ret_pc = return_stack_.back();
+        return_stack_.pop_back();
+        ip = reinterpret_cast<const Instruction *>(b->byte_code_buf + ret_pc * 4);
+      }
+      break;
+
     // ── upvalue ─────────────────────────────────────────────────────────────
 
     case RegOp::GETUPVAL:

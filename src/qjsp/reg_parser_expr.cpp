@@ -501,7 +501,7 @@ RegSlot RegParseState::parse_binary(int min_prec) {
 
 // ─── Ternary ────────────────────────────────────────────────────────────────
 
-RegSlot RegParseState::parse_cond_expr(int flags) {
+RegSlot RegParseState::parse_cond_expr(int /*flags*/) {
   RegSlot cond = parse_binary(1); // min_prec=1 so non-operator tokens (prec=0) break
 
   if (lexer.token.type == '?') {
