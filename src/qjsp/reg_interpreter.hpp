@@ -25,8 +25,9 @@ private:
   Object *global_obj() const;
 
   Value call_bytecode(FunctionBytecode *b, Value this_obj, int argc,
-                      Value *argv, VarRef **upvals);
-  Value run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals);
+                       Value *argv, VarRef **upvals);
+  Value run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals,
+                     std::vector<VarRef *> *close_list = nullptr);
 
   Value get_field(Value obj, Atom name);
   void  put_field(Value obj, Atom name, Value val);

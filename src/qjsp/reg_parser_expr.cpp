@@ -766,6 +766,10 @@ void RegParseState::emit_lvalue_store(LValue lv, RegSlot val) {
     emit_iABC(RegOp::SETFIELD, static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci), static_cast<uint8_t>(val.reg));
     break;
   }
+  case LValue::UPVAL:
+    emit_iABC(RegOp::SETUPVAL, static_cast<uint8_t>(lv.upval_idx),
+              static_cast<uint8_t>(val.reg), 0);
+    break;
   default:
     break;
   }

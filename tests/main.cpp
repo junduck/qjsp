@@ -581,6 +581,20 @@ TEST_F(RegInterpFixture, SwitchFallthrough) {
   EXPECT_EQ(v.as_int32(), 2);
 }
 
+// ─── Closure Mutation ───────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, ClosureMutate) {
+  Value v = eval("function outer() { var x = 1; var f = function() { x = x + 1; }; f(); return x; } outer();");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
+TEST_F(RegInterpFixture, ClosureMultipleCalls) {
+  Value v = eval("function makeCounter() { var n = 0; return function() { n = n + 1; return n; }; } var c = makeCounter(); var a = c(); var b = c(); a + b;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

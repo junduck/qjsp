@@ -104,7 +104,8 @@ void RegInterpreter::put_field(Value obj, Atom name, Value val) {
 // ─── Run bytecode ───────────────────────────────────────────────────────────
 
 Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs,
-                                    VarRef **upvals) {
+                                     VarRef **upvals,
+                                     std::vector<VarRef *> *close_list) {
   const auto *ip = reinterpret_cast<const Instruction *>(b->byte_code_buf);
   const auto *end = reinterpret_cast<const Instruction *>(
       b->byte_code_buf + b->instr_count * 4);
@@ -588,8 +589,9 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs,
               closure->var_refs[j] = upvals[uv_idx];
               upvals[uv_idx]->dup();
             } else if (reg_idx >= 0) {
-              // Create detached VarRef — copy current value into heap storage
-              closure->var_refs[j] = VarRef::create_detached(regs[reg_idx]);
+              // Create attached VarRef pointing into our register frame
+              closure->var_refs[j] = VarRef::create(&regs[reg_idx]);
+              if (close_list) close_list->push_back(closure->var_refs[j]);
             } else {
               closure->var_refs[j] = VarRef::create_detached(kUndefined);
             }
@@ -644,8 +646,8 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs,
       break;
 
     case RegOp::SETUPVAL:
-      if (upvals && upvals[i.b()]) {
-        upvals[i.b()]->store(regs[i.a()]);
+      if (upvals && upvals[i.a()]) {
+        upvals[i.a()]->store(regs[i.b()]);
       }
       break;
 
@@ -688,7 +690,13 @@ Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj,
   for (int i = 0; i < b->var_count; i++)
     regs[1 + b->arg_count + i] = kUndefined;
 
-  Value result = run_bytecode(b, regs, upvals);
+  std::vector<VarRef *> close_list;
+  Value result = run_bytecode(b, regs, upvals, &close_list);
+
+  // Close (detach) all VarRefs pointing into this frame
+  for (auto *vr : close_list) {
+    vr->close();
+  }
 
   delete[] regs;
   return result;
