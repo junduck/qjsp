@@ -26,19 +26,6 @@ else()
   endif()
 endif()
 
-# On Windows, we might need to find Boost differently
-if(WIN32)
-  # Try CONFIG mode first (preferred for vcpkg or pre-built Boost)
-  find_package(Boost CONFIG QUIET)
-  if(NOT Boost_FOUND)
-    # Fall back to MODULE mode
-    find_package(Boost REQUIRED)
-  endif()
-else()
-  find_package(Boost CONFIG REQUIRED)
-endif()
-
-
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 if(BUILD_TESTS)
@@ -47,4 +34,22 @@ if(BUILD_TESTS)
   add_subdirectory(tests)
 endif()
 
+add_library(qjsp_headers INTERFACE)
+target_include_directories(qjsp_headers INTERFACE
+  ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(qjsp_headers INTERFACE)
+add_library(qjsp::headers ALIAS qjsp_headers)
+
+add_library(qjsp
+  src/qjsp/runtime.cpp
+  src/qjsp/context.cpp
+  src/qjsp/string.cpp
+  src/qjsp/shape.cpp
+  src/qjsp/object.cpp
+)
+target_link_libraries(qjsp PUBLIC qjsp::headers)
+add_library(qjsp::qjsp ALIAS qjsp)
+
 add_executable(_clangd_tu src/_clangd_tu.cpp)
+target_link_libraries(_clangd_tu PRIVATE qjsp::headers)
