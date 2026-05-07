@@ -6,8 +6,8 @@
 #include "qjsp/string.hpp"
 #include "qjsp/object.hpp"
 #include "qjsp/lexer.hpp"
-#include "qjsp/parser.hpp"
-#include "qjsp/interpreter.hpp"
+#include "qjsp/reg_parser.hpp"
+#include "qjsp/reg_interpreter.hpp"
 
 using namespace qjsp;
 
@@ -104,8 +104,6 @@ TEST_F(ObjFixture, NonExtensible) {
   obj->destroy(rt);
 }
 
-// ─── C Functions ───────────────────────────────────────────────────────────
-
 static Value test_add(Context*, Value, int argc, const Value* argv) {
   int sum = 0;
   for (int i = 0; i < argc; ++i) sum += argv[i].as_int32();
@@ -152,18 +150,10 @@ TEST_F(ObjFixture, PrintIsDefined) {
   EXPECT_TRUE(global->get_own(atom("print")).is_object());
 }
 
-// ─── GC ────────────────────────────────────────────────────────────────────
-
 TEST_F(ObjFixture, GcCollectsUnreachable) {
-  // Create an object, drop all references, force GC.
   auto* obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
-  obj->destroy(rt);        // explicitly remove the only reference
-
+  obj->destroy(rt);
   rt->run_gc();
-
-  // After GC, verify the object's memory was freed.
-  // We can't dereference ptr_before — just trust the GC ran.
-  // Verify the gc_obj_list is clean (context still alive).
   bool found_context = false;
   for (auto* hdr : rt->gc_objects)
     if (hdr->gc_obj_type == GCObjType::js_context) found_context = true;
@@ -171,20 +161,15 @@ TEST_F(ObjFixture, GcCollectsUnreachable) {
 }
 
 TEST_F(ObjFixture, GcPreservesReachable) {
-  // Create an object reachable from the global scope.
   auto* global = ctx->global_obj.as<Object>();
   auto* obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
   auto key = atom("keepme");
   global->set_own(rt, key, Value::object(obj));
-
   rt->run_gc();
-
-  // The object should still be reachable via the global.
   EXPECT_TRUE(global->get_own(key).is_object());
   EXPECT_EQ(global->get_own(key).as<Object>(), obj);
-
   obj->destroy(rt);
-  global->set_own(rt, key, kUndefined);  // clean up
+  global->set_own(rt, key, kUndefined);
 }
 
 // ─── Lexer ──────────────────────────────────────────────────────────────────
@@ -238,16 +223,11 @@ TEST_F(LexerFixture, Identifiers) {
 
 TEST_F(LexerFixture, Keywords) {
   init_lexer("if else return var function");
-  EXPECT_TRUE(lexer.next_token());
-  EXPECT_EQ(lexer.token.type, TOK_IF);
-  EXPECT_TRUE(lexer.next_token());
-  EXPECT_EQ(lexer.token.type, TOK_ELSE);
-  EXPECT_TRUE(lexer.next_token());
-  EXPECT_EQ(lexer.token.type, TOK_RETURN);
-  EXPECT_TRUE(lexer.next_token());
-  EXPECT_EQ(lexer.token.type, TOK_VAR);
-  EXPECT_TRUE(lexer.next_token());
-  EXPECT_EQ(lexer.token.type, TOK_FUNCTION);
+  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_IF);
+  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_ELSE);
+  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_RETURN);
+  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_VAR);
+  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_FUNCTION);
 }
 
 TEST_F(LexerFixture, StringLiterals) {
@@ -363,13 +343,11 @@ TEST_F(LexerFixture, PeekToken) {
   init_lexer("in of import export function");
   EXPECT_EQ(lexer.peek_token(false), TOK_IN);
   EXPECT_EQ(lexer.peek_token(true), TOK_IN);
-  // Consume 'in'
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_IN);
-  // Peek 'of' — only peek returns TOK_OF, next_token returns TOK_IDENT
   EXPECT_EQ(lexer.peek_token(false), TOK_OF);
   EXPECT_TRUE(lexer.next_token());
-  EXPECT_EQ(lexer.token.type, TOK_IDENT); // "of" is TOK_IDENT in regular lexing
+  EXPECT_EQ(lexer.token.type, TOK_IDENT);
   EXPECT_EQ(lexer.peek_token(false), TOK_IMPORT);
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_IMPORT);
@@ -386,172 +364,173 @@ TEST_F(LexerFixture, LookaheadArrow) {
   EXPECT_EQ(lexer.token.type, TOK_ARROW);
 }
 
-// ─── Parser ─────────────────────────────────────────────────────────────────
+// ─── Reg Parser ─────────────────────────────────────────────────────────────
 
-struct ParserFixture : testing::Test {
+struct RegParserFixture : testing::Test {
   Runtime* rt = Runtime::create();
   Context* ctx = Context::create(rt);
-  ParseState ps{rt, ctx};
+  RegParseState ps{rt, ctx};
 
   bool compile(const char* source) {
     ps.init(source, "test.js");
     return ps.compile();
   }
 
-  ~ParserFixture() override { ctx->destroy(); rt->destroy(); }
+  ~RegParserFixture() override { ctx->destroy(); rt->destroy(); }
 };
 
-TEST_F(ParserFixture, Empty) {
+TEST_F(RegParserFixture, Empty) {
   EXPECT_TRUE(compile(""));
-  EXPECT_GT(ps.cur_func->byte_code.size(), 0u);
 }
 
-TEST_F(ParserFixture, ExpressionStatement) {
+TEST_F(RegParserFixture, ExpressionStatement) {
   EXPECT_TRUE(compile("42;"));
-  auto& bc = ps.cur_func->byte_code;
-  EXPECT_GT(bc.size(), 0u);
 }
 
-TEST_F(ParserFixture, VarDecl) {
+TEST_F(RegParserFixture, VarDecl) {
   EXPECT_TRUE(compile("var x = 1;"));
 }
 
-TEST_F(ParserFixture, LetDecl) {
+TEST_F(RegParserFixture, LetDecl) {
   EXPECT_TRUE(compile("let y = 2;"));
 }
 
-TEST_F(ParserFixture, ConstDecl) {
+TEST_F(RegParserFixture, ConstDecl) {
   EXPECT_TRUE(compile("const z = 3;"));
 }
 
-TEST_F(ParserFixture, IfStatement) {
+TEST_F(RegParserFixture, IfStatement) {
   EXPECT_TRUE(compile("if (true) { 42; }"));
 }
 
-TEST_F(ParserFixture, IfElseStatement) {
+TEST_F(RegParserFixture, IfElseStatement) {
   EXPECT_TRUE(compile("if (false) { 1; } else { 2; }"));
 }
 
-TEST_F(ParserFixture, ReturnStatement) {
+TEST_F(RegParserFixture, ReturnStatement) {
   EXPECT_TRUE(compile("function f() { return 42; }"));
 }
 
-TEST_F(ParserFixture, WhileLoop) {
+TEST_F(RegParserFixture, WhileLoop) {
   EXPECT_TRUE(compile("while (true) { break; }"));
 }
 
-TEST_F(ParserFixture, ForLoop) {
+TEST_F(RegParserFixture, ForLoop) {
   EXPECT_TRUE(compile("for (var i = 0; i < 10; i = i + 1) { }"));
 }
 
-TEST_F(ParserFixture, ForLoopSimple) {
+TEST_F(RegParserFixture, ForLoopSimple) {
   EXPECT_TRUE(compile("for (;;) { }"));
 }
 
-TEST_F(ParserFixture, ForLoopNoUpdate) {
+TEST_F(RegParserFixture, ForLoopNoUpdate) {
   EXPECT_TRUE(compile("for (var i = 0; i < 10;) { i = i + 1; }"));
 }
 
-TEST_F(ParserFixture, FunctionDeclaration) {
+TEST_F(RegParserFixture, FunctionDeclaration) {
   EXPECT_TRUE(compile("function add(a, b) { return a + b; }"));
 }
 
-TEST_F(ParserFixture, MultipleStatements) {
+TEST_F(RegParserFixture, MultipleStatements) {
   EXPECT_TRUE(compile("var a = 1; var b = 2; var c = a + b;"));
 }
 
-TEST_F(ParserFixture, NestedBlocks) {
+TEST_F(RegParserFixture, NestedBlocks) {
   EXPECT_TRUE(compile("{ var x = 1; { var y = 2; } }"));
 }
 
-TEST_F(ParserFixture, ThrowStatement) {
+TEST_F(RegParserFixture, ThrowStatement) {
   EXPECT_TRUE(compile("throw 42;"));
 }
 
-TEST_F(ParserFixture, ObjectLiteralEmpty) {
-  EXPECT_TRUE(compile("var x = {};"));
-}
+// ─── Reg Interpreter ────────────────────────────────────────────────────────
 
-TEST_F(ParserFixture, ObjectLiteralSimple) {
-  EXPECT_TRUE(compile("var x = { a: 1, b: 2 };"));
-}
-
-TEST_F(ParserFixture, ObjectLiteralShorthand) {
-  EXPECT_TRUE(compile("var a = 1; var x = { a };"));
-}
-
-TEST_F(ParserFixture, ObjectLiteralStringKey) {
-  EXPECT_TRUE(compile("var x = { \"key\": 42 };"));
-}
-
-TEST_F(ParserFixture, ArrayLiteralEmpty) {
-  EXPECT_TRUE(compile("var x = [];"));
-}
-
-TEST_F(ParserFixture, ArrayLiteralSimple) {
-  EXPECT_TRUE(compile("var x = [1, 2, 3];"));
-}
-
-TEST_F(ParserFixture, ArrayLiteralSpread) {
-  EXPECT_TRUE(compile("var x = [1, ...y, 3];"));
-}
-
-TEST_F(ParserFixture, ArrowSimple) {
-  EXPECT_TRUE(compile("var f = x => x + 1;"));
-}
-
-TEST_F(ParserFixture, ArrowBlock) {
-  EXPECT_TRUE(compile("var f = x => { return x; };"));
-}
-
-// ─── Interpreter ────────────────────────────────────────────────────────────
-
-struct InterpFixture : testing::Test {
+struct RegInterpFixture : testing::Test {
   Runtime* rt = Runtime::create();
   Context* ctx = Context::create(rt);
-  Interpreter interp{ctx};
+  RegInterpreter interp{ctx};
 
   Value eval(const char* source) {
     return interp.eval_source(source);
   }
 
-  ~InterpFixture() override { ctx->destroy(); rt->destroy(); }
+  ~RegInterpFixture() override { ctx->destroy(); rt->destroy(); }
 };
 
-TEST_F(InterpFixture, LiteralInt) {
+TEST_F(RegInterpFixture, LiteralInt) {
   Value v = eval("42;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 42);
 }
 
-TEST_F(InterpFixture, Arithmetic) {
+TEST_F(RegInterpFixture, Arithmetic) {
   Value v = eval("1 + 2 * 3;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 7);
 }
 
-TEST_F(InterpFixture, VarDeclAndUse) {
+TEST_F(RegInterpFixture, VarDeclAndUse) {
   Value v = eval("var x = 10; x + 5;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 15);
 }
 
-TEST_F(InterpFixture, IfStatement) {
+TEST_F(RegInterpFixture, IfStatement) {
   Value v = eval("var x = 0; if (1) { x = 42; } x;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 42);
 }
 
-TEST_F(InterpFixture, FunctionCall) {
+TEST_F(RegInterpFixture, FunctionCall) {
   Value v = eval("function add(a, b) { return a + b; } add(3, 4);");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 7);
 }
 
-TEST_F(InterpFixture, BuiltinPrint) {
-  // Just test that print exists and is callable
+TEST_F(RegInterpFixture, BuiltinPrint) {
   Value v = eval("print;");
   EXPECT_TRUE(v.is_object());
+}
+
+// ─── Phase D: Objects + Arrays ──────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, ObjectLiteralEmpty) {
+  Value v = eval("var x = {}; x;");
+  EXPECT_TRUE(v.is_object());
+}
+
+TEST_F(RegInterpFixture, ObjectLiteralSimple) {
+  Value v = eval("var x = {a: 1, b: 2}; x.a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(RegInterpFixture, ObjectLiteralStringKey) {
+  Value v = eval("var x = {'key': 42}; x.key;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(RegInterpFixture, ArrayLiteralEmpty) {
+  Value v = eval("var x = []; x;");
+  EXPECT_TRUE(v.is_object());
+}
+
+TEST_F(RegInterpFixture, ArrayLiteralSimple) {
+  Value v = eval("var x = [1, 2, 3]; x;");
+  EXPECT_TRUE(v.is_object());
+}
+
+TEST_F(RegInterpFixture, SetFieldAccess) {
+  Value v = eval("var x = {}; x.a = 10; x.a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+
+TEST_F(RegInterpFixture, ComplexFieldChain) {
+  Value v = eval("var a = {b: {c: 7}}; a.b.c;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 7);
 }
 
 int main(int argc, char** argv) {

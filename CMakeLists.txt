@@ -48,9 +48,9 @@ add_library(qjsp
   src/qjsp/shape.cpp
   src/qjsp/object.cpp
   src/qjsp/lexer.cpp
-  src/qjsp/parser.cpp
-  src/qjsp/interpreter.cpp
   src/qjsp/varref.cpp
+  src/qjsp/reg_parser.cpp
+  src/qjsp/reg_interpreter.cpp
 )
 target_link_libraries(qjsp PUBLIC qjsp::headers)
 add_library(qjsp::qjsp ALIAS qjsp)

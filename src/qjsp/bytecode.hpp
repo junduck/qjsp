@@ -37,7 +37,7 @@ struct ClosureVar {
 };
 
 constexpr int kArgScopeIndex = 1;
-constexpr int kArgScopeEnd = -2;
+constexpr int kArgScopeEnd   = -2;
 
 enum class VarKind : uint8_t {
   normal,
@@ -91,15 +91,15 @@ struct BytecodeVarDef {
   void set_var_kind(uint8_t k) { flags = (flags & 0x0Fu) | static_cast<uint8_t>(k << 4); }
 };
 
-constexpr int kPC2LineBase = -1;
-constexpr int kPC2LineRange = 5;
-constexpr int kPC2LineOpFirst = 1;
+constexpr int kPC2LineBase      = -1;
+constexpr int kPC2LineRange     = 5;
+constexpr int kPC2LineOpFirst   = 1;
 constexpr int kPC2LineDiffPCMax = (255 - kPC2LineOpFirst) / kPC2LineRange;
 
 enum class FunctionKind : uint8_t {
-  normal = 0,
-  generator = (1 << 0),
-  async = (1 << 1),
+  normal          = 0,
+  generator       = (1 << 0),
+  async           = (1 << 1),
   async_generator = (1 << 0) | (1 << 1),
 };
 
@@ -124,6 +124,8 @@ struct FunctionBytecode : GCObjectHeader {
 
   uint8_t *byte_code_buf;
   int byte_code_len;
+  int instr_count;    // number of 32-bit instructions (reg VM)
+  uint16_t reg_count; // total registers per frame (reg VM)
   Atom func_name;
   BytecodeVarDef *vardefs;
   ClosureVar *closure_var;
