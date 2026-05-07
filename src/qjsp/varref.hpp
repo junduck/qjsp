@@ -1,26 +1,47 @@
 #pragma once
 
-#include "gc.hpp"
-#include "stack_frame.hpp"
-#include "value.hpp"
-#include <cstdint>
+#include "qjsp/gc.hpp"
+#include "qjsp/value.hpp"
 
 namespace qjsp {
 
-struct VarRef : GCObjectHeader {
-  bool is_detached;
-  bool is_lexical;
-  bool is_const;
+// VarRef — heap-boxed indirection for captured variables.
+//
+// While the owning stack frame is alive, pvalue points directly into
+// that frame's register array (attached mode).  When the frame returns,
+// the value is copied into VarRef::value and pvalue is repointed
+// (detached mode).  Multiple closures sharing the same capture hold
+// the same VarRef pointer — all writes are immediately visible to all
+// observers regardless of attachment state.
 
-  Value *pvalue;
+struct VarRef : RefCounted {
+  // ── creation ──────────────────────────────────────────────────────────
 
-  union {
-    Value value;
-    struct {
-      uint16_t var_ref_idx;
-      StackFrame *stack_frame;
-    };
-  };
+  // Create attached VarRef whose pvalue points at *slot.
+  static VarRef *create(Value *slot);
+
+  // Create detached VarRef initialised to v.
+  static VarRef *create_detached(Value v);
+
+  // ── access ────────────────────────────────────────────────────────────
+
+  Value load() const { return *pvalue; }
+  void store(Value v) { *pvalue = v; }
+
+  // ── lifecycle ─────────────────────────────────────────────────────────
+
+  // Detach: copy *pvalue into internal value_, repoint pvalue.
+  void close();
+
+  // ── query ─────────────────────────────────────────────────────────────
+
+  bool is_detached_ = false;
+
+  // ── fields ────────────────────────────────────────────────────────────
+
+  Value *pvalue = nullptr; // → slot in frame (attached) or → value_ (detached)
+private:
+  Value value_ = kUndefined; // internal storage when detached
 };
 
 } // namespace qjsp

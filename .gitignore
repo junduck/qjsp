@@ -10,6 +10,7 @@ refs/
 
 ##### In-place QuickJS core patch experiments
 quickjs*
+!quickjs-opcode.h
 
 # General
 .DS_Store

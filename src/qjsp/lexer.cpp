@@ -1,0 +1,1227 @@
+#include "qjsp/lexer.hpp"
+#include "qjsp/runtime.hpp"
+#include "qjsp/string.hpp"
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
+
+namespace qjsp {
+
+// ─── Token cleanup ──────────────────────────────────────────────────────────
+
+void Token::free_token() {
+  switch (type) {
+  case TOK_STRING:
+  case TOK_TEMPLATE:
+    delete[] u.str.str;
+    u.str.str = nullptr;
+    break;
+  case TOK_REGEXP:
+    delete[] u.regexp.body;
+    delete[] u.regexp.flags;
+    u.regexp.body  = nullptr;
+    u.regexp.flags = nullptr;
+    break;
+  default:
+    if (is_keyword(type)) {
+      // keyword: u.ident.atom is owned by Runtime, no free needed
+    }
+    break;
+  }
+}
+
+// ─── Character helpers ──────────────────────────────────────────────────────
+
+void Lexer::copy_str(char *&dst, uint32_t &dst_len, const std::string &buf) {
+  dst_len = static_cast<uint32_t>(buf.size());
+  dst     = new char[dst_len + 1];
+  std::memcpy(dst, buf.data(), dst_len);
+  dst[dst_len] = '\0';
+}
+
+int Lexer::unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp) {
+  int c, minc;
+  c = *p;
+  if (c < 0x80) {
+    *pp = p + 1;
+    return c;
+  }
+  if (c < 0xC0) {
+    *pp = p + 1;
+    return -1;
+  }
+  if (c < 0xE0) {
+    if (max_len < 2)
+      return -1;
+    minc = 0x80;
+    c    = c & 0x1F;
+    c    = (c << 6) | (p[1] & 0x3F);
+    *pp  = p + 2;
+  } else if (c < 0xF0) {
+    if (max_len < 3)
+      return -1;
+    minc = 0x800;
+    c    = c & 0x0F;
+    c    = (c << 6) | (p[1] & 0x3F);
+    c    = (c << 6) | (p[2] & 0x3F);
+    *pp  = p + 3;
+  } else if (c < 0xF8) {
+    if (max_len < 4)
+      return -1;
+    minc = 0x10000;
+    c    = c & 0x07;
+    c    = (c << 6) | (p[1] & 0x3F);
+    c    = (c << 6) | (p[2] & 0x3F);
+    c    = (c << 6) | (p[3] & 0x3F);
+    *pp  = p + 4;
+  } else if (c < 0xFC) {
+    if (max_len < 5)
+      return -1;
+    minc = 0x200000;
+    c    = c & 0x03;
+    c    = (c << 6) | (p[1] & 0x3F);
+    c    = (c << 6) | (p[2] & 0x3F);
+    c    = (c << 6) | (p[3] & 0x3F);
+    c    = (c << 6) | (p[4] & 0x3F);
+    *pp  = p + 5;
+  } else {
+    if (max_len < 6)
+      return -1;
+    minc = 0x4000000;
+    c    = c & 0x01;
+    c    = (c << 6) | (p[1] & 0x3F);
+    c    = (c << 6) | (p[2] & 0x3F);
+    c    = (c << 6) | (p[3] & 0x3F);
+    c    = (c << 6) | (p[4] & 0x3F);
+    c    = (c << 6) | (p[5] & 0x3F);
+    *pp  = p + 6;
+  }
+  if (c < minc || (c >= 0xD800 && c <= 0xDFFF) || c > 0x10FFFF)
+    return -1;
+  return c;
+}
+
+void Lexer::append_utf8(std::string &buf, unsigned int c) {
+  if (c < 0x80) {
+    buf.push_back(static_cast<char>(c));
+  } else if (c < 0x800) {
+    buf.push_back(static_cast<char>((c >> 6) | 0xC0));
+    buf.push_back(static_cast<char>((c & 0x3F) | 0x80));
+  } else if (c < 0x10000) {
+    buf.push_back(static_cast<char>((c >> 12) | 0xE0));
+    buf.push_back(static_cast<char>(((c >> 6) & 0x3F) | 0x80));
+    buf.push_back(static_cast<char>((c & 0x3F) | 0x80));
+  } else {
+    buf.push_back(static_cast<char>((c >> 18) | 0xF0));
+    buf.push_back(static_cast<char>(((c >> 12) & 0x3F) | 0x80));
+    buf.push_back(static_cast<char>(((c >> 6) & 0x3F) | 0x80));
+    buf.push_back(static_cast<char>((c & 0x3F) | 0x80));
+  }
+}
+
+int Lexer::from_hex(int c) {
+  if (c >= '0' && c <= '9')
+    return c - '0';
+  if (c >= 'A' && c <= 'F')
+    return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f')
+    return c - 'a' + 10;
+  return -1;
+}
+
+bool Lexer::is_surrogate(uint32_t c) { return (c >> 11) == (0xD800 >> 11); }
+bool Lexer::is_hi_surrogate(uint32_t c) { return (c >> 10) == (0xD800 >> 10); }
+bool Lexer::is_lo_surrogate(uint32_t c) { return (c >> 10) == (0xDC00 >> 10); }
+
+uint32_t Lexer::from_surrogate(uint32_t hi, uint32_t lo) { return 0x10000u + 0x400u * (hi - 0xD800u) + (lo - 0xDC00u); }
+
+/* -------------------------------------------------------------------------- */
+/*  Unicode classification                                                   */
+/* -------------------------------------------------------------------------- */
+
+bool Lexer::lre_is_space(uint32_t c) {
+  if (c < 256)
+    return c == 0x09 || c == 0x0A || c == 0x0B || c == 0x0C || c == 0x0D || c == 0x20 || c == 0xA0 || c == 0xFEFF;
+  return (c >= 0x2000 && c <= 0x200A) || c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F || c == 0x3000;
+}
+
+bool Lexer::lre_js_is_ident_first(uint32_t c) {
+  if (c < 128)
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$';
+  if (lre_is_space(c))
+    return false;
+  if (c >= '0' && c <= '9')
+    return false;
+  return true;
+}
+
+bool Lexer::lre_js_is_ident_next(uint32_t c) {
+  if (c < 128)
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$' || (c >= '0' && c <= '9');
+  if (c >= 0x200C && c <= 0x200D)
+    return true;
+  if (lre_is_space(c))
+    return false;
+  return true;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Escape sequence parser                                                    */
+/* -------------------------------------------------------------------------- */
+
+int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
+  const uint8_t *p = *pp;
+  uint32_t c       = *p++;
+
+  switch (c) {
+  case 'b':
+    c = '\b';
+    break;
+  case 'f':
+    c = '\f';
+    break;
+  case 'n':
+    c = '\n';
+    break;
+  case 'r':
+    c = '\r';
+    break;
+  case 't':
+    c = '\t';
+    break;
+  case 'v':
+    c = '\v';
+    break;
+  case 'x': {
+    int h0 = from_hex(*p++), h1 = from_hex(*p++);
+    if (h0 < 0 || h1 < 0)
+      return -1;
+    c = (static_cast<unsigned>(h0) << 4) | static_cast<unsigned>(h1);
+    break;
+  }
+  case 'u': {
+    if (*p == '{' && allow_utf16) {
+      p++;
+      c = 0;
+      for (;;) {
+        int h = from_hex(*p++);
+        if (h < 0)
+          return -1;
+        c = (c << 4) | static_cast<unsigned>(h);
+        if (c > 0x10FFFF)
+          return -1;
+        if (*p == '}')
+          break;
+      }
+      p++;
+    } else {
+      c = 0;
+      for (int i = 0; i < 4; i++) {
+        int h = from_hex(*p++);
+        if (h < 0)
+          return -1;
+        c = (c << 4) | static_cast<unsigned>(h);
+      }
+      if (is_hi_surrogate(c) && allow_utf16 && p[0] == '\\' && p[1] == 'u') {
+        uint32_t c1 = 0;
+        for (int i = 0; i < 4; i++) {
+          int h = from_hex(p[2 + i]);
+          if (h < 0)
+            break;
+          c1 = (c1 << 4) | static_cast<unsigned>(h);
+        }
+        if (is_lo_surrogate(c1)) {
+          p += 6;
+          c = from_surrogate(c, c1);
+        }
+      }
+    }
+    break;
+  }
+  case '0':
+  case '1':
+  case '2':
+  case '3':
+  case '4':
+  case '5':
+  case '6':
+  case '7':
+    c -= '0';
+    if (allow_utf16) {
+      if (c != 0 || is_digit(*p))
+        return -1;
+    } else {
+      unsigned v = static_cast<unsigned>(*p - '0');
+      if (v > 7)
+        break;
+      c = (c << 3) | v;
+      p++;
+      if (c >= 32)
+        break;
+      v = static_cast<unsigned>(*p - '0');
+      if (v > 7)
+        break;
+      c = (c << 3) | v;
+      p++;
+    }
+    break;
+  default:
+    return -2;
+  }
+  *pp = p;
+  return static_cast<int>(c);
+}
+
+// ─── Lexer initialisation ───────────────────────────────────────────────────
+
+void Lexer::init(Runtime *rt_val, const char *filename_val, const uint8_t *source, size_t source_len) {
+  rt        = rt_val;
+  filename  = filename_val;
+  buf_start = source;
+  buf_ptr   = source;
+  buf_end   = source + source_len;
+  last_ptr  = source;
+  got_lf    = false;
+}
+
+// ─── next_token() — the main dispatcher ─────────────────────────────────────
+
+bool Lexer::next_token() {
+  const uint8_t *p;
+  int c;
+  bool ident_has_escape;
+
+  token.free_token();
+
+  p = last_ptr = buf_ptr;
+  got_lf       = false;
+
+redo:
+  token.ptr = p;
+  c         = *p;
+
+  switch (c) {
+  case 0:
+    if (p >= buf_end)
+      token.type = TOK_EOF;
+    else
+      goto def_token;
+    break;
+
+  case '`':
+    if (!parse_template_part(p + 1))
+      return false;
+    p = buf_ptr;
+    break;
+
+  case '\'':
+  case '\"':
+    if (!parse_string(c, true, p + 1, &token, &p))
+      return false;
+    break;
+
+  case '\r':
+    if (p[1] == '\n')
+      p++;
+    // fall through
+  case '\n':
+    p++;
+  line_terminator:
+    got_lf = true;
+    goto redo;
+
+  case '\f':
+  case '\v':
+  case ' ':
+  case '\t':
+    p++;
+    goto redo;
+
+  case '/':
+    if (p[1] == '*') {
+      p += 2;
+      for (;;) {
+        if (*p == '\0' && p >= buf_end)
+          return false;
+        if (p[0] == '*' && p[1] == '/') {
+          p += 2;
+          break;
+        }
+        if (*p == '\n' || *p == '\r') {
+          got_lf = true;
+          p++;
+        } else if (*p >= 0x80) {
+          const uint8_t *p_next;
+          c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
+          if (c == CP_LS || c == CP_PS)
+            got_lf = true;
+          else if (c == -1)
+            p++;
+          p = p_next;
+        } else
+          p++;
+      }
+      goto redo;
+    } else if (p[1] == '/') {
+      p += 2;
+    skip_line_comment:
+      for (;;) {
+        if (*p == '\0' && p >= buf_end)
+          break;
+        if (*p == '\r' || *p == '\n')
+          break;
+        if (*p >= 0x80) {
+          const uint8_t *p_next;
+          c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
+          if (c == CP_LS || c == CP_PS)
+            break;
+          if (c == -1)
+            p++;
+          p = p_next;
+        } else
+          p++;
+      }
+      goto redo;
+    } else if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_DIV_ASSIGN;
+    } else {
+      p++;
+      token.type = c;
+    }
+    break;
+
+  case '\\':
+    if (p[1] == 'u') {
+      const uint8_t *p1 = p + 1;
+      int c1            = parse_escape(&p1, true);
+      if (c1 >= 0 && lre_js_is_ident_first(static_cast<uint32_t>(c1))) {
+        c                = c1;
+        p                = p1;
+        buf_ptr          = p;
+        ident_has_escape = true;
+        goto has_ident;
+      }
+    }
+    goto def_token;
+
+  case 'a':
+  case 'b':
+  case 'c':
+  case 'd':
+  case 'e':
+  case 'f':
+  case 'g':
+  case 'h':
+  case 'i':
+  case 'j':
+  case 'k':
+  case 'l':
+  case 'm':
+  case 'n':
+  case 'o':
+  case 'p':
+  case 'q':
+  case 'r':
+  case 's':
+  case 't':
+  case 'u':
+  case 'v':
+  case 'w':
+  case 'x':
+  case 'y':
+  case 'z':
+  case 'A':
+  case 'B':
+  case 'C':
+  case 'D':
+  case 'E':
+  case 'F':
+  case 'G':
+  case 'H':
+  case 'I':
+  case 'J':
+  case 'K':
+  case 'L':
+  case 'M':
+  case 'N':
+  case 'O':
+  case 'P':
+  case 'Q':
+  case 'R':
+  case 'S':
+  case 'T':
+  case 'U':
+  case 'V':
+  case 'W':
+  case 'X':
+  case 'Y':
+  case 'Z':
+  case '_':
+  case '$':
+    p++;
+    ident_has_escape = false;
+    buf_ptr          = p;
+  has_ident:
+    if (!parse_ident_token(c, ident_has_escape))
+      return false;
+    p = buf_ptr;
+    break;
+
+  case '#':
+    if (!parse_private_name())
+      return false;
+    break;
+
+  case '.':
+    if (p[1] == '.' && p[2] == '.') {
+      p += 3;
+      token.type = TOK_ELLIPSIS;
+      break;
+    }
+    if (p[1] >= '0' && p[1] <= '9')
+      goto parse_number;
+    goto def_token;
+
+  case '0':
+    goto parse_number;
+  case '1':
+  case '2':
+  case '3':
+  case '4':
+  case '5':
+  case '6':
+  case '7':
+  case '8':
+  case '9':
+  parse_number:
+    if (!parse_number(p))
+      return false;
+    p = buf_ptr;
+    break;
+
+  case '*':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_MUL_ASSIGN;
+    } else if (p[1] == '*') {
+      if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_POW_ASSIGN;
+      } else {
+        p += 2;
+        token.type = TOK_POW;
+      }
+    } else
+      goto def_token;
+    break;
+
+  case '%':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_MOD_ASSIGN;
+    } else
+      goto def_token;
+    break;
+
+  case '+':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_PLUS_ASSIGN;
+    } else if (p[1] == '+') {
+      p += 2;
+      token.type = TOK_INC;
+    } else
+      goto def_token;
+    break;
+
+  case '-':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_MINUS_ASSIGN;
+    } else if (p[1] == '-') {
+      if (allow_html_comments && p[2] == '>' && (got_lf || last_ptr == buf_start))
+        goto skip_line_comment;
+      p += 2;
+      token.type = TOK_DEC;
+    } else
+      goto def_token;
+    break;
+
+  case '<':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_LTE;
+    } else if (p[1] == '<') {
+      if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_SHL_ASSIGN;
+      } else {
+        p += 2;
+        token.type = TOK_SHL;
+      }
+    } else if (allow_html_comments && p[1] == '!' && p[2] == '-' && p[3] == '-')
+      goto skip_line_comment;
+    else
+      goto def_token;
+    break;
+
+  case '>':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_GTE;
+    } else if (p[1] == '>') {
+      if (p[2] == '>') {
+        if (p[3] == '=') {
+          p += 4;
+          token.type = TOK_SHR_ASSIGN;
+        } else {
+          p += 3;
+          token.type = TOK_SHR;
+        }
+      } else if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_SAR_ASSIGN;
+      } else {
+        p += 2;
+        token.type = TOK_SAR;
+      }
+    } else
+      goto def_token;
+    break;
+
+  case '=':
+    if (p[1] == '=') {
+      if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_STRICT_EQ;
+      } else {
+        p += 2;
+        token.type = TOK_EQ;
+      }
+    } else if (p[1] == '>') {
+      p += 2;
+      token.type = TOK_ARROW;
+    } else
+      goto def_token;
+    break;
+
+  case '!':
+    if (p[1] == '=') {
+      if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_STRICT_NEQ;
+      } else {
+        p += 2;
+        token.type = TOK_NEQ;
+      }
+    } else
+      goto def_token;
+    break;
+
+  case '&':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_AND_ASSIGN;
+    } else if (p[1] == '&') {
+      if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_LAND_ASSIGN;
+      } else {
+        p += 2;
+        token.type = TOK_LAND;
+      }
+    } else
+      goto def_token;
+    break;
+
+  case '^':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_XOR_ASSIGN;
+    } else
+      goto def_token;
+    break;
+
+  case '|':
+    if (p[1] == '=') {
+      p += 2;
+      token.type = TOK_OR_ASSIGN;
+    } else if (p[1] == '|') {
+      if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_LOR_ASSIGN;
+      } else {
+        p += 2;
+        token.type = TOK_LOR;
+      }
+    } else
+      goto def_token;
+    break;
+
+  case '?':
+    if (p[1] == '?') {
+      if (p[2] == '=') {
+        p += 3;
+        token.type = TOK_DOUBLE_QUESTION_MARK_ASSIGN;
+      } else {
+        p += 2;
+        token.type = TOK_DOUBLE_QUESTION_MARK;
+      }
+    } else if (p[1] == '.' && !(p[2] >= '0' && p[2] <= '9')) {
+      p += 2;
+      token.type = TOK_QUESTION_MARK_DOT;
+    } else
+      goto def_token;
+    break;
+
+  default:
+    if (c >= 128) {
+      const uint8_t *p_next;
+      c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
+      switch (c) {
+      case CP_PS:
+      case CP_LS:
+        p = p_next;
+        goto line_terminator;
+      default:
+        if (lre_is_space(static_cast<uint32_t>(c))) {
+          p = p_next;
+          goto redo;
+        } else if (lre_js_is_ident_first(static_cast<uint32_t>(c))) {
+          p                = p_next;
+          buf_ptr          = p;
+          ident_has_escape = false;
+          goto has_ident;
+        } else
+          return false;
+      }
+    }
+  def_token:
+    token.type = c;
+    p++;
+    break;
+  }
+
+  buf_ptr = p;
+  return true;
+}
+
+// ─── Identifier parsing ─────────────────────────────────────────────────────
+
+bool Lexer::parse_ident_token(int first_c, bool has_escape) {
+  const uint8_t *p = buf_ptr;
+  const uint8_t *p1;
+  int c = first_c;
+  std::string ident_buf;
+
+  for (;;) {
+    p1 = p;
+    append_utf8(ident_buf, static_cast<unsigned>(c));
+
+    c = *p1++;
+    if (c == '\\' && *p1 == 'u') {
+      c          = parse_escape(&p1, true);
+      has_escape = true;
+    } else if (c >= 128) {
+      c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+    }
+    if (!lre_js_is_ident_next(static_cast<uint32_t>(c)))
+      break;
+    p = p1;
+  }
+
+  buf_ptr = p;
+
+  auto *str = String::create(ident_buf);
+  if (!str)
+    return false;
+  Atom atom                 = rt->intern(str);
+  token.u.ident.atom        = atom;
+  token.u.ident.has_escape  = has_escape;
+  token.u.ident.is_reserved = false;
+  token.type                = TOK_IDENT;
+  update_token_ident();
+  return true;
+}
+
+bool Lexer::parse_private_name() {
+  const uint8_t *p = buf_ptr;
+  const uint8_t *p1;
+  int c;
+
+  p++; // skip '#'
+  p1 = p;
+  c  = *p1++;
+  if (c == '\\' && *p1 == 'u') {
+    c = parse_escape(&p1, true);
+  } else if (c >= 128) {
+    c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+  }
+  if (!lre_js_is_ident_first(static_cast<uint32_t>(c)))
+    return false;
+
+  p = p1;
+  std::string ident_buf;
+  ident_buf.push_back('#');
+  append_utf8(ident_buf, static_cast<unsigned>(c));
+
+  for (;;) {
+    p1 = p;
+    c  = *p1++;
+    if (c == '\\' && *p1 == 'u') {
+      c = parse_escape(&p1, true);
+    } else if (c >= 128) {
+      c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+    }
+    if (!lre_js_is_ident_next(static_cast<uint32_t>(c)))
+      break;
+    p = p1;
+    append_utf8(ident_buf, static_cast<unsigned>(c));
+  }
+
+  buf_ptr   = p;
+  auto *str = String::create(ident_buf);
+  if (!str)
+    return false;
+  Atom atom                 = rt->intern(str);
+  token.u.ident.atom        = atom;
+  token.u.ident.has_escape  = false;
+  token.u.ident.is_reserved = false;
+  token.type                = TOK_PRIVATE_NAME;
+  return true;
+}
+
+void Lexer::update_token_ident() {
+  if (token.type != TOK_IDENT)
+    return;
+  Atom id_atom = token.u.ident.atom;
+
+  bool kw = false;
+  if (id_atom <= static_cast<Atom>(AtomEnum::_await)) {
+    if (id_atom <= static_cast<Atom>(kAtomLastKeyword))
+      kw = true;
+    else if (id_atom <= static_cast<Atom>(kAtomLastStrictKeyword))
+      kw = true;
+    else
+      kw = true; // await
+  }
+
+  if (kw) {
+    if (token.u.ident.has_escape) {
+      token.u.ident.is_reserved = true;
+    } else {
+      token.type = tok_from_atom(id_atom);
+    }
+  }
+}
+
+// ─── String parsing ─────────────────────────────────────────────────────────
+
+bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, const uint8_t **pp) {
+  std::string buf;
+  buf.reserve(32);
+  uint32_t c;
+
+  for (;;) {
+    if (p >= buf_end)
+      goto invalid_char;
+    c = *p;
+    if (c < 0x20) {
+      if (sep == '`') {
+        if (c == '\r') {
+          if (p[1] == '\n')
+            p++;
+          c = '\n';
+        }
+      } else if (c == '\n' || c == '\r')
+        goto invalid_char;
+    }
+    p++;
+    if (c == static_cast<unsigned>(sep))
+      break;
+    if (c == '$' && *p == '{' && sep == '`') {
+      p++;
+      break;
+    }
+    if (c == '\\') {
+      c = *p;
+      switch (c) {
+      case '\0':
+        if (p >= buf_end)
+          goto invalid_char;
+        p++;
+        break;
+      case '\'':
+      case '\"':
+      case '\\':
+        p++;
+        break;
+      case '\r':
+        if (p[1] == '\n')
+          p++; // fall through
+      case '\n':
+        p++;
+        continue;
+      default:
+        if (c >= '0' && c <= '9') {
+          if (c == '0' && !(p[1] >= '0' && p[1] <= '9')) {
+            p++;
+            c = '\0';
+          } else {
+            if (c >= '8' || sep == '`') {
+              if (do_throw)
+                return false;
+              goto fail;
+            } else
+              goto fail;
+          }
+        } else if (c >= 0x80) {
+          const uint8_t *p_next;
+          c = static_cast<uint32_t>(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next));
+          if (c > 0x10FFFF) {
+            if (do_throw)
+              return false;
+            goto fail;
+          }
+          p = p_next;
+          if (c == CP_LS || c == CP_PS)
+            continue;
+        } else {
+          int ret = parse_escape(&p, true);
+          if (ret == -1) {
+            if (do_throw)
+              return false;
+            goto fail;
+          } else if (ret < 0)
+            p++;
+          else
+            c = static_cast<uint32_t>(ret);
+        }
+        break;
+      }
+    } else if (c >= 0x80) {
+      const uint8_t *p_next;
+      c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
+      if (c > 0x10FFFF) {
+        if (do_throw)
+          return false;
+        goto fail;
+      }
+      p = p_next;
+    }
+    append_utf8(buf, c);
+  }
+
+  copy_str(out->u.str.str, out->u.str.len, buf);
+  out->u.str.sep = static_cast<int>(c);
+  out->type      = TOK_STRING;
+  *pp            = p;
+  return true;
+
+invalid_char:
+  if (do_throw)
+    return false;
+fail:
+  return false;
+}
+
+// ─── Template literal part ──────────────────────────────────────────────────
+
+bool Lexer::parse_template_part(const uint8_t *p) {
+  std::string buf;
+  buf.reserve(32);
+  uint32_t c;
+
+  for (;;) {
+    if (p >= buf_end)
+      return false;
+    c = *p++;
+    if (c == '`')
+      break;
+    if (c == '$' && *p == '{') {
+      p++;
+      break;
+    }
+    if (c == '\\') {
+      buf.push_back('\\');
+      if (p >= buf_end)
+        return false;
+      c = *p++;
+    }
+    if (c == '\r') {
+      if (*p == '\n')
+        p++;
+      c = '\n';
+    }
+    if (c >= 0x80) {
+      const uint8_t *p_next;
+      c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
+      if (c > 0x10FFFF)
+        return false;
+      p = p_next;
+    }
+    append_utf8(buf, c);
+  }
+
+  copy_str(token.u.str.str, token.u.str.len, buf);
+  token.u.str.sep = static_cast<int>(c);
+  token.type      = TOK_TEMPLATE;
+  buf_ptr         = p;
+  return true;
+}
+
+// ─── RegExp parsing ─────────────────────────────────────────────────────────
+
+bool Lexer::parse_regexp() {
+  const uint8_t *p = buf_ptr;
+  bool in_class    = false;
+  std::string body, flags;
+  uint32_t c;
+
+  p++; // skip opening '/'
+
+  for (;;) {
+    if (p >= buf_end)
+      return false;
+    c = *p++;
+    if (c == '\n' || c == '\r')
+      return false;
+    else if (c == '/') {
+      if (!in_class)
+        break;
+    } else if (c == '[')
+      in_class = true;
+    else if (c == ']')
+      in_class = false;
+    else if (c == '\\') {
+      body.push_back('\\');
+      c = *p++;
+      if (c == '\n' || c == '\r')
+        return false;
+      else if (c == '\0' && p >= buf_end)
+        return false;
+      else if (c >= 0x80) {
+        const uint8_t *p_next;
+        c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
+        if (c > 0x10FFFF)
+          return false;
+        p = p_next;
+        if (c == CP_LS || c == CP_PS)
+          return false;
+      }
+    } else if (c >= 0x80) {
+      const uint8_t *p_next;
+      c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
+      if (c > 0x10FFFF)
+        return false;
+      if (c == CP_LS || c == CP_PS)
+        return false;
+      p = p_next;
+    }
+    body.push_back(static_cast<char>(c));
+  }
+
+  // flags
+  for (;;) {
+    const uint8_t *p_next = p;
+    c                     = *p_next++;
+    if (c >= 0x80) {
+      c = static_cast<uint32_t>(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next));
+      if (c > 0x10FFFF) {
+        p++;
+        return false;
+      }
+    }
+    if (!lre_js_is_ident_next(c))
+      break;
+    flags.push_back(static_cast<char>(c));
+    p = p_next;
+  }
+
+  copy_str(token.u.regexp.body, token.u.regexp.body_len, body);
+  copy_str(token.u.regexp.flags, token.u.regexp.flags_len, flags);
+  token.type = TOK_REGEXP;
+  buf_ptr    = p;
+  return true;
+}
+
+// ─── Number parsing ─────────────────────────────────────────────────────────
+
+bool Lexer::parse_number(const uint8_t *p) {
+  const char *c_str = reinterpret_cast<const char *>(p);
+  char *end         = nullptr;
+
+  if (p[0] == '0') {
+    if (p[1] == 'x' || p[1] == 'X') {
+      double val = std::strtod(c_str, &end);
+      if (end == c_str)
+        return false;
+      token.u.num.val = val;
+      token.type      = TOK_NUMBER;
+      buf_ptr         = reinterpret_cast<const uint8_t *>(end);
+      return true;
+    }
+    if (p[1] == 'o' || p[1] == 'O') {
+      unsigned long long val = 0;
+      p += 2;
+      while (is_digit(*p) || *p == '_') {
+        if (*p == '_') {
+          p++;
+          continue;
+        }
+        if (*p < '0' || *p > '7')
+          break;
+        val = val * 8 + static_cast<unsigned long long>(*p - '0');
+        p++;
+      }
+      token.u.num.val = static_cast<double>(val);
+      token.type      = TOK_NUMBER;
+      buf_ptr         = p;
+      return true;
+    }
+    if (p[1] == 'b' || p[1] == 'B') {
+      unsigned long long val = 0;
+      p += 2;
+      while ((*p >= '0' && *p <= '1') || *p == '_') {
+        if (*p == '_') {
+          p++;
+          continue;
+        }
+        val = val * 2 + static_cast<unsigned long long>(*p - '0');
+        p++;
+      }
+      token.u.num.val = static_cast<double>(val);
+      token.type      = TOK_NUMBER;
+      buf_ptr         = p;
+      return true;
+    }
+  }
+
+  double val = std::strtod(c_str, &end);
+  if (end == c_str)
+    return false;
+
+  auto *next = reinterpret_cast<const uint8_t *>(end);
+  const uint8_t *p_next;
+  uint32_t nc = static_cast<uint32_t>(unicode_from_utf8(next, UTF8_CHAR_LEN_MAX, &p_next));
+  if (val != val || lre_js_is_ident_next(nc))
+    return false;
+
+  token.u.num.val = val;
+  token.type      = TOK_NUMBER;
+  buf_ptr         = next;
+  return true;
+}
+
+// ─── Peek ahead ─────────────────────────────────────────────────────────────
+
+int Lexer::peek_token(bool no_line_terminator) {
+  const uint8_t *p = buf_ptr;
+
+  for (;;) {
+    int c = *p++;
+    switch (c) {
+    case '\r':
+    case '\n':
+      if (no_line_terminator)
+        return '\n';
+      continue;
+    case ' ':
+    case '\t':
+    case '\v':
+    case '\f':
+      continue;
+    case '/':
+      if (*p == '/') {
+        if (no_line_terminator)
+          return '\n';
+        while (*p && *p != '\r' && *p != '\n')
+          p++;
+        continue;
+      }
+      if (*p == '*') {
+        while (*++p) {
+          if ((*p == '\r' || *p == '\n') && no_line_terminator)
+            return '\n';
+          if (*p == '*' && p[1] == '/') {
+            p += 2;
+            break;
+          }
+        }
+        continue;
+      }
+      break;
+    case '=':
+      if (*p == '>')
+        return TOK_ARROW;
+      break;
+    case 'i':
+      if (p[0] == 'n' && !lre_js_is_ident_next(static_cast<uint32_t>(p[1])))
+        return TOK_IN;
+      if (p[0] == 'm' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !lre_js_is_ident_next(static_cast<uint32_t>(p[5])))
+        return TOK_IMPORT;
+      return TOK_IDENT;
+    case 'o':
+      if (p[0] == 'f' && !lre_js_is_ident_next(static_cast<uint32_t>(p[1])))
+        return TOK_OF;
+      return TOK_IDENT;
+    case 'e':
+      if (p[0] == 'x' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !lre_js_is_ident_next(static_cast<uint32_t>(p[5])))
+        return TOK_EXPORT;
+      return TOK_IDENT;
+    case 'f':
+      if (p[0] == 'u' && p[1] == 'n' && p[2] == 'c' && p[3] == 't' && p[4] == 'i' && p[5] == 'o' && p[6] == 'n' &&
+          !lre_js_is_ident_next(static_cast<uint32_t>(p[7])))
+        return TOK_FUNCTION;
+      return TOK_IDENT;
+    case '\\':
+      if (*p == 'u') {
+        const uint8_t *p1 = p + 1;
+        if (lre_js_is_ident_first(static_cast<uint32_t>(parse_escape(&p1, true))))
+          return TOK_IDENT;
+      }
+      break;
+    default:
+      if (c >= 128) {
+        const uint8_t *p_next;
+        c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
+        p = p_next;
+        if (no_line_terminator && (c == CP_PS || c == CP_LS))
+          return '\n';
+      }
+      if (lre_is_space(static_cast<uint32_t>(c)))
+        continue;
+      if (lre_js_is_ident_first(static_cast<uint32_t>(c)))
+        return TOK_IDENT;
+      break;
+    }
+    return c;
+  }
+}
+
+// ─── Shebang ────────────────────────────────────────────────────────────────
+
+void Lexer::skip_shebang(const uint8_t **pp, const uint8_t *buf_end) {
+  const uint8_t *p = *pp;
+  int c;
+
+  if (p[0] == '#' && p[1] == '!') {
+    p += 2;
+    while (p < buf_end) {
+      if (*p == '\n' || *p == '\r')
+        break;
+      if (*p >= 0x80) {
+        c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p);
+        if (c == CP_LS || c == CP_PS)
+          break;
+        if (c == -1)
+          p++;
+      } else
+        p++;
+    }
+    *pp = p;
+  }
+}
+
+} // namespace qjsp

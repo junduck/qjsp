@@ -3,3 +3,4 @@ IndentWidth: 2
 ColumnLimit: 150
 ReflowComments: true
 AlwaysBreakTemplateDeclarations: true
+AlignConsecutiveAssignments: true

@@ -47,6 +47,10 @@ add_library(qjsp
   src/qjsp/string.cpp
   src/qjsp/shape.cpp
   src/qjsp/object.cpp
+  src/qjsp/lexer.cpp
+  src/qjsp/parser.cpp
+  src/qjsp/interpreter.cpp
+  src/qjsp/varref.cpp
 )
 target_link_libraries(qjsp PUBLIC qjsp::headers)
 add_library(qjsp::qjsp ALIAS qjsp)

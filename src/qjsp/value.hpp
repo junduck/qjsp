@@ -14,7 +14,7 @@
 //!   0x7FF4  = Int32         (lower 32 bits)
 //!   0x7FF5  = Bool          (bit 0)
 //!   0x7FF6  = Null/Undef    (bit 0: 0=null, 1=undefined)
-//!   0x7FF7  = (reserved)
+//!   0x7FF7  = VarRef        (48-bit pointer)
 //!   0x7FF8  = canonical QNaN (for legit float NaN)
 //!   ─────── pointer boundary ───────
 //!   0x7FF9  = Object        (48-bit pointer)
@@ -52,7 +52,7 @@ constexpr uint64_t kTagShortBigInt = 0x7FF3ull;
 constexpr uint64_t kTagInt32 = 0x7FF4ull;
 constexpr uint64_t kTagBool = 0x7FF5ull;
 constexpr uint64_t kTagNullUndef = 0x7FF6ull;
-// 0x7FF7 reserved
+constexpr uint64_t kTagVarRef = 0x7FF7ull;
 
 // ─── Canonical quiet NaN ───────────────────────────────────────────────────
 constexpr uint64_t kTagNaN = 0x7FF8ull;
@@ -67,7 +67,7 @@ constexpr uint64_t kTagModule = 0x7FFDull;
 constexpr uint64_t kTagFuncBytecode = 0x7FFEull;
 constexpr uint64_t kTagStringRope = 0x7FFFull; // reserved, not yet used
 
-constexpr uint64_t kPtrStart = kTagObject;
+constexpr uint64_t kPtrStart = kTagVarRef;
 constexpr uint64_t kPtrEnd = kTagFuncBytecode;
 constexpr uint64_t kTaggedMin = kTagUninitialized;
 constexpr uint64_t kTaggedMax = kTagFuncBytecode;
@@ -141,6 +141,12 @@ struct Value {
     return Value{(kTagFuncBytecode << kTagShift) | p};
   }
 
+  static Value var_ref(void *ptr) {
+    auto p = reinterpret_cast<uintptr_t>(ptr);
+    assert((p & kTagMask) == 0);
+    return Value{(kTagVarRef << kTagShift) | p};
+  }
+
   static Value float64(double d) {
     uint64_t bits;
     std::memcpy(&bits, &d, sizeof(bits));
@@ -171,6 +177,7 @@ struct Value {
   bool is_bigint_ptr() const { return tag_prefix() == kTagBigInt; }
   bool is_module() const { return tag_prefix() == kTagModule; }
   bool is_func_bytecode() const { return tag_prefix() == kTagFuncBytecode; }
+  bool is_var_ref() const { return tag_prefix() == kTagVarRef; }
 
   bool is_pointer() const {
     uint16_t t = tag_prefix();
