@@ -16,13 +16,19 @@ using CFunction = Value(Context* ctx, Value this_val, int argc, const Value* arg
 
 struct Property { Value value = kUndefined; };
 
+struct VarRef;
+
 struct Object : GCObjectHeader {
-  bool extensible = true;
+  // ... existing fields
+  bool extensible   = true;
   uint16_t class_id = 0;
-  uint32_t weakref_count = 0;
-  Object* proto = nullptr;
-  Shape* shape = nullptr;
+  Object *proto     = nullptr;
+  Shape *shape      = nullptr;
   std::vector<Property> properties;
+
+  // Closure data (only valid for bytecode_function class)
+  VarRef **var_refs       = nullptr;
+  int var_ref_count       = 0;
 
   // Class-specific data. Only valid for certain class_ids.
   struct CFunctionData {

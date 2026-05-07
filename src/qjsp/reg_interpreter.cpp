@@ -496,8 +496,22 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs,
         } else if (obj->class_id == static_cast<uint16_t>(ClassID::bytecode_function) &&
                    obj->u.opaque) {
           auto *inner = static_cast<FunctionBytecode *>(obj->u.opaque);
-          regs[i.a()] = call_bytecode(inner, kUndefined, argc,
-                                      &regs[func_reg + 1], nullptr);
+          Value call_ret = call_bytecode(inner, kUndefined, argc,
+                                         &regs[func_reg + 1],
+                                         obj->var_refs);
+          if (call_ret.is_exception()) {
+            if (!catch_stack_.empty()) {
+              auto cf = catch_stack_.back();
+              catch_stack_.pop_back();
+              regs[cf.exc_reg] = pending_exception_;
+              ip = reinterpret_cast<const Instruction *>(
+                  b->byte_code_buf + cf.target_pc * 4);
+            } else {
+              return kException;
+            }
+            break;
+          }
+          regs[i.a()] = call_ret;
         } else {
           regs[i.a()] = kUndefined;
         }
@@ -541,6 +555,46 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs,
         auto *closure = Object::create(rt(), nullptr,
                                        static_cast<int>(ClassID::bytecode_function));
         closure->u.opaque = inner_bc;
+
+        // Create VarRefs for captured variables from the current frame
+        int cv_count = inner_bc->closure_var_count;
+        if (cv_count > 0) {
+          closure->var_refs = new VarRef *[static_cast<size_t>(cv_count)]{};
+          closure->var_ref_count = cv_count;
+          for (int j = 0; j < cv_count; j++) {
+            auto &cv = inner_bc->closure_var[j];
+
+            // Find the variable in the enclosing function's vardefs
+            int enclosing_var_count = b->arg_count + b->var_count;
+            int uv_idx = -1;
+            int reg_idx = -1;
+            for (int k = 0; k < enclosing_var_count; k++) {
+              if (b->vardefs[k].var_name == cv.var_name) {
+                if (b->vardefs[k].is_captured() && upvals) {
+                  // Already captured — use existing upvalue
+                  uv_idx = b->vardefs[k].var_ref_idx;
+                } else {
+                  // Not captured yet — compute register index
+                  if (k < b->arg_count) {
+                    reg_idx = 1 + k; // argument
+                  } else {
+                    reg_idx = 1 + b->arg_count + (k - b->arg_count); // local var
+                  }
+                }
+                break;
+              }
+            }
+            if (uv_idx >= 0 && upvals && upvals[uv_idx]) {
+              closure->var_refs[j] = upvals[uv_idx];
+              upvals[uv_idx]->dup();
+            } else if (reg_idx >= 0) {
+              // Create detached VarRef — copy current value into heap storage
+              closure->var_refs[j] = VarRef::create_detached(regs[reg_idx]);
+            } else {
+              closure->var_refs[j] = VarRef::create_detached(kUndefined);
+            }
+          }
+        }
         regs[i.a()] = Value::object(closure);
       } else {
         regs[i.a()] = kUndefined;
@@ -553,6 +607,31 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs,
 
     case RegOp::RETURN0:
       return kUndefined;
+
+    case RegOp::THROW: {
+      pending_exception_ = regs[i.a()];
+      if (!catch_stack_.empty()) {
+        auto cf = catch_stack_.back();
+        catch_stack_.pop_back();
+        regs[cf.exc_reg] = pending_exception_;
+        ip = reinterpret_cast<const Instruction *>(
+            b->byte_code_buf + cf.target_pc * 4);
+      } else {
+        // No catch handler — propagate to caller
+        return kException;
+      }
+      break;
+    }
+
+    case RegOp::CATCH:
+      // Record catch frame: exc_reg = A, target = bx (absolute instr index)
+      catch_stack_.push_back({static_cast<int>(i.a()), static_cast<int>(i.bx())});
+      break;
+
+    case RegOp::UNCATCH:
+      if (!catch_stack_.empty())
+        catch_stack_.pop_back();
+      break;
 
     // ── upvalue ─────────────────────────────────────────────────────────────
 

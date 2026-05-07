@@ -2,6 +2,7 @@
 
 #include "qjsp/bytecode.hpp"
 #include "qjsp/value.hpp"
+#include <vector>
 
 namespace qjsp {
 
@@ -29,6 +30,13 @@ private:
 
   Value get_field(Value obj, Atom name);
   void  put_field(Value obj, Atom name, Value val);
+
+  struct CatchFrame {
+    int exc_reg;
+    int target_pc;
+  };
+  std::vector<CatchFrame> catch_stack_;
+  Value pending_exception_ = kUndefined; // side channel for exception value
 };
 
 } // namespace qjsp

@@ -533,6 +533,34 @@ TEST_F(RegInterpFixture, ComplexFieldChain) {
   EXPECT_EQ(v.as_int32(), 7);
 }
 
+// ─── Phase C: Closures ──────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, ClosureRead) {
+  Value v = eval("function outer() { var x = 1; return function() { return x; }; } var c = outer(); c();");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(RegInterpFixture, ClosureNested) {
+  Value v = eval("function outer() { var x = 3; function inner() { return x; } return inner(); } outer();");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+// ─── Try/Catch ──────────────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, TryCatchBasic) {
+  Value v = eval("var a = 0; try { a = 1; } catch(e) { a = 2; } a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(RegInterpFixture, TryCatchCaught) {
+  Value v = eval("var a = 0; try { throw 99; } catch(e) { a = e; } a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 99);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -88,12 +88,15 @@ inline constexpr RegOpInfo kRegOpInfo[] = {
     {"CTOR", InstrFmt::ABC},     // 56
     {"FCLOSURE", InstrFmt::ABx}, // 57
     {"RETURN", InstrFmt::ABC},   // 58
-    {"RETURN0", InstrFmt::ABx},  // 59
+    {"RETURN0",       InstrFmt::ABx},   // 59
+    {"THROW",         InstrFmt::ABC},   // 60
+    {"CATCH",         InstrFmt::ABx},   // 61  A=exc_reg, Bx=catch_pc (patched)
+    {"UNCATCH",       InstrFmt::ABx},   // 62
 
     // ── upvalue (3) ─────────────────────────────────────────────────────────
-    {"GETUPVAL", InstrFmt::ABC},   // 60
-    {"SETUPVAL", InstrFmt::ABC},   // 61
-    {"CLOSEUPVAL", InstrFmt::ABx}, // 62
+    {"GETUPVAL",      InstrFmt::ABC},   // 63
+    {"SETUPVAL",      InstrFmt::ABC},   // 64
+    {"CLOSEUPVAL",    InstrFmt::ABx},   // 65
 };
 
 static_assert(sizeof(kRegOpInfo) / sizeof(kRegOpInfo[0]) == static_cast<int>(RegOp::NUM_OPCODES), "kRegOpInfo size mismatch");

@@ -29,12 +29,13 @@ constexpr int kUnusedReg = 0xFF;
 // ─── LValue — LHS of an assignment ──────────────────────────────────────────
 
 struct LValue {
-  enum Kind : uint8_t { LOCAL, ARG, FIELD, ELEM, GLOBAL };
-  Kind kind   = LOCAL;
-  int obj_reg = -1;
-  Atom prop   = kAtomNull;
-  int key_reg = -1;
-  int var_idx = -1;
+  enum Kind : uint8_t { LOCAL, ARG, FIELD, ELEM, GLOBAL, UPVAL };
+  Kind kind     = LOCAL;
+  int obj_reg   = -1;
+  Atom prop     = kAtomNull;
+  int key_reg   = -1;
+  int var_idx   = -1;
+  int upval_idx = -1; // for UPVAL kind
 };
 
 // ─── RegAlloc — register allocator per function ─────────────────────────────
@@ -63,6 +64,10 @@ struct RegAlloc {
   }
   void free_last() { next_temp_--; }
   int total() const { return max_temp_; }
+  void ensure_max(int r) {
+    if (r > max_temp_)
+      max_temp_ = r;
+  }
 };
 
 // ─── LabelSlot ──────────────────────────────────────────────────────────────
@@ -92,6 +97,7 @@ struct VarDef {
   uint8_t var_kind  = 0;
   int func_pool_idx = -1;
   int reg_index     = -1; // assigned register slot
+  int upval_idx     = -1; // upvalue index in enclosing frame (if captured)
 };
 
 // ─── VarScope ───────────────────────────────────────────────────────────────
@@ -144,6 +150,7 @@ struct FunctionDef {
   // Closures
   std::vector<ClosureVar> closure_var;
   int var_ref_count = 0;
+  int next_upval    = 0; // next available upvalue index in this frame
 
   // Scopes
   std::vector<VarScope> scopes;
@@ -205,8 +212,14 @@ struct FunctionDef {
   int add_arg(Atom name);
   VarDef *find_scope_var(Atom name, int scope);
 
-  // ── scope helpers ─────────────────────────────────────────────────────
+  // ── closure / upvalue ─────────────────────────────────────────────────
 
+  int capture_var(VarDef *vd);
+  bool find_enclosing_var(Atom name, VarDef *&vd, FunctionDef *&owner,
+                          int &var_idx, bool &is_arg);
+  int resolve_upval(Atom name);
+
+  int first_lexical_var(int scope);
   int push_scope();
   void pop_scope();
   void close_scopes(int scope, int scope_stop);
@@ -292,6 +305,13 @@ struct RegParseState {
   void parse_for_statement();
   void parse_break_continue(bool is_cont);
   void parse_var_decls(int decl_tok);
+  void parse_try_statement();
+  void parse_switch_statement();
+
+  // ── upvalue emission ──────────────────────────────────────────────────
+
+  RegSlot emit_upval_read(int closure_idx);
+  void emit_upval_write(int closure_idx, RegSlot val);
 
   // ── function parsing ──────────────────────────────────────────────────
 
@@ -335,9 +355,126 @@ enum Precedence : int {
 
 FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx);
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Inline helpers ─────────────────────────────────────────────────────────
 
-int binary_precedence(int tok);
-RegOp binop_to_reg(int tok);
+inline int binary_precedence(int tok) {
+  switch (tok) {
+  case '*':
+  case '/':
+  case '%':
+    return PREC_MULT;
+  case '+':
+  case '-':
+    return PREC_ADD;
+  case TOK_SHL:
+  case TOK_SAR:
+  case TOK_SHR:
+    return PREC_SHIFT;
+  case '<':
+  case '>':
+  case TOK_LTE:
+  case TOK_GTE:
+    return PREC_COMPARE;
+  case TOK_EQ:
+  case TOK_NEQ:
+  case TOK_STRICT_EQ:
+  case TOK_STRICT_NEQ:
+    return PREC_EQ;
+  case '&':
+    return PREC_BIT_AND;
+  case '^':
+    return PREC_BIT_XOR;
+  case '|':
+    return PREC_BIT_OR;
+  case TOK_LAND:
+    return PREC_LOGICAL_AND;
+  case TOK_LOR:
+    return PREC_LOGICAL_OR;
+  case TOK_POW:
+    return PREC_POW;
+  case TOK_DOUBLE_QUESTION_MARK:
+    return PREC_LOGICAL_OR;
+  default:
+    return 0;
+  }
+}
+
+inline RegOp binop_to_reg(int tok) {
+  switch (tok) {
+  case '*':
+    return RegOp::MUL;
+  case '/':
+    return RegOp::DIV;
+  case '%':
+    return RegOp::MOD;
+  case '+':
+    return RegOp::ADD;
+  case '-':
+    return RegOp::SUB;
+  case TOK_SHL:
+    return RegOp::SHL;
+  case TOK_SAR:
+    return RegOp::SAR;
+  case TOK_SHR:
+    return RegOp::SHR;
+  case '<':
+    return RegOp::LT;
+  case '>':
+    return RegOp::GT;
+  case TOK_LTE:
+    return RegOp::LTE;
+  case TOK_GTE:
+    return RegOp::GTE;
+  case TOK_EQ:
+    return RegOp::EQ;
+  case TOK_NEQ:
+    return RegOp::NEQ;
+  case TOK_STRICT_EQ:
+    return RegOp::SEQ;
+  case TOK_STRICT_NEQ:
+    return RegOp::SNEQ;
+  case '&':
+    return RegOp::AND;
+  case '^':
+    return RegOp::XOR;
+  case '|':
+    return RegOp::OR;
+  case TOK_POW:
+    return RegOp::POW;
+  default:
+    return RegOp::NOP;
+  }
+}
+
+inline RegOp compound_to_binop(int tok) {
+  switch (tok) {
+  case TOK_MUL_ASSIGN:
+    return RegOp::MUL;
+  case TOK_DIV_ASSIGN:
+    return RegOp::DIV;
+  case TOK_MOD_ASSIGN:
+    return RegOp::MOD;
+  case TOK_PLUS_ASSIGN:
+    return RegOp::ADD;
+  case TOK_MINUS_ASSIGN:
+    return RegOp::SUB;
+  case TOK_SHL_ASSIGN:
+    return RegOp::SHL;
+  case TOK_SAR_ASSIGN:
+    return RegOp::SAR;
+  case TOK_SHR_ASSIGN:
+    return RegOp::SHR;
+  case TOK_AND_ASSIGN:
+    return RegOp::AND;
+  case TOK_OR_ASSIGN:
+    return RegOp::OR;
+  case TOK_XOR_ASSIGN:
+    return RegOp::XOR;
+  case TOK_POW_ASSIGN:
+    return RegOp::POW;
+  default:
+    return RegOp::NOP;
+  }
+}
 
 } // namespace qjsp

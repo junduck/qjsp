@@ -140,6 +140,9 @@ enum class RegOp : uint8_t {
   FCLOSURE,
   RETURN,
   RETURN0,
+  THROW,
+  CATCH,
+  UNCATCH,
 
   // ── upvalue (3) ───────────────────────────────────────────────────────
   GETUPVAL,
