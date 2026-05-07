@@ -45,28 +45,9 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
   case TOK_CONTINUE:
     parse_break_continue(true);
     return;
-  case TOK_SWITCH: {
-    // Stub: skip switch body
-    next_token();
-    if (lexer.token.type == '(') {
-      next_token();
-      parse_expr();
-      expect(')');
-    }
-    if (!expect('{'))
-      return;
-    int depth = 1;
-    while (depth > 0) {
-      if (lexer.token.type == TOK_EOF)
-        return;
-      if (lexer.token.type == '{')
-        depth++;
-      if (lexer.token.type == '}')
-        depth--;
-      next_token();
-    }
+  case TOK_SWITCH:
+    parse_switch_statement();
     return;
-  }
   case TOK_TRY: {
     parse_try_statement();
     return;
@@ -189,12 +170,95 @@ void RegParseState::parse_try_statement() {
   cur_func->alloc.ensure_max(exc_reg);
 }
 
+void RegParseState::parse_switch_statement() {
+  next_token(); // skip 'switch'
+
+  expect('(');
+  RegSlot expr = parse_expr();
+  expect(')');
+  expect('{');
+
+  int label_end   = new_label();
+  int label_chain = new_label(); // comparison chain start
+
+  // Block env for break
+  BlockEnv be;
+  cur_func->push_break(&be, kAtomNull, label_end, -1);
+
+  // JMP over bodies to comparison chain
+  emit_jump(RegOp::JMP, label_chain, 0);
+
+  // Case info
+  struct CaseInfo {
+    int body_lab;
+    int cpool_idx = -1; // cpool index for case value (if not default)
+  };
+  std::vector<CaseInfo> cases;
+
+  while (lexer.token.type != '}') {
+    if (lexer.token.type == TOK_CASE || lexer.token.type == TOK_DEFAULT) {
+      bool is_default = (lexer.token.type == TOK_DEFAULT);
+      next_token();
+
+      CaseInfo ci;
+      if (!is_default) {
+        // Parse case value: capture the literal value into cpool
+        double val = lexer.token.u.num.val;
+        ci.cpool_idx = cpool_add(Value::float64(val));
+        next_token(); // skip the number
+      }
+      expect(':');
+      ci.body_lab = new_label();
+      cases.push_back(ci);
+
+      emit_label(ci.body_lab);
+      while (lexer.token.type != TOK_CASE &&
+             lexer.token.type != TOK_DEFAULT &&
+             lexer.token.type != '}') {
+        parse_statement_or_decl(1);
+      }
+    } else {
+      break;
+    }
+  }
+  expect('}');
+
+  emit_jump(RegOp::JMP, label_end, 0);
+
+  // ── Comparison chain ──────────────────────────────────────────────────
+  emit_label(label_chain);
+
+  for (auto &ci : cases) {
+    if (ci.cpool_idx < 0) {
+      // default — jump to its body
+      emit_jump(RegOp::JMP, ci.body_lab, 0);
+    } else {
+      // Load case value from cpool, then compare
+      int case_reg = alloc_temp();
+      emit_iABx(RegOp::LOADK, static_cast<uint8_t>(case_reg),
+                static_cast<uint16_t>(ci.cpool_idx));
+      int cmp = alloc_temp();
+      emit_iABC(RegOp::SEQ, static_cast<uint8_t>(cmp),
+                static_cast<uint8_t>(expr.reg),
+                static_cast<uint8_t>(case_reg));
+      emit_jump(RegOp::IS_TRUE, ci.body_lab, static_cast<uint8_t>(cmp));
+      free_temp(); // cmp
+      free_temp(); // case_reg
+    }
+  }
+  emit_jump(RegOp::JMP, label_end, 0);
+
+  emit_label(label_end);
+  cur_func->pop_break();
+  free_temp(); // free expr
+}
+
 void RegParseState::parse_block() {
   expect('{');
   if (lexer.token.type != '}') {
     push_enter_scope();
     for (;;) {
-      parse_statement_or_decl(1 /* DECL_MASK_ALL */);
+      parse_statement_or_decl(1);
       if (lexer.token.type == '}')
         break;
     }

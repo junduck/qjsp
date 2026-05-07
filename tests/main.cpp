@@ -561,6 +561,26 @@ TEST_F(RegInterpFixture, TryCatchCaught) {
   EXPECT_EQ(v.as_int32(), 99);
 }
 
+// ─── Switch ─────────────────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, SwitchBasic) {
+  Value v = eval("var a = 0; switch(2) { case 1: a=10; break; case 2: a=20; break; default: a=30; } a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 20);
+}
+
+TEST_F(RegInterpFixture, SwitchDefault) {
+  Value v = eval("var a = 0; switch(5) { case 1: a=10; break; default: a=99; } a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 99);
+}
+
+TEST_F(RegInterpFixture, SwitchFallthrough) {
+  Value v = eval("var a = 0; switch(1) { case 1: a=1; case 2: a=2; } a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
