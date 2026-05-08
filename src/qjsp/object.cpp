@@ -1,7 +1,9 @@
 #include "qjsp/object.hpp"
+#include "qjsp/bytecode.hpp"
 #include "qjsp/context.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
+#include "qjsp/varref.hpp"
 #include <cstdio>
 
 namespace qjsp {
@@ -75,6 +77,16 @@ void Object::destroy(Runtime *rt) {
   rt->remove_gc_object(this);
   if (proto && proto->unref())
     proto->destroy(rt);
+  if (class_id == static_cast<uint16_t>(ClassID::bytecode_function)) {
+    if (var_refs) {
+      for (int i = 0; i < var_ref_count; i++) {
+        if (var_refs[i])
+          var_refs[i]->unref();
+      }
+      delete[] var_refs;
+      var_refs = nullptr;
+    }
+  }
   delete this;
 }
 
@@ -91,6 +103,13 @@ void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
         obj->is_marked = true;
         worklist.push_back(obj);
       }
+    }
+  }
+  if (class_id == static_cast<uint16_t>(ClassID::bytecode_function) && u.opaque) {
+    auto *bc = static_cast<FunctionBytecode *>(u.opaque);
+    if (!bc->is_marked) {
+      bc->is_marked = true;
+      worklist.push_back(bc);
     }
   }
 }

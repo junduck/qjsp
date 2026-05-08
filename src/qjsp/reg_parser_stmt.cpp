@@ -209,7 +209,7 @@ void RegParseState::parse_try_statement() {
   }
 
   emit_label(end_label);
-  cur_func->alloc.ensure_max(exc_reg);
+  cur_func->alloc.ensure_max(exc_reg + 1);
 }
 
 void RegParseState::parse_switch_statement() {

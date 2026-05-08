@@ -1,9 +1,11 @@
 #include "qjsp/runtime.hpp"
+#include "qjsp/bytecode.hpp"
 #include "qjsp/class.hpp"
 #include "qjsp/context.hpp"
 #include "qjsp/object.hpp"
 #include "qjsp/shape.hpp"
 #include "qjsp/string.hpp"
+#include "qjsp/varref.hpp"
 
 namespace qjsp {
 
@@ -120,6 +122,9 @@ static void mark_object(GCObjectHeader *hdr, std::vector<GCObjectHeader *> &work
   case GCObjType::js_context:
     static_cast<Context *>(hdr)->gc_mark(worklist);
     break;
+  case GCObjType::function_bytecode:
+    static_cast<FunctionBytecode *>(hdr)->gc_mark(worklist);
+    break;
   default:
     hdr->is_marked = true;
     break;
@@ -128,12 +133,33 @@ static void mark_object(GCObjectHeader *hdr, std::vector<GCObjectHeader *> &work
 
 static void gc_free_object(GCObjectHeader *p) {
   switch (p->gc_obj_type) {
-  case GCObjType::js_object:
-    delete static_cast<Object *>(p);
+  case GCObjType::js_object: {
+    auto *obj = static_cast<Object *>(p);
+    if (obj->class_id == static_cast<uint16_t>(ClassID::bytecode_function)) {
+      if (obj->var_refs) {
+        for (int i = 0; i < obj->var_ref_count; i++) {
+          if (obj->var_refs[i])
+            obj->var_refs[i]->unref();
+        }
+        delete[] obj->var_refs;
+        obj->var_refs = nullptr;
+      }
+    }
+    delete obj;
     break;
+  }
   case GCObjType::js_context:
     delete static_cast<Context *>(p);
     break;
+  case GCObjType::function_bytecode: {
+    auto *b = static_cast<FunctionBytecode *>(p);
+    delete[] b->byte_code_buf;
+    delete[] b->cpool;
+    delete[] b->vardefs;
+    delete[] b->closure_var;
+    delete b;
+    break;
+  }
   default:
     break;
   }

@@ -16,6 +16,8 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
   b->gc_obj_type = GCObjType::function_bytecode;
   b->realm       = ctx;
 
+  ctx->rt->add_gc_object(b);
+
   // Lower child functions first
   for (auto *child : fd->children) {
     FunctionBytecode *child_b = lower_reg(child, ctx);

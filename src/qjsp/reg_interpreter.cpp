@@ -739,13 +739,6 @@ Value RegInterpreter::eval_source(const char *source, const char *filename) {
 
   Value result = eval(b);
 
-  // Cleanup
-  delete[] b->byte_code_buf;
-  delete[] b->cpool;
-  delete[] b->vardefs;
-  delete[] b->closure_var;
-  delete b;
-
   // Cleanup FunctionDef tree
   delete ps.cur_func;
 

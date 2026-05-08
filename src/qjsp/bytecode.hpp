@@ -4,6 +4,7 @@
 #include "gc.hpp"
 #include "value.hpp"
 #include <cstdint>
+#include <vector>
 
 namespace qjsp {
 
@@ -185,6 +186,19 @@ struct FunctionBytecode : GCObjectHeader {
   bool has_debug() const { return (flags2 >> 2) & 1; }
   bool read_only_bytecode() const { return (flags2 >> 3) & 1; }
   bool is_direct_or_indirect_eval() const { return (flags2 >> 4) & 1; }
+
+  void gc_mark(std::vector<GCObjectHeader *> &worklist) {
+    is_marked = true;
+    for (int i = 0; i < cpool_count; i++) {
+      if (cpool[i].is_func_bytecode()) {
+        auto *child = cpool[i].as<FunctionBytecode>();
+        if (child && !child->is_marked) {
+          child->is_marked = true;
+          worklist.push_back(child);
+        }
+      }
+    }
+  }
 
   struct {
     Atom filename;
