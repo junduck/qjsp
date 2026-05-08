@@ -182,7 +182,7 @@ bool RegParseState::js_define_var(Atom name, int tok) {
       if (idx < 0)
         return false;
       VarDef &vd                                             = fd->vars[static_cast<size_t>(idx)];
-      vd.var_kind                                            = static_cast<uint8_t>(VarDefKind::let);
+      vd.var_kind                                            = VarDefKind::let;
       vd.scope_level                                         = fd->scope_level;
       vd.scope_next                                          = fd->scope_first;
       vd.is_lexical                                          = true;
@@ -198,7 +198,7 @@ bool RegParseState::js_define_var(Atom name, int tok) {
       if (idx < 0)
         return false;
       VarDef &vd                                             = fd->vars[static_cast<size_t>(idx)];
-      vd.var_kind                                            = static_cast<uint8_t>(VarDefKind::const_);
+      vd.var_kind                                            = VarDefKind::const_;
       vd.scope_level                                         = fd->scope_level;
       vd.scope_next                                          = fd->scope_first;
       vd.is_lexical                                          = true;
@@ -213,7 +213,7 @@ bool RegParseState::js_define_var(Atom name, int tok) {
       if (idx < 0)
         return false;
       VarDef &vd     = fd->vars[static_cast<size_t>(idx)];
-      vd.var_kind    = static_cast<uint8_t>(VarDefKind::var_);
+      vd.var_kind    = VarDefKind::var_;
       vd.scope_level = 0;
       vd.scope_next  = -1;
     }

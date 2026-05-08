@@ -79,25 +79,17 @@ struct LabelSlot {
 
 // ─── VarDef ─────────────────────────────────────────────────────────────────
 
-enum class VarDefKind : uint8_t {
-  var_,
-  let,
-  const_,
-  function_decl,
-  catch_,
-};
-
 struct VarDef {
-  Atom var_name     = kAtomNull;
-  int scope_level   = 0;
-  int scope_next    = -1;
-  bool is_const     = false;
-  bool is_lexical   = false;
-  bool is_captured  = false;
-  uint8_t var_kind  = 0;
-  int func_pool_idx = -1;
-  int reg_index     = -1; // assigned register slot
-  int upval_idx     = -1; // upvalue index in enclosing frame (if captured)
+  Atom var_name       = kAtomNull;
+  int scope_level     = 0;
+  int scope_next      = -1;
+  bool is_const       = false;
+  bool is_lexical     = false;
+  bool is_captured    = false;
+  VarDefKind var_kind = VarDefKind::unknown_;
+  int func_pool_idx   = -1;
+  int reg_index       = -1; // assigned register slot
+  int upval_idx       = -1; // upvalue index in enclosing frame (if captured)
 };
 
 // ─── VarScope ───────────────────────────────────────────────────────────────
@@ -215,8 +207,7 @@ struct FunctionDef {
   // ── closure / upvalue ─────────────────────────────────────────────────
 
   int capture_var(VarDef *vd);
-  bool find_enclosing_var(Atom name, VarDef *&vd, FunctionDef *&owner,
-                          int &var_idx, bool &is_arg);
+  bool find_enclosing_var(Atom name, VarDef *&vd, FunctionDef *&owner, int &var_idx, bool &is_arg);
   int resolve_upval(Atom name);
 
   int first_lexical_var(int scope);
