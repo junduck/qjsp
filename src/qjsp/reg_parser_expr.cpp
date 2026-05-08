@@ -1,10 +1,7 @@
-#include "qjsp/context.hpp"
-#include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/reg_parser.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 #include <cassert>
-#include <cmath>
 #include <cstdio>
 
 namespace qjsp {
@@ -599,9 +596,9 @@ LValue RegParseState::parse_ident_lvalue() {
   // Check enclosing scopes (closure variable)
   int upval = cur_func->resolve_upval(atom);
   if (upval >= 0) {
-    lv.kind       = LValue::UPVAL;
-    lv.upval_idx  = upval;
-    lv.prop       = atom;
+    lv.kind      = LValue::UPVAL;
+    lv.upval_idx = upval;
+    lv.prop      = atom;
     return lv;
   }
   lv.kind = LValue::GLOBAL;
@@ -731,14 +728,11 @@ void RegParseState::emit_lvalue_load(LValue lv, RegSlot dst) {
     break;
   case LValue::GLOBAL: {
     int ci = cpool_add(Value::string(rt->atom_to_string(lv.prop)));
-    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(dst.reg),
-              static_cast<uint8_t>(cur_func->alloc.this_reg()),
-              static_cast<uint8_t>(ci));
+    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(dst.reg), static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
     break;
   }
   case LValue::UPVAL:
-    emit_iABC(RegOp::GETUPVAL, static_cast<uint8_t>(dst.reg),
-              static_cast<uint8_t>(lv.upval_idx), 0);
+    emit_iABC(RegOp::GETUPVAL, static_cast<uint8_t>(dst.reg), static_cast<uint8_t>(lv.upval_idx), 0);
     break;
   default:
     break;
@@ -767,8 +761,7 @@ void RegParseState::emit_lvalue_store(LValue lv, RegSlot val) {
     break;
   }
   case LValue::UPVAL:
-    emit_iABC(RegOp::SETUPVAL, static_cast<uint8_t>(lv.upval_idx),
-              static_cast<uint8_t>(val.reg), 0);
+    emit_iABC(RegOp::SETUPVAL, static_cast<uint8_t>(lv.upval_idx), static_cast<uint8_t>(val.reg), 0);
     break;
   default:
     break;
@@ -867,14 +860,12 @@ RegSlot RegParseState::parse_expr() {
 
 RegSlot RegParseState::emit_upval_read(int closure_idx) {
   int r = alloc_temp();
-  emit_iABC(RegOp::GETUPVAL, static_cast<uint8_t>(r),
-            static_cast<uint8_t>(closure_idx), 0);
+  emit_iABC(RegOp::GETUPVAL, static_cast<uint8_t>(r), static_cast<uint8_t>(closure_idx), 0);
   return {r};
 }
 
 void RegParseState::emit_upval_write(int closure_idx, RegSlot val) {
-  emit_iABC(RegOp::SETUPVAL, static_cast<uint8_t>(closure_idx),
-            static_cast<uint8_t>(val.reg), 0);
+  emit_iABC(RegOp::SETUPVAL, static_cast<uint8_t>(closure_idx), static_cast<uint8_t>(val.reg), 0);
 }
 
 } // namespace qjsp

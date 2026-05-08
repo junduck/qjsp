@@ -1,7 +1,6 @@
 #pragma once
 
 #include "gc.hpp"
-#include "value.hpp"
 #include <cstdint>
 #include <cstring>
 #include <string_view>
@@ -26,20 +25,5 @@ struct String : RefCounted {
   std::string_view view() const { return {data, len()}; }
   char operator[](size_t i) const { return data[i]; }
 };
-
-inline char *string_to_cstr(const String *s) {
-  auto *buf = new char[s->len() + 1];
-  std::memcpy(buf, s->data, s->len());
-  buf[s->len()] = 0;
-  return buf;
-}
-
-inline char *value_to_cstr(Value v) {
-  if (v.is_string())
-    return string_to_cstr(v.as<String>());
-  auto *buf = new char[1];
-  buf[0]    = 0;
-  return buf;
-}
 
 } // namespace qjsp

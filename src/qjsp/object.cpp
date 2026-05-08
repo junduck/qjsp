@@ -31,9 +31,9 @@ Object *Object::make_cfunc(Context *ctx, CFunction *fn, std::string_view name, i
 
 Value Object::get_own(Atom atom) const {
   if (!shape)
-    return kUndefined;
+    return Value::undefined_();
   int idx = shape->find(atom);
-  return (idx >= 0) ? properties[static_cast<size_t>(idx)].value : kUndefined;
+  return (idx >= 0) ? properties[static_cast<size_t>(idx)].value : Value::undefined_();
 }
 
 Value Object::get(Atom atom) const {
@@ -42,7 +42,7 @@ Value Object::get(Atom atom) const {
     if (!v.is_undefined())
       return v;
   }
-  return kUndefined;
+  return Value::undefined_();
 }
 
 bool Object::set_own(Runtime *rt, Atom atom, Value value, int flags) {
@@ -99,7 +99,7 @@ void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
 
 Value call(Context *ctx, Value func, Value this_val, int argc, const Value *argv) {
   if (!func.is_object())
-    return kUndefined;
+    return Value::undefined_();
   auto *obj = func.as<Object>();
 
   switch (static_cast<ClassID>(obj->class_id)) {
@@ -107,10 +107,10 @@ Value call(Context *ctx, Value func, Value this_val, int argc, const Value *argv
   case ClassID::c_function_data:
     if (obj->u.cfunc.fn)
       return obj->u.cfunc.fn(ctx, this_val, argc, argv);
-    return kUndefined;
+    return Value::undefined_();
 
   default:
-    return kUndefined;
+    return Value::undefined_();
   }
 }
 
@@ -136,7 +136,7 @@ static Value builtin_print(Context * /*ctx*/, Value /*this_val*/, int argc, cons
     }
   }
   std::putchar('\n');
-  return kUndefined;
+  return Value::undefined_();
 }
 
 void setup_global(Context *ctx, Object *global) {

@@ -24,21 +24,19 @@ private:
   Runtime *rt() const;
   Object *global_obj() const;
 
-  Value call_bytecode(FunctionBytecode *b, Value this_obj, int argc,
-                       Value *argv, VarRef **upvals);
-  Value run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals,
-                     std::vector<VarRef *> *close_list = nullptr);
+  Value call_bytecode(FunctionBytecode *b, Value this_obj, int argc, Value *argv, VarRef **upvals);
+  Value run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list = nullptr);
 
   Value get_field(Value obj, Atom name);
-  void  put_field(Value obj, Atom name, Value val);
+  void put_field(Value obj, Atom name, Value val);
 
   struct CatchFrame {
     int exc_reg;
     int target_pc;
   };
   std::vector<CatchFrame> catch_stack_;
-  std::vector<int> return_stack_;      // GOSUB/RET return addresses
-  Value pending_exception_ = kUndefined;
+  std::vector<int> return_stack_; // GOSUB/RET return addresses
+  Value pending_exception_ = Value::undefined_();
 };
 
 } // namespace qjsp

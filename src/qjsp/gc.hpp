@@ -28,6 +28,8 @@ struct RefCounted {
 struct GCObjectHeader : RefCounted {
   GCObjType gc_obj_type = GCObjType::js_object;
   bool is_marked        = false;
+
+  virtual ~GCObjectHeader() = default;
 };
 
 using GCObjList = std::vector<GCObjectHeader *>;

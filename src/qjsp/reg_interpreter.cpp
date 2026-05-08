@@ -90,7 +90,7 @@ Value RegInterpreter::get_field(Value obj, Atom name) {
     if (o)
       return o->get(name);
   }
-  return kUndefined;
+  return Value::undefined_();
 }
 
 void RegInterpreter::put_field(Value obj, Atom name, Value val) {
@@ -123,7 +123,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       if (i.bx() < static_cast<uint32_t>(b->cpool_count))
         regs[i.a()] = b->cpool[i.bx()];
       else
-        regs[i.a()] = kUndefined;
+        regs[i.a()] = Value::undefined_();
       break;
 
     case RegOp::LOADINT:
@@ -131,25 +131,25 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       break;
 
     case RegOp::LOADUNDEF:
-      regs[i.a()] = kUndefined;
+      regs[i.a()] = Value::undefined_();
       break;
 
     case RegOp::LOADNULL:
-      regs[i.a()] = kNull;
+      regs[i.a()] = Value::null_();
       break;
 
     case RegOp::LOADTRUE:
-      regs[i.a()] = kTrue;
+      regs[i.a()] = Value::bool_(true);
       break;
 
     case RegOp::LOADFALSE:
-      regs[i.a()] = kFalse;
+      regs[i.a()] = Value::bool_(false);
       break;
 
     case RegOp::LOADNIL:
       // R[A]..R[A+B] = undefined
       for (int r = i.a(); r <= i.a() + i.b(); r++)
-        regs[r] = kUndefined;
+        regs[r] = Value::undefined_();
       break;
 
     case RegOp::LOADBOOL:
@@ -343,7 +343,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
     case RegOp::GETFIELD: {
       // A = dst, B = obj, C = cpool index
       int ci          = i.c();
-      Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : kUndefined;
+      Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
       Atom atom       = kAtomNull;
       if (field_val.is_string()) {
         atom = rt()->intern(field_val.as<String>());
@@ -355,7 +355,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
     case RegOp::SETFIELD: {
       // A = obj, B = cpool index, C = val
       int ci          = i.b();
-      Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : kUndefined;
+      Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
       Atom atom       = kAtomNull;
       if (field_val.is_string()) {
         atom = rt()->intern(field_val.as<String>());
@@ -367,7 +367,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
     case RegOp::DEFINE_FIELD: {
       // A = obj, B = cpool index, C = val
       int ci          = i.b();
-      Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : kUndefined;
+      Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
       Atom atom       = kAtomNull;
       if (field_val.is_string()) {
         atom = rt()->intern(field_val.as<String>());
@@ -487,7 +487,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       if (regs[i.b()].is_object())
         regs[i.a()] = regs[i.b()];
       else
-        regs[i.a()] = kUndefined;
+        regs[i.a()] = Value::undefined_();
       break;
 
       // ── call / return ───────────────────────────────────────────────────────
@@ -500,10 +500,10 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       if (func_val.is_object()) {
         auto *obj = func_val.as<Object>();
         if (obj->class_id == static_cast<uint16_t>(ClassID::c_function) && obj->u.cfunc.fn) {
-          regs[i.a()] = obj->u.cfunc.fn(ctx_, kUndefined, argc, &regs[func_reg + 1]);
+          regs[i.a()] = obj->u.cfunc.fn(ctx_, Value::undefined_(), argc, &regs[func_reg + 1]);
         } else if (obj->class_id == static_cast<uint16_t>(ClassID::bytecode_function) && obj->u.opaque) {
           auto *inner    = static_cast<FunctionBytecode *>(obj->u.opaque);
-          Value call_ret = call_bytecode(inner, kUndefined, argc, &regs[func_reg + 1], obj->var_refs);
+          Value call_ret = call_bytecode(inner, Value::undefined_(), argc, &regs[func_reg + 1], obj->var_refs);
           if (call_ret.is_exception()) {
             if (!catch_stack_.empty()) {
               auto cf = catch_stack_.back();
@@ -511,16 +511,16 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
               regs[cf.exc_reg] = pending_exception_;
               ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf + cf.target_pc * 4);
             } else {
-              return kException;
+              return Value::exception();
             }
             break;
           }
           regs[i.a()] = call_ret;
         } else {
-          regs[i.a()] = kUndefined;
+          regs[i.a()] = Value::undefined_();
         }
       } else {
-        regs[i.a()] = kUndefined;
+        regs[i.a()] = Value::undefined_();
       }
       break;
     }
@@ -536,17 +536,17 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         if (obj->class_id == static_cast<uint16_t>(ClassID::c_function) && obj->u.cfunc.fn) {
           regs[i.a()] = obj->u.cfunc.fn(ctx_, this_val, argc - 1, &regs[func_reg + 2]);
         } else {
-          regs[i.a()] = kUndefined;
+          regs[i.a()] = Value::undefined_();
         }
       } else {
-        regs[i.a()] = kUndefined;
+        regs[i.a()] = Value::undefined_();
       }
       break;
     }
 
     case RegOp::CTOR:
       // Placeholder: same as CALL for now
-      regs[i.a()] = kUndefined;
+      regs[i.a()] = Value::undefined_();
       break;
 
     case RegOp::FCLOSURE: {
@@ -594,13 +594,13 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
               if (close_list)
                 close_list->push_back(closure->var_refs[j]);
             } else {
-              closure->var_refs[j] = VarRef::create_detached(kUndefined);
+              closure->var_refs[j] = VarRef::create_detached(Value::undefined_());
             }
           }
         }
         regs[i.a()] = Value::object(closure);
       } else {
-        regs[i.a()] = kUndefined;
+        regs[i.a()] = Value::undefined_();
       }
       break;
     }
@@ -609,7 +609,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       return regs[i.a()];
 
     case RegOp::RETURN0:
-      return kUndefined;
+      return Value::undefined_();
 
     case RegOp::THROW: {
       pending_exception_ = regs[i.a()];
@@ -620,7 +620,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf + cf.target_pc * 4);
       } else {
         // No catch handler — propagate to caller
-        return kException;
+        return Value::exception();
       }
       break;
     }
@@ -656,7 +656,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       if (upvals && upvals[i.b()]) {
         regs[i.a()] = upvals[i.b()]->load();
       } else {
-        regs[i.a()] = kUndefined;
+        regs[i.a()] = Value::undefined_();
       }
       break;
 
@@ -674,11 +674,11 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
     default:
       fprintf(stderr, "Unhandled reg opcode: %u\n", static_cast<unsigned>(op));
-      return kUndefined;
+      return Value::undefined_();
     }
   }
 
-  return kUndefined;
+  return Value::undefined_();
 }
 
 // ─── Call bytecode ──────────────────────────────────────────────────────────
@@ -696,11 +696,11 @@ Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int arg
 
   // Unfilled args = undefined
   for (int i = argc; i < b->arg_count; i++)
-    regs[1 + i] = kUndefined;
+    regs[1 + i] = Value::undefined_();
 
   // Local vars initialized to undefined
   for (int i = 0; i < b->var_count; i++)
-    regs[1 + b->arg_count + i] = kUndefined;
+    regs[1 + b->arg_count + i] = Value::undefined_();
 
   std::vector<VarRef *> close_list;
   Value result = run_bytecode(b, regs, upvals, &close_list);
@@ -718,7 +718,7 @@ Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int arg
 
 Value RegInterpreter::eval(FunctionBytecode *b) {
   if (!b)
-    return kUndefined;
+    return Value::undefined_();
   // Top-level eval: 'this' is the global object
   return call_bytecode(b, ctx_->global_obj, 0, nullptr, nullptr);
 }
@@ -730,12 +730,12 @@ Value RegInterpreter::eval_source(const char *source, const char *filename) {
 
   if (!ps.compile()) {
     fprintf(stderr, "Compilation failed\n");
-    return kException;
+    return Value::exception();
   }
 
   auto *b = lower_reg(ps.cur_func, ctx_);
   if (!b)
-    return kException;
+    return Value::exception();
 
   Value result = eval(b);
 

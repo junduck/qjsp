@@ -41,7 +41,7 @@ struct VarRef : RefCounted {
 
   Value *pvalue = nullptr; // → slot in frame (attached) or → value_ (detached)
 private:
-  Value value_ = kUndefined; // internal storage when detached
+  Value value_ = Value::undefined_(); // internal storage when detached
 };
 
 } // namespace qjsp

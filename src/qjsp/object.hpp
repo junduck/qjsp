@@ -15,7 +15,7 @@ struct Context;
 using CFunction = Value(Context *ctx, Value this_val, int argc, const Value *argv);
 
 struct Property {
-  Value value = kUndefined;
+  Value value = Value::undefined_();
 };
 
 struct VarRef;

@@ -14,8 +14,8 @@ using namespace qjsp;
 TEST(ValueBasics, Int32RoundTrip) { EXPECT_EQ(Value::int32(42).as_int32(), 42); }
 
 TEST(ValueBasics, NullAndUndefined) {
-  EXPECT_TRUE(kNull.is_null());
-  EXPECT_TRUE(kUndefined.is_undefined());
+  EXPECT_TRUE(Value::null_().is_null());
+  EXPECT_TRUE(Value::undefined_().is_undefined());
 }
 
 TEST(ValueBasics, BoolRoundTrip) {
@@ -113,7 +113,7 @@ static Value test_add(Context *, Value, int argc, const Value *argv) {
   return Value::int32(sum);
 }
 
-static Value test_identity(Context *, Value, int argc, const Value *argv) { return argc > 0 ? argv[0] : kUndefined; }
+static Value test_identity(Context *, Value, int argc, const Value *argv) { return argc > 0 ? argv[0] : Value::undefined_(); }
 
 TEST_F(ObjFixture, MakeCFunc) {
   auto *fn = Object::make_cfunc(ctx, test_add, "add", 2);
@@ -126,7 +126,7 @@ TEST_F(ObjFixture, MakeCFunc) {
 TEST_F(ObjFixture, CallCFunc) {
   auto *fn           = Object::make_cfunc(ctx, test_add, "add", 2);
   const Value args[] = {Value::int32(3), Value::int32(4)};
-  EXPECT_EQ(call(ctx, Value::object(fn), kUndefined, 2, args).as_int32(), 7);
+  EXPECT_EQ(call(ctx, Value::object(fn), Value::undefined_(), 2, args).as_int32(), 7);
   fn->destroy(rt);
 }
 
@@ -134,7 +134,7 @@ TEST_F(ObjFixture, CallIdentity) {
   auto *fn           = Object::make_cfunc(ctx, test_identity, "id", 1);
   auto *s            = String::create("hello");
   const Value args[] = {Value::string(s)};
-  Value result       = call(ctx, Value::object(fn), kUndefined, 1, args);
+  Value result       = call(ctx, Value::object(fn), Value::undefined_(), 1, args);
   EXPECT_TRUE(result.is_string());
   EXPECT_EQ(result.as<String>()->view(), "hello");
   fn->destroy(rt);
@@ -170,8 +170,8 @@ TEST_F(ObjFixture, GcPreservesReachable) {
   rt->run_gc();
   EXPECT_TRUE(global->get_own(key).is_object());
   EXPECT_EQ(global->get_own(key).as<Object>(), obj);
+  global->set_own(rt, key, Value::undefined_());
   obj->destroy(rt);
-  global->set_own(rt, key, kUndefined);
 }
 
 // ─── Lexer ──────────────────────────────────────────────────────────────────
