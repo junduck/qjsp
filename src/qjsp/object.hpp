@@ -22,15 +22,13 @@ struct VarRef;
 
 struct Object : GCObjectHeader {
   // ... existing fields
-  bool extensible   = true;
-  uint16_t class_id = 0;
-  Object *proto     = nullptr;
-  Shape *shape      = nullptr;
+
+  Object *proto = nullptr;
+  Shape *shape  = nullptr;
   std::vector<Property> properties;
 
   // Closure data (only valid for bytecode_function class)
   VarRef **var_refs = nullptr;
-  int var_ref_count = 0;
 
   // Class-specific data. Only valid for certain class_ids.
   struct CFunctionData {
@@ -43,6 +41,10 @@ struct Object : GCObjectHeader {
     CFunctionData cfunc;
     void *opaque;
   } u{};
+
+  int var_ref_count = 0;
+  uint16_t class_id = 0;
+  bool extensible   = true;
 
   // ── factories ────────────────────────────────────────────────────────
   static Object *create(Runtime *rt, Object *proto, uint16_t class_id);

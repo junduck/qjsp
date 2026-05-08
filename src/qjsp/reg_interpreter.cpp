@@ -505,7 +505,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
           auto *inner    = static_cast<FunctionBytecode *>(obj->u.opaque);
           Value call_ret = call_bytecode(inner, Value::undefined_(), argc, &regs[func_reg + 1], obj->var_refs);
           if (call_ret.is_exception()) {
-            if (!catch_stack_.empty()) {
+            if (!catch_stack_.empty() && catch_stack_.back().bytecode == b) {
               auto cf = catch_stack_.back();
               catch_stack_.pop_back();
               regs[cf.exc_reg] = pending_exception_;
@@ -613,13 +613,13 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
     case RegOp::THROW: {
       pending_exception_ = regs[i.a()];
-      if (!catch_stack_.empty()) {
+      if (!catch_stack_.empty() && catch_stack_.back().bytecode == b) {
         auto cf = catch_stack_.back();
         catch_stack_.pop_back();
         regs[cf.exc_reg] = pending_exception_;
         ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf + cf.target_pc * 4);
       } else {
-        // No catch handler — propagate to caller
+        // No catch handler in this frame — propagate to caller
         return Value::exception();
       }
       break;
@@ -627,7 +627,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
     case RegOp::CATCH:
       // Record catch frame: exc_reg = A, target = bx (absolute instr index)
-      catch_stack_.push_back({static_cast<int>(i.a()), static_cast<int>(i.bx())});
+      catch_stack_.push_back({static_cast<int>(i.a()), static_cast<int>(i.bx()), b});
       break;
 
     case RegOp::UNCATCH:

@@ -20,9 +20,6 @@ constexpr int kInterruptCounterInit = 10000;
 struct Context : GCObjectHeader {
   Runtime *rt = nullptr;
 
-  uint16_t binary_object_count = 0;
-  int binary_object_size       = 0;
-
   Shape *array_shape            = nullptr;
   Shape *arguments_shape        = nullptr;
   Shape *mapped_arguments_shape = nullptr;
@@ -42,16 +39,18 @@ struct Context : GCObjectHeader {
   Value array_proto_values   = Value::undefined_();
   Value throw_type_error     = Value::undefined_();
   Value eval_obj             = Value::undefined_();
-
-  Value global_obj     = Value::undefined_();
-  Value global_var_obj = Value::undefined_();
-
-  uint64_t random_state = 0;
-  int interrupt_counter = kInterruptCounterInit;
+  Value global_obj           = Value::undefined_();
+  Value global_var_obj       = Value::undefined_();
 
   Value (*compile_regexp)(void *ctx, Value pattern, Value flags)                                                                         = nullptr;
   Value (*eval_internal)(void *ctx, Value this_obj, const char *input, size_t input_len, const char *filename, int flags, int scope_idx) = nullptr;
-  void *user_opaque                                                                                                                      = nullptr;
+
+  void *user_opaque      = nullptr;
+  uint64_t random_state  = 0;
+  int interrupt_counter  = kInterruptCounterInit;
+  int binary_object_size = 0;
+
+  uint16_t binary_object_count = 0;
 
   static Context *create(Runtime *rt);
   void destroy();

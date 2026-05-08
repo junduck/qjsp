@@ -573,6 +573,39 @@ TEST_F(RegInterpFixture, TryCatchCaught) {
   EXPECT_EQ(v.as_int32(), 99);
 }
 
+// ─── Multi-frame Exception Propagation ─────────────────────────────────
+
+TEST_F(RegInterpFixture, TryCatchAcrossFunction) {
+  Value v = eval(
+      "function inner() { throw 42; }"
+      "var a = 0;"
+      "try { inner(); } catch(e) { a = e; }"
+      "a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(RegInterpFixture, TryCatchDeepUnwind) {
+  Value v = eval(
+      "function a() { throw 7; }"
+      "function b() { a(); }"
+      "var c = 0;"
+      "try { b(); } catch(e) { c = e; }"
+      "c;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 7);
+}
+
+TEST_F(RegInterpFixture, TryCatchNotEnteredOnNormal) {
+  Value v = eval(
+      "function ok() { return 99; }"
+      "var a = 0;"
+      "try { a = ok(); } catch(e) { a = -1; }"
+      "a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 99);
+}
+
 // ─── Switch ─────────────────────────────────────────────────────────────────
 
 TEST_F(RegInterpFixture, SwitchBasic) {

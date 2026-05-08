@@ -33,6 +33,7 @@ private:
   struct CatchFrame {
     int exc_reg;
     int target_pc;
+    const FunctionBytecode *bytecode;
   };
   std::vector<CatchFrame> catch_stack_;
   std::vector<int> return_stack_; // GOSUB/RET return addresses
