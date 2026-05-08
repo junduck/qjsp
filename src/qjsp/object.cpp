@@ -6,13 +6,13 @@
 
 namespace qjsp {
 
-Object *Object::create(Runtime *rt, Object *proto, int class_id) {
+Object *Object::create(Runtime *rt, Object *proto, uint16_t class_id) {
   rt->maybe_trigger_gc(sizeof(Object));
   auto *obj        = new Object();
   obj->ref_count   = 1;
   obj->gc_obj_type = GCObjType::js_object;
   obj->extensible  = true;
-  obj->class_id    = static_cast<uint16_t>(class_id);
+  obj->class_id    = class_id;
   obj->proto       = proto;
   if (proto)
     proto->ref();
@@ -24,8 +24,8 @@ Object *Object::make_cfunc(Context *ctx, CFunction *fn, std::string_view name, i
   auto *obj           = create(ctx->rt, nullptr, static_cast<int>(ClassID::c_function));
   obj->u.cfunc.fn     = fn;
   obj->u.cfunc.length = static_cast<uint8_t>(length);
-  obj->set_own(ctx->rt, ctx->rt->intern(String::create("length")), Value::int32(length));
-  obj->set_own(ctx->rt, ctx->rt->intern(String::create("name")), Value::string(String::create(name)));
+  obj->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
+  obj->set_own(ctx->rt, ctx->rt->intern("name"), Value::string(String::create(name)));
   return obj;
 }
 

@@ -5,8 +5,6 @@
 #include "qjsp/shape.hpp"
 #include "qjsp/string.hpp"
 
-#include <new>
-
 namespace qjsp {
 
 Runtime *Runtime::create() {
@@ -46,6 +44,19 @@ bool Runtime::init_atoms() {
     atom_map.emplace(s->view(), static_cast<Atom>(i));
   }
   return true;
+}
+
+Atom Runtime::intern(std::string_view sv) {
+  auto it = atom_map.find(sv);
+  if (it != atom_map.end())
+    return it->second;
+  // add new interned string
+  auto s = String::create(sv);
+  s->set_interned();
+  auto idx = static_cast<Atom>(atom_table.size());
+  atom_table.push_back(s);
+  atom_map.emplace(s->view(), idx); // should use the new mem
+  return idx;
 }
 
 Atom Runtime::intern(String *s) {
