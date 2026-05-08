@@ -472,18 +472,80 @@ void RegParseState::parse_for_statement() {
   push_enter_scope();
 
   // ── INIT ──
+  bool is_for_in = false;
+  bool is_for_of = false; (void)is_for_of;
+
   int tok = lexer.token.type;
   if (tok != ';') {
     if (tok == TOK_VAR || tok == TOK_LET || tok == TOK_CONST) {
       next_token();
       parse_var_decls(tok);
+
+      // Check if next token is 'in' or 'of'
+      if (lexer.token.type == TOK_IN) {
+        is_for_in = true;
+      } else if (lexer.token.type == TOK_OF) {
+        is_for_of = true;
+      }
+
+      if (!is_for_in && !is_for_of) {
+        cur_func->close_scopes(cur_func->scope_level, block_scope_level);
+      }
     } else {
       (void)parse_assign_expr2(0);
       free_temp();
+
+      if (lexer.token.type == TOK_IN) {
+        // for (expr in ...) — not supported yet, skip
+        is_for_in = false;
+      }
     }
-    cur_func->close_scopes(cur_func->scope_level, block_scope_level);
   }
-  expect(';');
+
+  if (is_for_in) {
+    // Continue parsing: skip 'in', parse object expr
+    next_token(); // skip 'in'
+
+    // Find the loop variable (last declared var)
+    int key_var_idx = cur_func->var_count - 1;
+    int key_reg     = cur_func->alloc.var(key_var_idx);
+
+    // Parse the object expression
+    RegSlot obj_slot = parse_expr();
+    expect(')');
+
+    int iter_reg = alloc_temp();
+    int more_reg = alloc_temp();
+
+    emit_iABC(RegOp::FOR_IN_START, static_cast<uint8_t>(iter_reg), static_cast<uint8_t>(obj_slot.reg), 0);
+    free_temp(); // free obj_slot
+
+    // Labels
+    int loop_label = new_label();
+    int end_label  = new_label();
+
+    emit_jump(RegOp::JMP, loop_label, 0);
+    int body_label = new_label();
+    emit_label(body_label);
+
+    // Parse body
+    parse_statement();
+
+    // Loop back
+    emit_label(loop_label);
+    emit_iABC(RegOp::FOR_IN_NEXT, static_cast<uint8_t>(key_reg), static_cast<uint8_t>(iter_reg), static_cast<uint8_t>(more_reg));
+    emit_jump(RegOp::IS_TRUE, body_label, static_cast<uint8_t>(more_reg));
+    emit_label(end_label);
+
+    free_temp(); // free more_reg
+    free_temp(); // free iter_reg
+
+    cur_func->close_scopes(cur_func->scope_level, block_scope_level);
+    pop_leave_scope();
+    return;
+  }
+
+  expect(';'); // consume the semicolon after init (non-for-in path)
 
   // ── Labels ──
   int label_test  = new_label();

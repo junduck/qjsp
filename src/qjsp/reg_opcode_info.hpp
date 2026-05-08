@@ -99,6 +99,10 @@ inline constexpr RegOpInfo kRegOpInfo[] = {
     {"GETUPVAL",      InstrFmt::ABC},   // 65
     {"SETUPVAL",      InstrFmt::ABC},   // 66
     {"CLOSEUPVAL",    InstrFmt::ABx},   // 67
+
+    // ── iteration (2) ────────────────────────────────────────────────────────
+    {"FOR_IN_START",  InstrFmt::ABC},   // 68  A=iter_reg, B=obj_reg
+    {"FOR_IN_NEXT",   InstrFmt::ABC},   // 69  A=key_reg, B=iter_reg, C=more_reg
 };
 
 static_assert(sizeof(kRegOpInfo) / sizeof(kRegOpInfo[0]) == static_cast<int>(RegOp::NUM_OPCODES), "kRegOpInfo size mismatch");

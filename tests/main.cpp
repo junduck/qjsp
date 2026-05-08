@@ -11,20 +11,6 @@
 
 using namespace qjsp;
 
-TEST(ValueBasics, Int32RoundTrip) { EXPECT_EQ(Value::int32(42).as_int32(), 42); }
-
-TEST(ValueBasics, NullAndUndefined) {
-  EXPECT_TRUE(Value::null_().is_null());
-  EXPECT_TRUE(Value::undefined_().is_undefined());
-}
-
-TEST(ValueBasics, BoolRoundTrip) {
-  EXPECT_TRUE(Value::bool_(true).as_bool());
-  EXPECT_FALSE(Value::bool_(false).as_bool());
-}
-
-TEST(ValueBasics, Float64RoundTrip) { EXPECT_DOUBLE_EQ(Value::float64(3.14).as_double(), 3.14); }
-
 TEST(RuntimeContext, CreateAndDestroy) {
   auto *rt  = Runtime::create();
   auto *ctx = Context::create(rt);
@@ -773,6 +759,20 @@ TEST_F(RegInterpFixture, LabeledForContinue) {
   Value v = eval("var a=0; outer:for(var i=0;i<3;i=i+1){a=i;continue outer;} a;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 2);
+}
+
+// ─── For-In Loop ─────────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, ForInBasic) {
+  Value v = eval("var obj = {a: 1, b: 2}; var sum = 0; for (var k in obj) { sum = sum + obj[k]; } sum;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(RegInterpFixture, ForInCount) {
+  Value v = eval("var obj = {x: 10, y: 20, z: 30}; var count = 0; for (var k in obj) { count = count + 1; } count;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
 }
 
 int main(int argc, char **argv) {

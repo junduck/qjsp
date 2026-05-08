@@ -5,6 +5,7 @@
 #include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/reg_parser.hpp"
 #include "qjsp/runtime.hpp"
+#include "qjsp/shape.hpp"
 #include "qjsp/string.hpp"
 #include "qjsp/varref.hpp"
 #include <cassert>
@@ -671,6 +672,48 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         upvals[i.a()]->close();
       }
       break;
+
+      // ── iteration (for-in) ───────────────────────────────────────────────
+
+    case RegOp::FOR_IN_START: {
+      // A=iter_reg, B=obj_reg
+      Value &obj = regs[i.b()];
+      if (obj.is_object()) {
+        auto *o        = obj.as<Object>();
+        ForInState st;
+        st.obj           = o;
+        st.shape         = o->shape;
+        st.current_index = 0;
+        int token = static_cast<int>(for_in_states_.size());
+        for_in_states_.push_back(st);
+        regs[i.a()] = Value::int32(token);
+      } else {
+        regs[i.a()] = Value::int32(-1);
+      }
+      break;
+    }
+
+    case RegOp::FOR_IN_NEXT: {
+      // A=key_reg, B=iter_reg, C=more_reg
+      int token = regs[i.b()].is_int32() ? regs[i.b()].as_int32() : -1;
+      if (token >= 0 && token < static_cast<int>(for_in_states_.size())) {
+        auto &st = for_in_states_[static_cast<size_t>(token)];
+        if (st.shape && st.current_index < static_cast<int>(st.shape->entries.size())) {
+          Atom atom = st.shape->entries[static_cast<size_t>(st.current_index)].atom;
+          auto *s   = rt()->atom_to_string(atom);
+          regs[i.a()] = Value::string(s);
+          st.current_index++;
+          regs[i.c()] = Value::bool_(true);
+        } else {
+          regs[i.a()] = Value::undefined_();
+          regs[i.c()] = Value::bool_(false);
+        }
+      } else {
+        regs[i.a()] = Value::undefined_();
+        regs[i.c()] = Value::bool_(false);
+      }
+      break;
+    }
 
     default:
       fprintf(stderr, "Unhandled reg opcode: %u\n", static_cast<unsigned>(op));

@@ -38,6 +38,14 @@ private:
   std::vector<CatchFrame> catch_stack_;
   std::vector<int> return_stack_; // GOSUB/RET return addresses
   Value pending_exception_ = Value::undefined_();
+
+  // for-in iteration state
+  struct ForInState {
+    Object *obj = nullptr;
+    const struct Shape *shape = nullptr;
+    int current_index = 0;
+  };
+  std::vector<ForInState> for_in_states_;
 };
 
 } // namespace qjsp
