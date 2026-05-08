@@ -55,15 +55,15 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
   }
 
   // ── Copy instructions ─────────────────────────────────────────────────────
-  b->instr_count   = static_cast<int>(fd->instructions.size());
-  b->byte_code_buf = new uint8_t[static_cast<size_t>(b->instr_count) * 4];
-  std::memcpy(b->byte_code_buf, fd->instructions.data(), static_cast<size_t>(b->instr_count) * 4);
+  b->instr_count   = static_cast<uint32_t>(fd->instructions.size());
+  b->byte_code_buf = std::make_unique<uint8_t[]>(static_cast<size_t>(b->instr_count) * 4);
+  std::memcpy(b->byte_code_buf.get(), fd->instructions.data(), static_cast<size_t>(b->instr_count) * 4);
   b->byte_code_len = b->instr_count * 4;
 
   // Copy constant pool
-  b->cpool_count = static_cast<int>(fd->cpool.size());
-  b->cpool       = new Value[static_cast<size_t>(b->cpool_count)];
-  for (int i = 0; i < b->cpool_count; i++)
+  b->cpool_count = static_cast<uint32_t>(fd->cpool.size());
+  b->cpool       = std::make_unique<Value[]>(static_cast<size_t>(b->cpool_count));
+  for (uint32_t i = 0; i < b->cpool_count; i++)
     b->cpool[i] = fd->cpool[static_cast<size_t>(i)];
 
   b->arg_count     = static_cast<uint16_t>(fd->arg_count);
@@ -80,10 +80,10 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
     b->flags1 |= (static_cast<uint8_t>(fd->func_kind) << 4);
 
   // Closure vars
-  b->closure_var_count = static_cast<int>(fd->closure_var.size());
+  b->closure_var_count = static_cast<uint32_t>(fd->closure_var.size());
   if (b->closure_var_count > 0) {
-    b->closure_var = new ClosureVar[static_cast<size_t>(b->closure_var_count)];
-    for (int i = 0; i < b->closure_var_count; i++)
+    b->closure_var = std::make_unique<ClosureVar[]>(static_cast<size_t>(b->closure_var_count));
+    for (uint32_t i = 0; i < b->closure_var_count; i++)
       b->closure_var[i] = fd->closure_var[static_cast<size_t>(i)];
   }
 
@@ -91,7 +91,7 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
   int total_defs = fd->arg_count + fd->var_count;
   b->var_count   = static_cast<uint16_t>(total_defs);
   if (total_defs > 0) {
-    b->vardefs = new BytecodeVarDef[static_cast<size_t>(total_defs)];
+    b->vardefs = std::make_unique<BytecodeVarDef[]>(static_cast<size_t>(total_defs));
     for (int i = 0; i < fd->arg_count; i++) {
       auto &vd                  = fd->args[static_cast<size_t>(i)];
       b->vardefs[i].var_name    = vd.var_name;

@@ -1,3 +1,11 @@
-add_executable(test_main main.cpp value.cpp)
+add_executable(test_main
+  main.cpp
+  value.cpp
+  runtime.cpp
+  object.cpp
+  lexer.cpp
+  parser.cpp
+  interpreter.cpp
+)
 target_link_libraries(test_main GTest::gtest_main qjsp::qjsp)
 

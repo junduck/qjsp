@@ -6,11 +6,8 @@
 namespace qjsp {
 
 enum class AtomType : uint8_t {
-  invalid       = 0,
-  string        = 1,
-  global_symbol = 2,
-  symbol        = 3,
-  private_      = 4,
+  string = 0,
+  symbol = 1,
 };
 
 using Atom               = uint32_t;
@@ -518,10 +515,8 @@ inline constexpr std::string_view atom_name(Atom a) { return (a < std::size(kAto
 
 /// Get the AtomType for a given AtomEnum value (1..267).
 inline constexpr AtomType atom_type_for(AtomEnum e) {
-  if (e >= AtomEnum::Symbol_toPrimitive)
+  if (e >= AtomEnum::Symbol_toPrimitive || e == AtomEnum::Private_brand)
     return AtomType::symbol;
-  if (e == AtomEnum::Private_brand)
-    return AtomType::private_;
   return AtomType::string;
 }
 

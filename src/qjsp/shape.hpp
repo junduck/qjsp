@@ -2,16 +2,16 @@
 
 #include "atom.hpp"
 #include <cstdint>
-#include <vector>
+#include <memory>
 
 namespace qjsp {
 
 struct Runtime;
 
 constexpr int kPropConfigurable = (1 << 0);
-constexpr int kPropWritable = (1 << 1);
-constexpr int kPropEnumerable = (1 << 2);
-constexpr int kPropCWE = kPropConfigurable | kPropWritable | kPropEnumerable;
+constexpr int kPropWritable     = (1 << 1);
+constexpr int kPropEnumerable   = (1 << 2);
+constexpr int kPropCWE          = kPropConfigurable | kPropWritable | kPropEnumerable;
 
 struct ShapeProperty {
   Atom atom = kAtomNull;
@@ -23,10 +23,16 @@ struct ShapeProperty {
 /// property layouts.
 
 struct Shape {
-  std::vector<ShapeProperty> entries;
+  std::unique_ptr<ShapeProperty[]> entries;
+  uint32_t prop_count = 0;
 
-  int size() const { return static_cast<int>(entries.size()); }
-  int find(Atom atom) const;
+  uint32_t size() const { return prop_count; }
+  uint32_t find(Atom atom) const {
+    for (uint32_t i = 0; i < prop_count; ++i)
+      if (entries[i].atom == atom)
+        return i;
+    return prop_count; // sentinel: not found
+  }
 };
 
 } // namespace qjsp

@@ -3,7 +3,7 @@
 
 namespace qjsp {
 
-String *String::create(std::string_view src) {
+String *String::allocate_raw(std::string_view src) {
   auto *s = static_cast<String *>(operator new(sizeof(String) + src.size() + 1));
   auto *p = reinterpret_cast<char *>(s + 1);
   std::copy(src.begin(), src.end(), p);

@@ -6,6 +6,7 @@
 #include "value.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace qjsp {
@@ -52,14 +53,11 @@ struct Context : GCObjectHeader {
 
   uint16_t binary_object_count = 0;
 
-  static Context *create(Runtime *rt);
-  void destroy();
+  explicit Context(Runtime *rt);
+  ~Context();
 
   // ── GC ───────────────────────────────────────────────────────────────
   void gc_mark(std::vector<GCObjectHeader *> &worklist);
-
-private:
-  Context() = default;
 };
 
 } // namespace qjsp

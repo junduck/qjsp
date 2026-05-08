@@ -45,7 +45,6 @@ add_library(qjsp
   src/qjsp/runtime.cpp
   src/qjsp/context.cpp
   src/qjsp/string.cpp
-  src/qjsp/shape.cpp
   src/qjsp/object.cpp
   src/qjsp/lexer.cpp
   src/qjsp/varref.cpp

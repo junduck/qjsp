@@ -4,6 +4,7 @@
 #include "gc.hpp"
 #include "value.hpp"
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace qjsp {
@@ -135,16 +136,16 @@ enum class FunctionKind : uint8_t {
 
 struct FunctionBytecode : GCObjectHeader {
 
-  uint8_t *byte_code_buf;
-  BytecodeVarDef *vardefs;
-  ClosureVar *closure_var;
-  Value *cpool;
+  std::unique_ptr<uint8_t[]> byte_code_buf;
+  std::unique_ptr<BytecodeVarDef[]> vardefs;
+  std::unique_ptr<ClosureVar[]> closure_var;
+  std::unique_ptr<Value[]> cpool;
   Context *realm;
 
-  int cpool_count;
-  int closure_var_count;
-  int byte_code_len;
-  int instr_count; // number of 32-bit instructions (reg VM)
+  uint32_t cpool_count       = 0;
+  uint32_t closure_var_count = 0;
+  uint32_t byte_code_len     = 0;
+  uint32_t instr_count       = 0; // number of 32-bit instructions (reg VM)
   Atom func_name;
 
   uint16_t reg_count; // total registers per frame (reg VM)
@@ -189,7 +190,7 @@ struct FunctionBytecode : GCObjectHeader {
 
   void gc_mark(std::vector<GCObjectHeader *> &worklist) {
     is_marked = true;
-    for (int i = 0; i < cpool_count; i++) {
+    for (uint32_t i = 0; i < cpool_count; i++) {
       if (cpool[i].is_func_bytecode()) {
         auto *child = cpool[i].as<FunctionBytecode>();
         if (child && !child->is_marked) {

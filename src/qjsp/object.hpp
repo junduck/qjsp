@@ -23,12 +23,12 @@ struct VarRef;
 struct Object : GCObjectHeader {
   // ... existing fields
 
-  Object *proto = nullptr;
-  Shape *shape  = nullptr;
+  Value proto  = Value::undefined_();
+  Shape *shape = nullptr;
   std::vector<Property> properties;
 
   // Closure data (only valid for bytecode_function class)
-  VarRef **var_refs = nullptr;
+  std::vector<Value> var_refs;
 
   // Class-specific data. Only valid for certain class_ids.
   struct CFunctionData {
@@ -42,19 +42,18 @@ struct Object : GCObjectHeader {
     void *opaque;
   } u{};
 
-  int var_ref_count = 0;
   uint16_t class_id = 0;
   bool extensible   = true;
 
   // ── factories ────────────────────────────────────────────────────────
-  static Object *create(Runtime *rt, Object *proto, uint16_t class_id);
-  static Object *make_cfunc(Context *ctx, CFunction *fn, std::string_view name, int length);
+  static Value create(Runtime *rt, Value proto, uint16_t class_id);
+  static Value make_cfunc(Context *ctx, CFunction *fn, std::string_view name, int length);
 
   // ── property access ──────────────────────────────────────────────────
   Value get_own(Atom atom) const;
   bool set_own(Runtime *rt, Atom atom, Value value, int flags = kPropCWE);
   bool define_own(Runtime *rt, Atom atom, Value value, int flags);
-  bool has_own(Atom atom) const { return shape && shape->find(atom) >= 0; }
+  bool has_own(Atom atom) const { return shape && shape->find(atom) < shape->size(); }
   Value get(Atom atom) const;
 
   void destroy(Runtime *rt);

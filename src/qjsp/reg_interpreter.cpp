@@ -105,8 +105,8 @@ void RegInterpreter::put_field(Value obj, Atom name, Value val) {
 // ─── Run bytecode ───────────────────────────────────────────────────────────
 
 Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list) {
-  const auto *ip  = reinterpret_cast<const Instruction *>(b->byte_code_buf);
-  const auto *end = reinterpret_cast<const Instruction *>(b->byte_code_buf + b->instr_count * 4);
+  const auto *ip  = reinterpret_cast<const Instruction *>(b->byte_code_buf.get());
+  const auto *end = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + b->instr_count * 4);
 
   while (ip < end) {
     Instruction i = *ip;
@@ -336,8 +336,8 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       // ── object ──────────────────────────────────────────────────────────────
 
     case RegOp::NEWOBJ: {
-      auto *obj   = Object::create(rt(), nullptr, static_cast<int>(ClassID::object));
-      regs[i.a()] = Value::object(obj);
+      auto obj    = Object::create(rt(), Value::undefined_(), static_cast<int>(ClassID::object));
+      regs[i.a()] = obj;
       break;
     }
 
@@ -347,7 +347,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
       Atom atom       = kAtomNull;
       if (field_val.is_string()) {
-        atom = rt()->intern(field_val.as<String>());
+        atom = rt()->intern(field_val.as<String>()->view());
       }
       regs[i.a()] = get_field(regs[i.b()], atom);
       break;
@@ -359,7 +359,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
       Atom atom       = kAtomNull;
       if (field_val.is_string()) {
-        atom = rt()->intern(field_val.as<String>());
+        atom = rt()->intern(field_val.as<String>()->view());
       }
       put_field(regs[i.a()], atom, regs[i.c()]);
       break;
@@ -371,7 +371,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
       Atom atom       = kAtomNull;
       if (field_val.is_string()) {
-        atom = rt()->intern(field_val.as<String>());
+        atom = rt()->intern(field_val.as<String>()->view());
       }
       put_field(regs[i.a()], atom, regs[i.c()]);
       // result stays in R[A] (= obj)
@@ -384,11 +384,11 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value &key = regs[i.c()];
       Atom atom  = kAtomNull;
       if (key.is_string()) {
-        atom = rt()->intern(key.as<String>());
+        atom = rt()->intern(key.as<String>()->view());
       } else if (key.is_int32()) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
-        atom = rt()->intern(String::create(buf));
+        atom = rt()->intern(buf);
       }
       regs[i.a()] = get_field(obj, atom);
       break;
@@ -400,11 +400,11 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value &key = regs[i.b()];
       Atom atom  = kAtomNull;
       if (key.is_string()) {
-        atom = rt()->intern(key.as<String>());
+        atom = rt()->intern(key.as<String>()->view());
       } else if (key.is_int32()) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
-        atom = rt()->intern(String::create(buf));
+        atom = rt()->intern(buf);
       }
       put_field(obj, atom, regs[i.c()]);
       break;
@@ -416,11 +416,11 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value &key = regs[i.b()];
       Atom atom  = kAtomNull;
       if (key.is_string()) {
-        atom = rt()->intern(key.as<String>());
+        atom = rt()->intern(key.as<String>()->view());
       } else if (key.is_int32()) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
-        atom = rt()->intern(String::create(buf));
+        atom = rt()->intern(buf);
       }
       put_field(obj, atom, regs[i.c()]);
       if (key.is_int32())
@@ -431,16 +431,17 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       // ── array ───────────────────────────────────────────────────────────────
 
     case RegOp::NEWARR: {
-      auto *arr = Object::create(rt(), nullptr, static_cast<int>(ClassID::array));
+      auto arr  = Object::create(rt(), Value::undefined_(), static_cast<int>(ClassID::array));
+      auto *a   = arr.as<Object>();
       int base  = i.b();
       int count = i.c();
       for (int idx = 0; idx < count; idx++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", idx);
-        Atom key = rt()->intern(String::create(buf));
-        arr->set_own(rt(), key, regs[base + idx]);
+        Atom key = rt()->intern(buf);
+        a->set_own(rt(), key, regs[base + idx]);
       }
-      regs[i.a()] = Value::object(arr);
+      regs[i.a()] = arr;
       break;
     }
 
@@ -467,8 +468,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         typestr = "boolean";
       else if (v.is_undefined())
         typestr = "undefined";
-      auto *s     = String::create(typestr);
-      regs[i.a()] = Value::string(s);
+      regs[i.a()] = String::create(typestr);
       break;
     }
 
@@ -479,7 +479,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
     case RegOp::SETPROTO:
       if (regs[i.a()].is_object() && regs[i.b()].is_object()) {
-        regs[i.a()].as<Object>()->proto = regs[i.b()].as<Object>();
+        regs[i.a()].as<Object>()->proto = regs[i.b()];
       }
       break;
 
@@ -504,13 +504,17 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
           regs[i.a()] = obj->u.cfunc.fn(ctx_, Value::undefined_(), argc, &regs[func_reg + 1]);
         } else if (obj->class_id == static_cast<uint16_t>(ClassID::bytecode_function) && obj->u.opaque) {
           auto *inner    = static_cast<FunctionBytecode *>(obj->u.opaque);
-          Value call_ret = call_bytecode(inner, Value::undefined_(), argc, &regs[func_reg + 1], obj->var_refs);
+          std::vector<VarRef *> call_upvals;
+          call_upvals.reserve(obj->var_refs.size());
+          for (auto &v : obj->var_refs)
+            call_upvals.push_back(v.as<VarRef>());
+          Value call_ret = call_bytecode(inner, Value::undefined_(), argc, &regs[func_reg + 1], call_upvals.data());
           if (call_ret.is_exception()) {
             if (!catch_stack_.empty() && catch_stack_.back().bytecode == b) {
               auto cf = catch_stack_.back();
               catch_stack_.pop_back();
               regs[cf.exc_reg] = pending_exception_;
-              ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf + cf.target_pc * 4);
+              ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + cf.target_pc * 4);
             } else {
               return Value::exception();
             }
@@ -555,51 +559,48 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       int ci = i.bx();
       if (ci < b->cpool_count && b->cpool[ci].is_func_bytecode()) {
         auto *inner_bc    = b->cpool[ci].as<FunctionBytecode>();
-        auto *closure     = Object::create(rt(), nullptr, static_cast<int>(ClassID::bytecode_function));
-        closure->u.opaque = inner_bc;
+        auto closure      = Object::create(rt(), Value::undefined_(), static_cast<int>(ClassID::bytecode_function));
+        auto *cl          = closure.as<Object>();
+        cl->u.opaque      = inner_bc;
 
         // Create VarRefs for captured variables from the current frame
-        int cv_count = inner_bc->closure_var_count;
-        if (cv_count > 0) {
-          closure->var_refs      = new VarRef *[static_cast<size_t>(cv_count)] {};
-          closure->var_ref_count = cv_count;
-          for (int j = 0; j < cv_count; j++) {
-            auto &cv = inner_bc->closure_var[j];
+        int cv_count = static_cast<int>(inner_bc->closure_var_count);
+        cl->var_refs.resize(static_cast<size_t>(cv_count));
+        for (int j = 0; j < cv_count; j++) {
+          auto &cv = inner_bc->closure_var[j];
 
-            // Find the variable in the enclosing function's vardefs
-            int enclosing_var_count = b->arg_count + b->var_count;
-            int uv_idx              = -1;
-            int reg_idx             = -1;
-            for (int k = 0; k < enclosing_var_count; k++) {
-              if (b->vardefs[k].var_name == cv.var_name) {
-                if (b->vardefs[k].is_captured() && upvals) {
-                  // Already captured — use existing upvalue
-                  uv_idx = b->vardefs[k].var_ref_idx;
+          // Find the variable in the enclosing function's vardefs
+          int enclosing_var_count = b->arg_count + b->var_count;
+          int uv_idx              = -1;
+          int reg_idx             = -1;
+          for (int k = 0; k < enclosing_var_count; k++) {
+            if (b->vardefs[k].var_name == cv.var_name) {
+              if (b->vardefs[k].is_captured() && upvals) {
+                uv_idx = b->vardefs[k].var_ref_idx;
+              } else {
+                if (k < b->arg_count) {
+                  reg_idx = 1 + k;
                 } else {
-                  // Not captured yet — compute register index
-                  if (k < b->arg_count) {
-                    reg_idx = 1 + k; // argument
-                  } else {
-                    reg_idx = 1 + b->arg_count + (k - b->arg_count); // local var
-                  }
+                  reg_idx = 1 + b->arg_count + (k - b->arg_count);
                 }
-                break;
               }
-            }
-            if (uv_idx >= 0 && upvals && upvals[uv_idx]) {
-              closure->var_refs[j] = upvals[uv_idx];
-              upvals[uv_idx]->ref();
-            } else if (reg_idx >= 0) {
-              // Create attached VarRef pointing into our register frame
-              closure->var_refs[j] = VarRef::create(&regs[reg_idx]);
-              if (close_list)
-                close_list->push_back(closure->var_refs[j]);
-            } else {
-              closure->var_refs[j] = VarRef::create_detached(Value::undefined_());
+              break;
             }
           }
+          if (uv_idx >= 0 && upvals && upvals[uv_idx]) {
+            cl->var_refs[static_cast<size_t>(j)] = Value::var_ref(upvals[uv_idx]);
+            upvals[uv_idx]->ref();
+          } else if (reg_idx >= 0) {
+            Value vr = VarRef::create(regs[reg_idx]);
+            cl->var_refs[static_cast<size_t>(j)] = vr;
+            if (close_list)
+              close_list->push_back(vr.as<VarRef>());
+          } else {
+            Value vr = VarRef::create_detached(Value::undefined_());
+            cl->var_refs[static_cast<size_t>(j)] = vr;
+          }
         }
-        regs[i.a()] = Value::object(closure);
+        regs[i.a()] = closure;
       } else {
         regs[i.a()] = Value::undefined_();
       }
@@ -618,7 +619,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         auto cf = catch_stack_.back();
         catch_stack_.pop_back();
         regs[cf.exc_reg] = pending_exception_;
-        ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf + cf.target_pc * 4);
+        ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + cf.target_pc * 4);
       } else {
         // No catch handler in this frame — propagate to caller
         return Value::exception();
@@ -638,7 +639,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
     case RegOp::GOSUB:
       // Push return PC (current ip), jump to target
-      return_stack_.push_back(static_cast<int>(ip - reinterpret_cast<const Instruction *>(b->byte_code_buf)));
+      return_stack_.push_back(static_cast<int>(ip - reinterpret_cast<const Instruction *>(b->byte_code_buf.get())));
       ip += i.sbx();
       break;
 
@@ -647,7 +648,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       if (!return_stack_.empty()) {
         int ret_pc = return_stack_.back();
         return_stack_.pop_back();
-        ip = reinterpret_cast<const Instruction *>(b->byte_code_buf + ret_pc * 4);
+        ip = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + ret_pc * 4);
       }
       break;
 
@@ -698,10 +699,9 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       int token = regs[i.b()].is_int32() ? regs[i.b()].as_int32() : -1;
       if (token >= 0 && token < static_cast<int>(for_in_states_.size())) {
         auto &st = for_in_states_[static_cast<size_t>(token)];
-        if (st.shape && st.current_index < static_cast<int>(st.shape->entries.size())) {
-          Atom atom = st.shape->entries[static_cast<size_t>(st.current_index)].atom;
-          auto *s   = rt()->atom_to_string(atom);
-          regs[i.a()] = Value::string(s);
+        if (st.shape && st.current_index < st.shape->size()) {
+          Atom atom = st.shape->entries[st.current_index].atom;
+          regs[i.a()] = rt()->atom_to_value(atom);
           st.current_index++;
           regs[i.c()] = Value::bool_(true);
         } else {

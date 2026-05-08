@@ -8,7 +8,7 @@
 
 namespace qjsp {
 
-Object *Object::create(Runtime *rt, Object *proto, uint16_t class_id) {
+Value Object::create(Runtime *rt, Value proto, uint16_t class_id) {
   rt->maybe_trigger_gc(sizeof(Object));
   auto *obj        = new Object();
   obj->ref_count   = 1;
@@ -16,30 +16,29 @@ Object *Object::create(Runtime *rt, Object *proto, uint16_t class_id) {
   obj->extensible  = true;
   obj->class_id    = class_id;
   obj->proto       = proto;
-  if (proto)
-    proto->ref();
   rt->add_gc_object(obj);
-  return obj;
+  return Value::object(obj);
 }
 
-Object *Object::make_cfunc(Context *ctx, CFunction *fn, std::string_view name, int length) {
-  auto *obj           = create(ctx->rt, nullptr, static_cast<int>(ClassID::c_function));
-  obj->u.cfunc.fn     = fn;
-  obj->u.cfunc.length = static_cast<uint8_t>(length);
-  obj->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
-  obj->set_own(ctx->rt, ctx->rt->intern("name"), Value::string(String::create(name)));
+Value Object::make_cfunc(Context *ctx, CFunction *fn, std::string_view name, int length) {
+  auto obj          = create(ctx->rt, Value::undefined_(), static_cast<int>(ClassID::c_function));
+  auto *o           = obj.as<Object>();
+  o->u.cfunc.fn     = fn;
+  o->u.cfunc.length = static_cast<uint8_t>(length);
+  o->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
+  o->set_own(ctx->rt, ctx->rt->intern("name"), String::create(name));
   return obj;
 }
 
 Value Object::get_own(Atom atom) const {
   if (!shape)
     return Value::undefined_();
-  int idx = shape->find(atom);
-  return (idx >= 0) ? properties[static_cast<size_t>(idx)].value : Value::undefined_();
+  auto idx = shape->find(atom);
+  return idx < shape->size() ? properties[idx].value : Value::undefined_();
 }
 
 Value Object::get(Atom atom) const {
-  for (auto *cur = this; cur; cur = cur->proto) {
+  for (auto *cur = this; cur; cur = cur->proto.is_object() ? cur->proto.as<Object>() : nullptr) {
     Value v = cur->get_own(atom);
     if (!v.is_undefined())
       return v;
@@ -49,9 +48,9 @@ Value Object::get(Atom atom) const {
 
 bool Object::set_own(Runtime *rt, Atom atom, Value value, int flags) {
   if (shape) {
-    int idx = shape->find(atom);
-    if (idx >= 0) {
-      properties[static_cast<size_t>(idx)].value = value;
+    auto idx = shape->find(atom);
+    if (idx < shape->size()) {
+      properties[idx].value = value;
       return true;
     }
     if (!extensible)
@@ -65,9 +64,9 @@ bool Object::set_own(Runtime *rt, Atom atom, Value value, int flags) {
 bool Object::define_own(Runtime *rt, Atom atom, Value value, int flags) {
   if (!shape)
     return false;
-  int idx = shape->find(atom);
-  if (idx >= 0) {
-    properties[static_cast<size_t>(idx)].value = value;
+  auto idx = shape->find(atom);
+  if (idx < shape->size()) {
+    properties[idx].value = value;
     return true;
   }
   return set_own(rt, atom, value, flags);
@@ -75,26 +74,18 @@ bool Object::define_own(Runtime *rt, Atom atom, Value value, int flags) {
 
 void Object::destroy(Runtime *rt) {
   rt->remove_gc_object(this);
-  if (proto && proto->unref())
-    proto->destroy(rt);
-  if (class_id == static_cast<uint16_t>(ClassID::bytecode_function)) {
-    if (var_refs) {
-      for (int i = 0; i < var_ref_count; i++) {
-        if (var_refs[i])
-          var_refs[i]->unref();
-      }
-      delete[] var_refs;
-      var_refs = nullptr;
-    }
-  }
+  var_refs.clear();
   delete this;
 }
 
 void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   is_marked = true;
-  if (proto && !proto->is_marked) {
-    proto->is_marked = true;
-    worklist.push_back(proto);
+  if (proto.is_object()) {
+    auto *p = proto.as<Object>();
+    if (p && !p->is_marked) {
+      p->is_marked = true;
+      worklist.push_back(p);
+    }
   }
   for (auto &p : properties) {
     if (p.value.is_object()) {
@@ -159,8 +150,8 @@ static Value builtin_print(Context * /*ctx*/, Value /*this_val*/, int argc, cons
 }
 
 void setup_global(Context *ctx, Object *global) {
-  auto *fn = Object::make_cfunc(ctx, builtin_print, "print", 0);
-  global->set_own(ctx->rt, ctx->rt->intern(String::create("print")), Value::object(fn));
+  auto fn = Object::make_cfunc(ctx, builtin_print, "print", 0);
+  global->set_own(ctx->rt, ctx->rt->intern("print"), fn);
 }
 
 } // namespace qjsp

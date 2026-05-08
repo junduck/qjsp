@@ -18,10 +18,10 @@ struct VarRef : RefCounted {
   // ── creation ──────────────────────────────────────────────────────────
 
   // Create attached VarRef whose pvalue points at *slot.
-  static VarRef *create(Value *slot);
+  static Value create(Value &slot);
 
   // Create detached VarRef initialised to v.
-  static VarRef *create_detached(Value v);
+  static Value create_detached(Value v);
 
   // ── access ────────────────────────────────────────────────────────────
 
@@ -31,11 +31,14 @@ struct VarRef : RefCounted {
   // ── lifecycle ─────────────────────────────────────────────────────────
 
   // Detach: copy *pvalue into internal value_, repoint pvalue.
-  void close();
+  void close() {
+    if (!is_detached()) {
+      value_ = *pvalue;
+      pvalue = &value_;
+    }
+  }
 
-  // ── query ─────────────────────────────────────────────────────────────
-
-  bool is_detached_ = false;
+  bool is_detached() const { return pvalue == &value_; }
 
   // ── fields ────────────────────────────────────────────────────────────
 

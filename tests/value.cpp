@@ -1,5 +1,8 @@
 #include "qjsp/value.hpp"
+#include "qjsp/runtime.hpp"
+#include "qjsp/atom.hpp"
 #include <gtest/gtest.h>
+#include <memory>
 
 using namespace qjsp;
 
@@ -33,13 +36,10 @@ TEST(ValueSymbol, RoundTrip) {
 }
 
 TEST(ValueSymbol, DistinctFromString) {
-  // Symbol(1) should not be confused with String
   Value sym  = Value::symbol_from_atom(1);
   Value str  = Value::string(nullptr);
-  Value null = Value::null_();
   EXPECT_FALSE(sym.is_string());
   EXPECT_TRUE(sym.is_symbol());
-  // null pointer string should not match symbol
   EXPECT_FALSE(str.is_symbol());
 }
 
@@ -55,4 +55,19 @@ TEST(ValueSymbol, DifferentAtomsAreDistinct) {
   EXPECT_NE(a.data, b.data);
   EXPECT_EQ(a.as_symbol(), static_cast<Atom>(1));
   EXPECT_EQ(b.as_symbol(), static_cast<Atom>(2));
+}
+
+TEST(ValueSymbol, CreateSymbolUnique) {
+  auto rt = std::make_unique<Runtime>();
+  Atom a  = rt->create_symbol("x");
+  Atom b  = rt->create_symbol("x");
+  EXPECT_NE(a, b);
+  EXPECT_EQ(rt->atom_type(a), AtomType::symbol);
+  EXPECT_EQ(rt->atom_type(b), AtomType::symbol);
+}
+
+TEST(ValueSymbol, PredefSymbolIsAtom) {
+  auto rt = std::make_unique<Runtime>();
+  Atom si = static_cast<Atom>(AtomEnum::Symbol_iterator);
+  EXPECT_EQ(rt->atom_type(si), AtomType::symbol);
 }

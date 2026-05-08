@@ -733,10 +733,10 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
 
   buf_ptr = p;
 
-  auto *str = String::create(ident_buf);
+  auto *str = String::allocate_raw(ident_buf);
   if (!str)
     return false;
-  Atom atom                 = rt->intern(str);
+  Atom atom                 = rt->intern_copy(str);
   token.u.ident.atom        = atom;
   token.u.ident.has_escape  = has_escape;
   token.u.ident.is_reserved = false;
@@ -781,10 +781,10 @@ bool Lexer::parse_private_name() {
   }
 
   buf_ptr   = p;
-  auto *str = String::create(ident_buf);
+  auto *str = String::allocate_raw(ident_buf);
   if (!str)
     return false;
-  Atom atom                 = rt->intern(str);
+  Atom atom                 = rt->intern_copy(str);
   token.u.ident.atom        = atom;
   token.u.ident.has_escape  = false;
   token.u.ident.is_reserved = false;

@@ -2,11 +2,13 @@
 
 #include "atom.hpp"
 #include "gc.hpp"
+#include "string.hpp"
 #include "value.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <unordered_map>
+#include <memory>
 #include <vector>
 
 namespace qjsp {
@@ -63,6 +65,7 @@ struct Runtime {
   const char *rt_info = nullptr;
 
   std::vector<String *> atom_table;
+  std::vector<AtomType> atom_types_;
   std::unordered_map<std::string_view, Atom, StringHash, std::equal_to<>> atom_map;
 
   std::vector<Class> classes;
@@ -123,8 +126,11 @@ struct Runtime {
 
   static constexpr size_t kDefaultStackSize = 1024 * 1024;
 
-  static Runtime *create();
-  void destroy();
+  Runtime();
+  ~Runtime();
+
+  bool init_atoms();
+  bool init_class_table();
 
   void add_gc_object(GCObjectHeader *obj) { gc_objects.push_back(obj); }
   void remove_gc_object(GCObjectHeader *obj) {
@@ -139,13 +145,18 @@ struct Runtime {
   void maybe_trigger_gc(size_t size_hint = 0);
 
   Atom intern(std::string_view sv);
-  Atom intern(String *s);
-  String *atom_to_string(Atom a) const;
-
-private:
-  Runtime() = default;
-  bool init_atoms();
-  bool init_class_table();
+  Atom intern_copy(String *s);  // takes ownership of s, stores in atom_table
+  Value atom_to_value(Atom a) const;
+  std::string_view atom_view(Atom a) const {
+    if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))
+      return {};
+    auto *s = atom_table[a];
+    return s ? s->view() : std::string_view{};
+  }
+  AtomType atom_type(Atom a) const {
+    return (a < static_cast<Atom>(atom_types_.size())) ? atom_types_[a] : AtomType::string;
+  }
+  Atom create_symbol(std::string_view desc = {});
 };
 
 } // namespace qjsp

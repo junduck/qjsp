@@ -6,44 +6,43 @@
 #include "qjsp/shape.hpp"
 #include "qjsp/string.hpp"
 #include "qjsp/varref.hpp"
+#include <algorithm>
 
 namespace qjsp {
 
-Runtime *Runtime::create() {
-  auto *rt = new Runtime();
-  if (!rt->init_atoms())
-    goto fail;
-  if (!rt->init_class_table())
-    goto fail;
-  return rt;
-fail:
-  rt->destroy();
-  return nullptr;
+Runtime::Runtime() {
+  init_atoms();
+  init_class_table();
 }
 
-void Runtime::destroy() {
+Runtime::~Runtime() {
   for (auto *s : atom_table) {
     if (s)
       s->unref();
   }
   for (auto &[_, s] : shape_cache)
     delete s;
-  delete this;
 }
 
 bool Runtime::init_atoms() {
   atom_table.reserve(static_cast<size_t>(AtomEnum::end));
   atom_table.push_back(nullptr);
+  atom_types_.push_back(AtomType::string);
 
   // Predefined atoms: index 0 is null placeholder, start from 1
   for (size_t i = 1; i < std::size(kAtomNames); ++i) {
-    auto sv = kAtomNames[i];
-    auto *s = String::create(sv);
+    auto sv  = kAtomNames[i];
+    auto *s  = String::allocate_raw(sv);
+    auto type = atom_type_for(static_cast<AtomEnum>(i));
     if (!s)
       return false;
     s->set_interned();
     atom_table.push_back(s);
-    atom_map.emplace(s->view(), static_cast<Atom>(i));
+    atom_types_.push_back(type);
+    // Only string atoms go into the lookup map.
+    // Symbol atoms are identified by their index only.
+    if (type == AtomType::string)
+      atom_map.emplace(s->view(), static_cast<Atom>(i));
   }
   return true;
 }
@@ -52,41 +51,47 @@ Atom Runtime::intern(std::string_view sv) {
   auto it = atom_map.find(sv);
   if (it != atom_map.end())
     return it->second;
-  // add new interned string
-  auto s = String::create(sv);
+  auto *s = String::allocate_raw(sv);
   s->set_interned();
   auto idx = static_cast<Atom>(atom_table.size());
   atom_table.push_back(s);
-  atom_map.emplace(s->view(), idx); // should use the new mem
-  return idx;
-}
-
-Atom Runtime::intern(String *s) {
-  if (!s)
-    return kAtomNull;
-  if (s->is_interned()) {
-    for (Atom i = 1; i < static_cast<Atom>(atom_table.size()); ++i)
-      if (atom_table[i] == s)
-        return i;
-    return kAtomNull;
-  }
-  auto it = atom_map.find(s->view());
-  if (it != atom_map.end())
-    return it->second;
-  s->set_interned();
-  s->ref(); // copying to table
-  Atom idx = static_cast<Atom>(atom_table.size());
-  atom_table.push_back(s);
+  atom_types_.push_back(AtomType::string);
   atom_map.emplace(s->view(), idx);
   return idx;
 }
 
-String *Runtime::atom_to_string(Atom a) const {
+Atom Runtime::intern_copy(String *s) {
+  if (!s)
+    return kAtomNull;
+  auto it = atom_map.find(s->view());
+  if (it != atom_map.end()) {
+    s->unref(); // already interned — free the duplicate
+    return it->second;
+  }
+  s->set_interned();
+  auto idx = static_cast<Atom>(atom_table.size());
+  atom_table.push_back(s);
+  atom_types_.push_back(AtomType::string);
+  atom_map.emplace(s->view(), idx);
+  return idx;
+}
+
+Atom Runtime::create_symbol(std::string_view desc) {
+  Atom idx = static_cast<Atom>(atom_table.size());
+  auto *s  = !desc.empty() ? String::allocate_raw(desc) : nullptr;
+  atom_table.push_back(s);
+  atom_types_.push_back(AtomType::symbol);
+  return idx;
+}
+
+Value Runtime::atom_to_value(Atom a) const {
   if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))
-    return nullptr;
-  auto s = atom_table[a];
-  s->ref();
-  return s;
+    return Value::undefined_();
+  auto *s = atom_table[a];
+  if (!s)
+    return Value::undefined_();
+  s->ref(); // Value will own its own ref; atom_table keeps its ref
+  return Value::string(s);
 }
 
 bool Runtime::init_class_table() {
@@ -104,10 +109,13 @@ Shape *Runtime::add_shape(Shape *from, Atom atom, int flags) {
   if (it != shape_cache.end())
     return it->second;
 
-  auto *s = new Shape();
-  if (from)
-    s->entries = from->entries;
-  s->entries.push_back({atom, flags});
+  auto *s  = new Shape();
+  auto cnt = from ? from->prop_count : uint32_t{0};
+  s->prop_count = cnt + 1;
+  s->entries    = std::make_unique<ShapeProperty[]>(s->prop_count);
+  if (from && cnt > 0)
+    std::copy(from->entries.get(), from->entries.get() + cnt, s->entries.get());
+  s->entries[cnt] = {atom, flags};
   shape_cache.emplace(key, s);
   return s;
 }
@@ -135,16 +143,7 @@ static void gc_free_object(GCObjectHeader *p) {
   switch (p->gc_obj_type) {
   case GCObjType::js_object: {
     auto *obj = static_cast<Object *>(p);
-    if (obj->class_id == static_cast<uint16_t>(ClassID::bytecode_function)) {
-      if (obj->var_refs) {
-        for (int i = 0; i < obj->var_ref_count; i++) {
-          if (obj->var_refs[i])
-            obj->var_refs[i]->unref();
-        }
-        delete[] obj->var_refs;
-        obj->var_refs = nullptr;
-      }
-    }
+    obj->var_refs.clear();
     delete obj;
     break;
   }
@@ -152,12 +151,7 @@ static void gc_free_object(GCObjectHeader *p) {
     delete static_cast<Context *>(p);
     break;
   case GCObjType::function_bytecode: {
-    auto *b = static_cast<FunctionBytecode *>(p);
-    delete[] b->byte_code_buf;
-    delete[] b->cpool;
-    delete[] b->vardefs;
-    delete[] b->closure_var;
-    delete b;
+    delete static_cast<FunctionBytecode *>(p);
     break;
   }
   default:

@@ -6,26 +6,20 @@
 
 namespace qjsp {
 
-Context *Context::create(Runtime *rt) {
+Context::Context(Runtime *rt) : rt(rt) {
   rt->maybe_trigger_gc(sizeof(Context));
-  auto *ctx = new Context();
-  if (!ctx)
-    return nullptr;
-
-  ctx->ref_count   = 1;
-  ctx->gc_obj_type = GCObjType::js_context;
-  ctx->is_marked   = false;
-  rt->add_gc_object(ctx);
-
-  ctx->rt = rt;
+  ref_count   = 1;
+  gc_obj_type = GCObjType::js_context;
+  is_marked   = false;
+  rt->add_gc_object(this);
 
   int count = static_cast<int>(rt->classes.size());
-  ctx->class_protos.resize(static_cast<size_t>(count));
+  class_protos.resize(static_cast<size_t>(count));
   for (int i = 0; i < count; ++i)
-    ctx->class_protos[static_cast<size_t>(i)] = Value::null_();
+    class_protos[static_cast<size_t>(i)] = Value::null_();
 
   for (int i = 0; i < static_cast<int>(ErrorEnum::native_error_count); ++i)
-    ctx->native_error_proto[i] = Value::undefined_();
+    native_error_proto[i] = Value::undefined_();
 
   for (int i = static_cast<int>(ClassID::object); i < count; ++i) {
     constexpr int kClassBase = static_cast<int>(AtomEnum::Object);
@@ -34,17 +28,14 @@ Context *Context::create(Runtime *rt) {
       rt->classes[static_cast<size_t>(i)].class_name = static_cast<Atom>(atom_idx);
   }
 
-  auto *global    = Object::create(rt, nullptr, static_cast<int>(ClassID::global_object));
-  ctx->global_obj = Value::object(global);
-  setup_global(ctx, global);
-
-  return ctx;
+  auto global     = Object::create(rt, Value::undefined_(), static_cast<int>(ClassID::global_object));
+  global_obj = global;
+  setup_global(this, global.as<Object>());
 }
 
-void Context::destroy() {
+Context::~Context() {
   if (rt)
     rt->remove_gc_object(this);
-  delete this;
 }
 
 void Context::gc_mark(std::vector<GCObjectHeader *> &worklist) {
