@@ -24,7 +24,7 @@ fail:
 void Runtime::destroy() {
   for (auto *s : atom_table) {
     if (s)
-      s->free();
+      s->unref();
   }
   for (auto &[_, s] : shape_cache)
     delete s;
@@ -35,14 +35,15 @@ bool Runtime::init_atoms() {
   atom_table.reserve(static_cast<size_t>(AtomEnum::end));
   atom_table.push_back(nullptr);
 
-  for (int i = 0; i < static_cast<int>(std::size(kAtomNames)); ++i) {
+  // Predefined atoms: index 0 is null placeholder, start from 1
+  for (size_t i = 1; i < std::size(kAtomNames); ++i) {
     auto sv = kAtomNames[i];
     auto *s = String::create(sv);
     if (!s)
       return false;
-    s->set_atom(static_cast<uint8_t>(atom_type_for(static_cast<AtomEnum>(i + 1))));
+    s->set_interned();
     atom_table.push_back(s);
-    atom_map.emplace(std::string{s->data, s->len()}, static_cast<Atom>(atom_table.size() - 1));
+    atom_map.emplace(s->view(), static_cast<Atom>(i));
   }
   return true;
 }
@@ -50,32 +51,35 @@ bool Runtime::init_atoms() {
 Atom Runtime::intern(String *s) {
   if (!s)
     return kAtomNull;
-  if (s->atom() != 0) {
+  if (s->is_interned()) {
     for (Atom i = 1; i < static_cast<Atom>(atom_table.size()); ++i)
       if (atom_table[i] == s)
         return i;
     return kAtomNull;
   }
-  auto it = atom_map.find(std::string_view{s->data, s->len()});
+  auto it = atom_map.find(s->view());
   if (it != atom_map.end())
     return it->second;
-  s->set_atom(static_cast<uint8_t>(AtomType::string));
+  s->set_interned();
+  s->ref(); // copying to table
   Atom idx = static_cast<Atom>(atom_table.size());
   atom_table.push_back(s);
-  atom_map.emplace(std::string{s->data, s->len()}, idx);
+  atom_map.emplace(s->view(), idx);
   return idx;
 }
 
 String *Runtime::atom_to_string(Atom a) const {
   if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))
     return nullptr;
-  return atom_table[a];
+  auto s = atom_table[a];
+  s->ref();
+  return s;
 }
 
 bool Runtime::init_class_table() {
   classes.resize(static_cast<size_t>(ClassID::init_count));
   for (int i = static_cast<int>(ClassID::object); i < static_cast<int>(ClassID::init_count); ++i) {
-    classes[static_cast<size_t>(i)].class_id = static_cast<uint32_t>(i);
+    classes[static_cast<size_t>(i)].class_id   = static_cast<uint32_t>(i);
     classes[static_cast<size_t>(i)].class_name = kAtomNull;
   }
   return true;
@@ -154,8 +158,8 @@ void Runtime::run_gc() {
     }
   }
 
-  gc_phase = GCPhase::none;
-  gc_alloc_count = 0;
+  gc_phase            = GCPhase::none;
+  gc_alloc_count      = 0;
   malloc_gc_threshold = malloc_gc_threshold > 0 ? malloc_gc_threshold + (malloc_gc_threshold >> 1) : 1024;
 }
 

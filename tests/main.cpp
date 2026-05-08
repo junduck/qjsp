@@ -1,19 +1,17 @@
+#include "qjsp/context.hpp"
+#include "qjsp/lexer.hpp"
+#include "qjsp/object.hpp"
+#include "qjsp/reg_interpreter.hpp"
+#include "qjsp/reg_parser.hpp"
+#include "qjsp/runtime.hpp"
+#include "qjsp/string.hpp"
+#include "qjsp/value.hpp"
 #include <cstring>
 #include <gtest/gtest.h>
-#include "qjsp/value.hpp"
-#include "qjsp/runtime.hpp"
-#include "qjsp/context.hpp"
-#include "qjsp/string.hpp"
-#include "qjsp/object.hpp"
-#include "qjsp/lexer.hpp"
-#include "qjsp/reg_parser.hpp"
-#include "qjsp/reg_interpreter.hpp"
 
 using namespace qjsp;
 
-TEST(ValueBasics, Int32RoundTrip) {
-  EXPECT_EQ(Value::int32(42).as_int32(), 42);
-}
+TEST(ValueBasics, Int32RoundTrip) { EXPECT_EQ(Value::int32(42).as_int32(), 42); }
 
 TEST(ValueBasics, NullAndUndefined) {
   EXPECT_TRUE(kNull.is_null());
@@ -25,97 +23,100 @@ TEST(ValueBasics, BoolRoundTrip) {
   EXPECT_FALSE(Value::bool_(false).as_bool());
 }
 
-TEST(ValueBasics, Float64RoundTrip) {
-  EXPECT_DOUBLE_EQ(Value::float64(3.14).as_double(), 3.14);
-}
+TEST(ValueBasics, Float64RoundTrip) { EXPECT_DOUBLE_EQ(Value::float64(3.14).as_double(), 3.14); }
 
 TEST(RuntimeContext, CreateAndDestroy) {
-  auto* rt = Runtime::create();
-  auto* ctx = Context::create(rt);
+  auto *rt  = Runtime::create();
+  auto *ctx = Context::create(rt);
   ctx->destroy();
   rt->destroy();
 }
 
 TEST(StringOps, CreateAndCmp) {
-  auto* a = String::create("abc");
-  auto* b = String::create("abd");
+  auto *a = String::create("abc");
+  auto *b = String::create("abd");
   EXPECT_LT(String::compare(a, b), 0);
   EXPECT_EQ(a->view(), "abc");
-  a->free(); b->free();
+  a->unref();
+  b->unref();
 }
 
 TEST(AtomIntern, Predefined) {
-  auto* rt = Runtime::create();
+  auto *rt = Runtime::create();
   EXPECT_EQ(rt->atom_to_string(static_cast<Atom>(AtomEnum::Object))->view(), "Object");
   rt->destroy();
 }
 
 TEST(AtomIntern, Dynamic) {
-  auto* rt = Runtime::create();
-  auto* s = String::create("myKey");
-  Atom a = rt->intern(s);
+  auto *rt = Runtime::create();
+  auto *s  = String::create("myKey");
+  Atom a   = rt->intern(s);
   EXPECT_NE(a, kAtomNull);
   EXPECT_EQ(rt->atom_to_string(a), s);
   rt->destroy();
 }
 
 struct ObjFixture : testing::Test {
-  Runtime* rt = Runtime::create();
-  Context* ctx = Context::create(rt);
-  ~ObjFixture() override { ctx->destroy(); rt->destroy(); }
-  Atom atom(const char* s) { return rt->intern(String::create(s)); }
+  Runtime *rt  = Runtime::create();
+  Context *ctx = Context::create(rt);
+  ~ObjFixture() override {
+    ctx->destroy();
+    rt->destroy();
+  }
+  Atom atom(const char *s) { return rt->intern(String::create(s)); }
 };
 
 TEST_F(ObjFixture, CreateEmpty) {
-  auto* obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto *obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
   EXPECT_EQ(obj->shape, nullptr);
   obj->destroy(rt);
 }
 
 TEST_F(ObjFixture, SetAndGet) {
-  auto* obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto *obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
   obj->set_own(rt, atom("x"), Value::int32(100));
   EXPECT_EQ(obj->get_own(atom("x")).as_int32(), 100);
   obj->destroy(rt);
 }
 
 TEST_F(ObjFixture, PrototypeChain) {
-  auto* proto = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto *proto = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
   proto->set_own(rt, atom("a"), Value::int32(999));
-  auto* child = Object::create(rt, proto, static_cast<int>(ClassID::object));
+  auto *child = Object::create(rt, proto, static_cast<int>(ClassID::object));
   EXPECT_EQ(child->get(atom("a")).as_int32(), 999);
-  child->destroy(rt); proto->destroy(rt);
+  child->destroy(rt);
+  proto->destroy(rt);
 }
 
 TEST_F(ObjFixture, ShapeReuse) {
-  auto* a = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
-  auto* b = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto *a = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto *b = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
   a->set_own(rt, atom("x"), Value::int32(1));
   b->set_own(rt, atom("x"), Value::int32(2));
   EXPECT_EQ(a->shape, b->shape);
-  a->destroy(rt); b->destroy(rt);
+  a->destroy(rt);
+  b->destroy(rt);
 }
 
 TEST_F(ObjFixture, NonExtensible) {
-  auto* obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto *obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
   obj->set_own(rt, atom("a"), Value::int32(1));
   obj->extensible = false;
   EXPECT_FALSE(obj->set_own(rt, atom("b"), Value::int32(2)));
   obj->destroy(rt);
 }
 
-static Value test_add(Context*, Value, int argc, const Value* argv) {
+static Value test_add(Context *, Value, int argc, const Value *argv) {
   int sum = 0;
-  for (int i = 0; i < argc; ++i) sum += argv[i].as_int32();
+  for (int i = 0; i < argc; ++i)
+    sum += argv[i].as_int32();
   return Value::int32(sum);
 }
 
-static Value test_identity(Context*, Value, int argc, const Value* argv) {
-  return argc > 0 ? argv[0] : kUndefined;
-}
+static Value test_identity(Context *, Value, int argc, const Value *argv) { return argc > 0 ? argv[0] : kUndefined; }
 
 TEST_F(ObjFixture, MakeCFunc) {
-  auto* fn = Object::make_cfunc(ctx, test_add, "add", 2);
+  auto *fn = Object::make_cfunc(ctx, test_add, "add", 2);
   EXPECT_EQ(fn->class_id, static_cast<uint16_t>(ClassID::c_function));
   EXPECT_NE(fn->u.cfunc.fn, nullptr);
   EXPECT_EQ(fn->get_own(atom("length")).as_int32(), 2);
@@ -123,47 +124,48 @@ TEST_F(ObjFixture, MakeCFunc) {
 }
 
 TEST_F(ObjFixture, CallCFunc) {
-  auto* fn = Object::make_cfunc(ctx, test_add, "add", 2);
+  auto *fn           = Object::make_cfunc(ctx, test_add, "add", 2);
   const Value args[] = {Value::int32(3), Value::int32(4)};
   EXPECT_EQ(call(ctx, Value::object(fn), kUndefined, 2, args).as_int32(), 7);
   fn->destroy(rt);
 }
 
 TEST_F(ObjFixture, CallIdentity) {
-  auto* fn = Object::make_cfunc(ctx, test_identity, "id", 1);
-  auto* s = String::create("hello");
+  auto *fn           = Object::make_cfunc(ctx, test_identity, "id", 1);
+  auto *s            = String::create("hello");
   const Value args[] = {Value::string(s)};
-  Value result = call(ctx, Value::object(fn), kUndefined, 1, args);
+  Value result       = call(ctx, Value::object(fn), kUndefined, 1, args);
   EXPECT_TRUE(result.is_string());
   EXPECT_EQ(result.as<String>()->view(), "hello");
   fn->destroy(rt);
 }
 
 TEST_F(ObjFixture, GlobalObjectExists) {
-  auto* global = ctx->global_obj.as<Object>();
+  auto *global = ctx->global_obj.as<Object>();
   ASSERT_NE(global, nullptr);
   EXPECT_EQ(global->class_id, static_cast<uint16_t>(ClassID::global_object));
 }
 
 TEST_F(ObjFixture, PrintIsDefined) {
-  auto* global = ctx->global_obj.as<Object>();
+  auto *global = ctx->global_obj.as<Object>();
   EXPECT_TRUE(global->get_own(atom("print")).is_object());
 }
 
 TEST_F(ObjFixture, GcCollectsUnreachable) {
-  auto* obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto *obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
   obj->destroy(rt);
   rt->run_gc();
   bool found_context = false;
-  for (auto* hdr : rt->gc_objects)
-    if (hdr->gc_obj_type == GCObjType::js_context) found_context = true;
+  for (auto *hdr : rt->gc_objects)
+    if (hdr->gc_obj_type == GCObjType::js_context)
+      found_context = true;
   EXPECT_TRUE(found_context);
 }
 
 TEST_F(ObjFixture, GcPreservesReachable) {
-  auto* global = ctx->global_obj.as<Object>();
-  auto* obj = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
-  auto key = atom("keepme");
+  auto *global = ctx->global_obj.as<Object>();
+  auto *obj    = Object::create(rt, nullptr, static_cast<int>(ClassID::object));
+  auto key     = atom("keepme");
   global->set_own(rt, key, Value::object(obj));
   rt->run_gc();
   EXPECT_TRUE(global->get_own(key).is_object());
@@ -175,13 +177,10 @@ TEST_F(ObjFixture, GcPreservesReachable) {
 // ─── Lexer ──────────────────────────────────────────────────────────────────
 
 struct LexerFixture : testing::Test {
-  Runtime* rt = Runtime::create();
+  Runtime *rt = Runtime::create();
   Lexer lexer;
 
-  void init_lexer(const char* source) {
-    lexer.init(rt, "test.js",
-               reinterpret_cast<const uint8_t*>(source), std::strlen(source));
-  }
+  void init_lexer(const char *source) { lexer.init(rt, "test.js", reinterpret_cast<const uint8_t *>(source), std::strlen(source)); }
 
   ~LexerFixture() override { rt->destroy(); }
 };
@@ -223,11 +222,16 @@ TEST_F(LexerFixture, Identifiers) {
 
 TEST_F(LexerFixture, Keywords) {
   init_lexer("if else return var function");
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_IF);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_ELSE);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_RETURN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_VAR);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_FUNCTION);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_IF);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_ELSE);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_RETURN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_VAR);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_FUNCTION);
 }
 
 TEST_F(LexerFixture, StringLiterals) {
@@ -265,23 +269,40 @@ TEST_F(LexerFixture, Numbers) {
 
 TEST_F(LexerFixture, Operators) {
   init_lexer("+ - * / % == === != !== < > <= >= && || ?? ?.");
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '+');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '-');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '*');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '/');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '%');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_EQ);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_STRICT_EQ);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_NEQ);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_STRICT_NEQ);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '<');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '>');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_LTE);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_GTE);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_LAND);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_LOR);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_DOUBLE_QUESTION_MARK);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_QUESTION_MARK_DOT);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '+');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '-');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '*');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '/');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '%');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_EQ);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_STRICT_EQ);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_NEQ);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_STRICT_NEQ);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '<');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '>');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_LTE);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_GTE);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_LAND);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_LOR);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_DOUBLE_QUESTION_MARK);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_QUESTION_MARK_DOT);
 }
 
 TEST_F(LexerFixture, ArrowAndEllipsis) {
@@ -294,29 +315,48 @@ TEST_F(LexerFixture, ArrowAndEllipsis) {
 
 TEST_F(LexerFixture, AssignmentOperators) {
   init_lexer("= += -= *= /= %= <<= >>= >>>= &= |= ^= &&= ||= ??= **= **");
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, '=');
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_PLUS_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_MINUS_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_MUL_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_DIV_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_MOD_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_SHL_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_SAR_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_SHR_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_AND_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_OR_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_XOR_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_LAND_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_LOR_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_DOUBLE_QUESTION_MARK_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_POW_ASSIGN);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_POW);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, '=');
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_PLUS_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_MINUS_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_MUL_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_DIV_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_MOD_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_SHL_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_SAR_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_SHR_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_AND_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_OR_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_XOR_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_LAND_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_LOR_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_DOUBLE_QUESTION_MARK_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_POW_ASSIGN);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_POW);
 }
 
 TEST_F(LexerFixture, IncrementDecrement) {
   init_lexer("++ --");
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_INC);
-  EXPECT_TRUE(lexer.next_token()); EXPECT_EQ(lexer.token.type, TOK_DEC);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_INC);
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.type, TOK_DEC);
 }
 
 TEST_F(LexerFixture, TemplateLiteral) {
@@ -367,94 +407,66 @@ TEST_F(LexerFixture, LookaheadArrow) {
 // ─── Reg Parser ─────────────────────────────────────────────────────────────
 
 struct RegParserFixture : testing::Test {
-  Runtime* rt = Runtime::create();
-  Context* ctx = Context::create(rt);
+  Runtime *rt  = Runtime::create();
+  Context *ctx = Context::create(rt);
   RegParseState ps{rt, ctx};
 
-  bool compile(const char* source) {
+  bool compile(const char *source) {
     ps.init(source, "test.js");
     return ps.compile();
   }
 
-  ~RegParserFixture() override { ctx->destroy(); rt->destroy(); }
+  ~RegParserFixture() override {
+    ctx->destroy();
+    rt->destroy();
+  }
 };
 
-TEST_F(RegParserFixture, Empty) {
-  EXPECT_TRUE(compile(""));
-}
+TEST_F(RegParserFixture, Empty) { EXPECT_TRUE(compile("")); }
 
-TEST_F(RegParserFixture, ExpressionStatement) {
-  EXPECT_TRUE(compile("42;"));
-}
+TEST_F(RegParserFixture, ExpressionStatement) { EXPECT_TRUE(compile("42;")); }
 
-TEST_F(RegParserFixture, VarDecl) {
-  EXPECT_TRUE(compile("var x = 1;"));
-}
+TEST_F(RegParserFixture, VarDecl) { EXPECT_TRUE(compile("var x = 1;")); }
 
-TEST_F(RegParserFixture, LetDecl) {
-  EXPECT_TRUE(compile("let y = 2;"));
-}
+TEST_F(RegParserFixture, LetDecl) { EXPECT_TRUE(compile("let y = 2;")); }
 
-TEST_F(RegParserFixture, ConstDecl) {
-  EXPECT_TRUE(compile("const z = 3;"));
-}
+TEST_F(RegParserFixture, ConstDecl) { EXPECT_TRUE(compile("const z = 3;")); }
 
-TEST_F(RegParserFixture, IfStatement) {
-  EXPECT_TRUE(compile("if (true) { 42; }"));
-}
+TEST_F(RegParserFixture, IfStatement) { EXPECT_TRUE(compile("if (true) { 42; }")); }
 
-TEST_F(RegParserFixture, IfElseStatement) {
-  EXPECT_TRUE(compile("if (false) { 1; } else { 2; }"));
-}
+TEST_F(RegParserFixture, IfElseStatement) { EXPECT_TRUE(compile("if (false) { 1; } else { 2; }")); }
 
-TEST_F(RegParserFixture, ReturnStatement) {
-  EXPECT_TRUE(compile("function f() { return 42; }"));
-}
+TEST_F(RegParserFixture, ReturnStatement) { EXPECT_TRUE(compile("function f() { return 42; }")); }
 
-TEST_F(RegParserFixture, WhileLoop) {
-  EXPECT_TRUE(compile("while (true) { break; }"));
-}
+TEST_F(RegParserFixture, WhileLoop) { EXPECT_TRUE(compile("while (true) { break; }")); }
 
-TEST_F(RegParserFixture, ForLoop) {
-  EXPECT_TRUE(compile("for (var i = 0; i < 10; i = i + 1) { }"));
-}
+TEST_F(RegParserFixture, ForLoop) { EXPECT_TRUE(compile("for (var i = 0; i < 10; i = i + 1) { }")); }
 
-TEST_F(RegParserFixture, ForLoopSimple) {
-  EXPECT_TRUE(compile("for (;;) { }"));
-}
+TEST_F(RegParserFixture, ForLoopSimple) { EXPECT_TRUE(compile("for (;;) { }")); }
 
-TEST_F(RegParserFixture, ForLoopNoUpdate) {
-  EXPECT_TRUE(compile("for (var i = 0; i < 10;) { i = i + 1; }"));
-}
+TEST_F(RegParserFixture, ForLoopNoUpdate) { EXPECT_TRUE(compile("for (var i = 0; i < 10;) { i = i + 1; }")); }
 
-TEST_F(RegParserFixture, FunctionDeclaration) {
-  EXPECT_TRUE(compile("function add(a, b) { return a + b; }"));
-}
+TEST_F(RegParserFixture, FunctionDeclaration) { EXPECT_TRUE(compile("function add(a, b) { return a + b; }")); }
 
-TEST_F(RegParserFixture, MultipleStatements) {
-  EXPECT_TRUE(compile("var a = 1; var b = 2; var c = a + b;"));
-}
+TEST_F(RegParserFixture, MultipleStatements) { EXPECT_TRUE(compile("var a = 1; var b = 2; var c = a + b;")); }
 
-TEST_F(RegParserFixture, NestedBlocks) {
-  EXPECT_TRUE(compile("{ var x = 1; { var y = 2; } }"));
-}
+TEST_F(RegParserFixture, NestedBlocks) { EXPECT_TRUE(compile("{ var x = 1; { var y = 2; } }")); }
 
-TEST_F(RegParserFixture, ThrowStatement) {
-  EXPECT_TRUE(compile("throw 42;"));
-}
+TEST_F(RegParserFixture, ThrowStatement) { EXPECT_TRUE(compile("throw 42;")); }
 
 // ─── Reg Interpreter ────────────────────────────────────────────────────────
 
 struct RegInterpFixture : testing::Test {
-  Runtime* rt = Runtime::create();
-  Context* ctx = Context::create(rt);
+  Runtime *rt  = Runtime::create();
+  Context *ctx = Context::create(rt);
   RegInterpreter interp{ctx};
 
-  Value eval(const char* source) {
-    return interp.eval_source(source);
-  }
+  Value eval(const char *source) { return interp.eval_source(source); }
 
-  ~RegInterpFixture() override { ctx->destroy(); rt->destroy(); }
+  ~RegInterpFixture() override {
+    ctx->destroy();
+    rt->destroy();
+  }
 };
 
 TEST_F(RegInterpFixture, LiteralInt) {
@@ -590,7 +602,8 @@ TEST_F(RegInterpFixture, ClosureMutate) {
 }
 
 TEST_F(RegInterpFixture, ClosureMultipleCalls) {
-  Value v = eval("function makeCounter() { var n = 0; return function() { n = n + 1; return n; }; } var c = makeCounter(); var a = c(); var b = c(); a + b;");
+  Value v = eval(
+      "function makeCounter() { var n = 0; return function() { n = n + 1; return n; }; } var c = makeCounter(); var a = c(); var b = c(); a + b;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 3);
 }
@@ -655,7 +668,7 @@ TEST_F(RegInterpFixture, LabeledForContinue) {
   EXPECT_EQ(v.as_int32(), 2);
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

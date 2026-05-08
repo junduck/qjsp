@@ -6,18 +6,14 @@
 namespace qjsp {
 
 enum class AtomType : uint8_t {
-  string = 1,
+  invalid       = 0,
+  string        = 1,
   global_symbol = 2,
-  symbol = 3,
-  private_ = 4,
+  symbol        = 3,
+  private_      = 4,
 };
 
-enum class AtomKind : uint8_t { string, symbol, private_ };
-
-constexpr uint32_t kAtomHashMask = (1u << 30) - 1;
-constexpr uint32_t kAtomHashPrivate = kAtomHashMask;
-
-using Atom = uint32_t;
+using Atom               = uint32_t;
 constexpr Atom kAtomNull = 0;
 
 // ─── Atom enum (from quickjs-atom.h) ───────────────────────────────────────
@@ -267,12 +263,13 @@ enum class AtomEnum : Atom {
   end,
 };
 
-constexpr AtomEnum kAtomLastKeyword = AtomEnum::_super;
+constexpr AtomEnum kAtomLastKeyword       = AtomEnum::_super;
 constexpr AtomEnum kAtomLastStrictKeyword = AtomEnum::_yield;
 
-// ─── Atom string table (must match AtomEnum order exactly) ─────────────────
-// Index by static_cast<Atom>(AtomEnum::xxx) - 1 (since null=0 has no entry).
+// ─── Atom string table (must match AtomEnum order, index 0 = null placeholder) ──────────────────────────────────
+// Index by static_cast<Atom>(AtomEnum::xxx) — no off-by-one, null atom (0) has an entry at index 0.
 inline constexpr std::string_view kAtomNames[] = {
+    "", // 0 = kAtomNull placeholder
     "null",
     "false",
     "true",
@@ -513,17 +510,13 @@ inline constexpr std::string_view kAtomNames[] = {
     "Symbol.asyncIterator",
 };
 
-static_assert(static_cast<size_t>(AtomEnum::end) - 1 == std::size(kAtomNames), "kAtomNames must have one entry per AtomEnum (excluding null=0)");
+static_assert(static_cast<size_t>(AtomEnum::end) == std::size(kAtomNames),
+              "kAtomNames must have null at [0] + one entry per AtomEnum (total = AtomEnum::end)");
 
 /// Get the string name for a built-in atom, or empty view if out of range.
-inline constexpr std::string_view atom_name(Atom a) {
-  if (a == 0)
-    return {};
-  a -= 1;
-  return (a < std::size(kAtomNames)) ? kAtomNames[a] : std::string_view{};
-}
+inline constexpr std::string_view atom_name(Atom a) { return (a < std::size(kAtomNames)) ? kAtomNames[a] : std::string_view{}; }
 
-/// Get the AtomType for a given AtomEnum index.
+/// Get the AtomType for a given AtomEnum value (1..267).
 inline constexpr AtomType atom_type_for(AtomEnum e) {
   if (e >= AtomEnum::Symbol_toPrimitive)
     return AtomType::symbol;

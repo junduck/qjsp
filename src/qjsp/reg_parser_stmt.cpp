@@ -160,9 +160,9 @@ void RegParseState::parse_try_statement() {
 
   // Catch block
   emit_label(catch_label);
-  bool has_catch = false;
+
+  // Catch clause
   if (lexer.token.type == TOK_CATCH) {
-    has_catch = true;
     next_token();
     if (lexer.token.type == '(') {
       next_token();

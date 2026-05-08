@@ -21,21 +21,21 @@ enum class WeakRefType : uint8_t { map, weakref, finrec };
 
 struct RefCounted {
   int ref_count = 1;
-  void dup() { ++ref_count; }
-  bool free() { return --ref_count == 0; }
+  void ref() { ++ref_count; }
+  bool unref() { return --ref_count == 0; }
 };
 
 struct GCObjectHeader : RefCounted {
   GCObjType gc_obj_type = GCObjType::js_object;
-  bool is_marked = false;
+  bool is_marked        = false;
 };
 
-using GCObjList = std::vector<GCObjectHeader*>;
+using GCObjList = std::vector<GCObjectHeader *>;
 
 struct WeakRefHeader {
   WeakRefType weakref_type{};
 };
 
-using MarkFunc = void(void*, GCObjectHeader*);
+using MarkFunc = void(void *, GCObjectHeader *);
 
-}  // namespace qjsp
+} // namespace qjsp

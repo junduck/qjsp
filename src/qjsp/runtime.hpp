@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -55,7 +56,7 @@ struct Runtime {
   const char* rt_info = nullptr;
 
   std::vector<String*> atom_table;
-  std::unordered_map<std::string, Atom, StringHash, std::equal_to<>> atom_map;
+  std::unordered_map<std::string_view, Atom, StringHash, std::equal_to<>> atom_map;
 
   std::vector<Class> classes;
 
