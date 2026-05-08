@@ -138,12 +138,19 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
 void RegParseState::parse_try_statement() {
   next_token(); // skip 'try'
 
-  int catch_label = new_label();
-  int end_label = new_label();
+  int exc_reg        = 200;
+  int finalize_label = new_label(); // finally subroutine label
+  int catch_label    = new_label();
+  int after_label    = new_label();
 
-  int exc_reg = 200;
+  // Push try info (finally_label may stay unused if no finally)
+  TryInfo ti;
+  ti.exc_reg       = exc_reg;
+  ti.scope_level   = cur_func->scope_level;
+  ti.finally_label = finalize_label;
+  try_stack_.push_back(ti);
 
-  // CATCH
+  // CATCH — push catch frame
   cur_func->emit_jump(RegOp::CATCH, catch_label, static_cast<uint8_t>(exc_reg));
 
   // Parse try body
@@ -153,15 +160,19 @@ void RegParseState::parse_try_statement() {
   }
   next_token();
 
-  // Normal exit: pop catch, skip catch block, go to finally or end
+  // Normal exit
+  bool has_finally = false;
+  if (lexer.token.type == TOK_FINALLY) {
+    has_finally = true;
+    cur_func->emit_jump(RegOp::GOSUB, finalize_label, 0);
+  }
   emit_iABx(RegOp::UNCATCH, 0, 0);
-  int after_try_label = new_label();
-  emit_jump(RegOp::JMP, after_try_label, 0);
+  int skip_catch_label = new_label();
+  emit_jump(RegOp::JMP, skip_catch_label, 0);
 
   // Catch block
   emit_label(catch_label);
 
-  // Catch clause
   if (lexer.token.type == TOK_CATCH) {
     next_token();
     if (lexer.token.type == '(') {
@@ -192,23 +203,38 @@ void RegParseState::parse_try_statement() {
       next_token();
       pop_leave_scope();
     }
+    // If there's a finally after catch, emit GOSUB before UNCATCH
+    if (lexer.token.type == TOK_FINALLY) {
+      has_finally = true;
+      cur_func->emit_jump(RegOp::GOSUB, finalize_label, 0);
+    }
+  } else if (has_finally) {
+    // No catch, but has finally: call finally then re-throw
+    cur_func->emit_jump(RegOp::GOSUB, finalize_label, 0);
+    emit_iABC(RegOp::THROW, static_cast<uint8_t>(exc_reg), 0, 0);
   }
   emit_iABx(RegOp::UNCATCH, 0, 0);
 
-  // Both try (via JMP) and catch (fall through) reach this point
-  emit_label(after_try_label);
+  // Both paths converge here — skip the finally subroutine
+  emit_label(skip_catch_label);
+  emit_jump(RegOp::JMP, after_label, 0);
 
-  // Finally block — runs in both normal and exception paths
-  if (lexer.token.type == TOK_FINALLY) {
-    next_token();
+  // Pop try info
+  try_stack_.pop_back();
+
+  // Finally block — emitted as subroutine
+  if (has_finally) {
+    next_token(); // skip 'finally'
+    emit_label(finalize_label);
     expect('{');
     while (lexer.token.type != '}') {
       parse_statement_or_decl(1);
     }
     next_token();
+    emit_iABx(RegOp::RET, 0, 0);
   }
 
-  emit_label(end_label);
+  emit_label(after_label);
   cur_func->alloc.ensure_max(exc_reg + 1);
 }
 
@@ -354,6 +380,13 @@ void RegParseState::parse_if_statement() {
 
 void RegParseState::parse_return_statement() {
   next_token();
+
+  // Emit GOSUB to any active finally blocks before returning
+  for (auto &ti : try_stack_) {
+    if (ti.finally_label >= 0) {
+      cur_func->emit_jump(RegOp::GOSUB, ti.finally_label, 0);
+    }
+  }
 
   if (lexer.token.type != ';' && lexer.token.type != '}' && !lexer.got_lf) {
     RegSlot result = parse_expr();
@@ -558,11 +591,24 @@ void RegParseState::parse_break_continue(bool is_cont) {
       top = top->prev;
       continue;
     }
+
     if (is_cont && top->label_cont >= 0) {
+      // Emit GOSUB for finally blocks we're exiting (reverse: inner first)
+      for (auto it = try_stack_.rbegin(); it != try_stack_.rend(); ++it) {
+        if (it->finally_label >= 0) {
+          fd->emit_jump(RegOp::GOSUB, it->finally_label, 0);
+        }
+      }
       fd->emit_jump(RegOp::JMP, top->label_cont, 0);
       goto done;
     }
     if (!is_cont && top->label_break >= 0) {
+      // Emit GOSUB for finally blocks we're exiting (reverse: inner first)
+      for (auto it = try_stack_.rbegin(); it != try_stack_.rend(); ++it) {
+        if (it->finally_label >= 0) {
+          fd->emit_jump(RegOp::GOSUB, it->finally_label, 0);
+        }
+      }
       fd->emit_jump(RegOp::JMP, top->label_break, 0);
       goto done;
     }

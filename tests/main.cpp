@@ -655,6 +655,80 @@ TEST_F(RegInterpFixture, FinallyWithCatch) {
   EXPECT_EQ(v.as_int32(), 100);
 }
 
+TEST_F(RegInterpFixture, FinallyOnReturn) {
+  Value v = eval("function f() { try { return 1; } finally { return 2; } } f();");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
+TEST_F(RegInterpFixture, FinallyOnReturnMutates) {
+  Value v = eval(
+      "var a = 0;"
+      "function f() { try { return 5; } finally { a = 1; } }"
+      "var r = f(); a + r;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 6);
+}
+
+TEST_F(RegInterpFixture, FinallyOnBreakInFor) {
+  Value v = eval(
+      "var a = 0;"
+      "for (var i = 0; i < 10; i = i + 1) {"
+      "  try { a = i; break; } finally { a = a + 1; }"
+      "}"
+      "a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(RegInterpFixture, FinallyOnContinueInFor) {
+  Value v = eval(
+      "var a = 0;"
+      "for (var i = 0; i < 5; i = i + 1) {"
+      "  try { if (i == 2) continue; a = i; } finally { a = a + 10; }"
+      "}"
+      "a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 14);
+}
+
+TEST_F(RegInterpFixture, FinallyNoCatchRethrow) {
+  Value v = eval(
+      "var a = 0;"
+      "try { try { throw 7; } finally { a = 1; } } catch(e) { a = e; }"
+      "a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 7);
+}
+
+TEST_F(RegInterpFixture, NestedTryFinally) {
+  Value v = eval(
+      "var a = 0;"
+      "try {"
+      "  try { a = 1; } finally { a = a * 10; }"
+      "} finally {"
+      "  a = a + 1;"
+      "}"
+      "a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 11);
+}
+
+TEST_F(RegInterpFixture, FinallyOnReturnNested) {
+  Value v = eval(
+      "var a = 0;"
+      "function f() {"
+      "  try {"
+      "    try { return 1; } finally { a = a + 10; }"
+      "  } finally {"
+      "    a = a + 100;"
+      "  }"
+      "}"
+      "var r = f(); a + r;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 111);
+}
+
 // ─── Named Labels ───────────────────────────────────────────────────────────
 
 TEST_F(RegInterpFixture, LabeledBreak) {

@@ -229,6 +229,13 @@ struct RegParseState {
   Lexer lexer;
   FunctionDef *cur_func = nullptr;
 
+  struct TryInfo {
+    int finally_label = -1;
+    int exc_reg       = -1;
+    int scope_level   = -1;
+  };
+  std::vector<TryInfo> try_stack_;
+
   RegParseState(Runtime *rt_, Context *ctx_) : rt(rt_), ctx(ctx_) {}
 
   // ── init ──────────────────────────────────────────────────────────────
