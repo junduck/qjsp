@@ -802,7 +802,7 @@ FunctionDef *RegParseState::parse_function_decl(Atom name, bool is_expr, Functio
 
   // Add to parent's cpool (placeholder)
   {
-    int cpool_idx        = parent_fd->cpool_add(Value::func_bytecode(nullptr));
+    int cpool_idx        = parent_fd->cpool_add(Value::bytecode(nullptr));
     fd->parent_cpool_idx = cpool_idx;
   }
 

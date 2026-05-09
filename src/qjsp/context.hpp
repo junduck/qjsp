@@ -27,7 +27,8 @@ struct Context : GCObjectHeader {
   Shape *regexp_shape           = nullptr;
   Shape *regexp_result_shape    = nullptr;
 
-  std::vector<Value> class_protos;
+  std::unique_ptr<Value[]> class_protos;
+  uint32_t class_proto_count = 0;
 
   Value function_proto = Value::undefined_();
   Value function_ctor  = Value::undefined_();

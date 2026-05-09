@@ -9,9 +9,7 @@ enum class GCPhase : uint8_t { none, decref, remove_cycles };
 
 enum class GCObjType : uint8_t {
   js_object,
-  function_bytecode,
   shape,
-  var_ref,
   async_function,
   js_context,
   module,

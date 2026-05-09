@@ -727,8 +727,8 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 // ─── Call bytecode ──────────────────────────────────────────────────────────
 
 Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int argc, Value *argv, VarRef **upvals) {
-  int total_regs = b->reg_count > 0 ? b->reg_count : 256;
-  auto *regs     = new Value[static_cast<size_t>(total_regs)]();
+  uint32_t total_regs = b->reg_count > 0 ? static_cast<uint32_t>(b->reg_count) : uint32_t{256};
+  auto regs           = std::make_unique<Value[]>(total_regs);
 
   // R[0] = this
   regs[0] = this_obj;
@@ -746,14 +746,13 @@ Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int arg
     regs[1 + b->arg_count + i] = Value::undefined_();
 
   std::vector<VarRef *> close_list;
-  Value result = run_bytecode(b, regs, upvals, &close_list);
+  Value result = run_bytecode(b, regs.get(), upvals, &close_list);
 
   // Close (detach) all VarRefs pointing into this frame
   for (auto *vr : close_list) {
     vr->close();
   }
 
-  delete[] regs;
   return result;
 }
 

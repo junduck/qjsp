@@ -13,15 +13,16 @@ Context::Context(Runtime *rt) : rt(rt) {
   is_marked   = false;
   rt->add_gc_object(this);
 
-  int count = static_cast<int>(rt->classes.size());
-  class_protos.resize(static_cast<size_t>(count));
-  for (int i = 0; i < count; ++i)
+  uint32_t count = rt->class_count;
+  class_proto_count = count;
+  class_protos = std::make_unique<Value[]>(count);
+  for (uint32_t i = 0; i < count; ++i)
     class_protos[static_cast<size_t>(i)] = Value::null_();
 
   for (int i = 0; i < static_cast<int>(ErrorEnum::native_error_count); ++i)
     native_error_proto[i] = Value::undefined_();
 
-  for (int i = static_cast<int>(ClassID::object); i < count; ++i) {
+  for (uint32_t i = static_cast<uint32_t>(ClassID::object); i < class_proto_count; ++i) {
     constexpr int kClassBase = static_cast<int>(AtomEnum::Object);
     int atom_idx             = kClassBase + (i - static_cast<int>(ClassID::object));
     if (atom_idx < static_cast<int>(AtomEnum::end))
@@ -47,7 +48,8 @@ void Context::gc_mark(std::vector<GCObjectHeader *> &worklist) {
       worklist.push_back(obj);
     }
   }
-  for (auto &v : class_protos) {
+  for (uint32_t i = 0; i < class_proto_count; ++i) {
+    auto &v = class_protos[i];
     if (v.is_object()) {
       auto *obj = v.as<Object>();
       if (obj && !obj->is_marked) {

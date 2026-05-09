@@ -13,10 +13,8 @@ namespace qjsp {
 FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
   auto *b        = new FunctionBytecode();
   b->ref_count   = 1;
-  b->gc_obj_type = GCObjType::function_bytecode;
-  b->realm       = ctx;
 
-  ctx->rt->add_gc_object(b);
+  (void)ctx; // realm reference, not needed for RC-only bytecode
 
   // Lower child functions first
   for (auto *child : fd->children) {
@@ -25,7 +23,7 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
     // Replace the placeholder in cpool
     for (size_t i = 0; i < fd->cpool.size(); i++) {
       if (fd->cpool[i].is_func_bytecode() && fd->cpool[i].as<FunctionBytecode>() == nullptr) {
-        fd->cpool[i] = Value::func_bytecode(child_b);
+        fd->cpool[i] = Value::bytecode(child_b);
         break;
       }
     }

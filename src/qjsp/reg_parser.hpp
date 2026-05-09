@@ -41,32 +41,33 @@ struct LValue {
 // ─── RegAlloc — register allocator per function ─────────────────────────────
 
 struct RegAlloc {
-  int arg_count_ = 0;
-  int var_count_ = 0;
-  int next_temp_ = 0;
-  int max_temp_  = 0;
+  uint32_t arg_count_ = 0;
+  uint32_t var_count_ = 0;
+  uint32_t next_temp_ = 0;
+  uint32_t max_temp_  = 0;
 
   void init(int ac, int vc) {
-    arg_count_ = ac;
-    var_count_ = vc;
-    next_temp_ = 1 + ac + vc;
+    arg_count_ = static_cast<uint32_t>(ac);
+    var_count_ = static_cast<uint32_t>(vc);
+    next_temp_ = 1 + arg_count_ + var_count_;
     max_temp_  = next_temp_;
   }
 
   int this_reg() const { return 0; }
   int arg(int i) const { return 1 + i; }
-  int var(int i) const { return 1 + arg_count_ + i; }
+  int var(int i) const { return static_cast<int>(1 + arg_count_ + static_cast<uint32_t>(i)); }
   int alloc() {
-    int r = next_temp_++;
+    int r = static_cast<int>(next_temp_++);
     if (next_temp_ > max_temp_)
       max_temp_ = next_temp_;
     return r;
   }
   void free_last() { next_temp_--; }
-  int total() const { return max_temp_; }
+  uint32_t total() const { return max_temp_; }
   void ensure_max(int r) {
-    if (r > max_temp_)
-      max_temp_ = r;
+    auto ru = static_cast<uint32_t>(r);
+    if (ru > max_temp_)
+      max_temp_ = ru;
   }
 };
 
@@ -136,13 +137,13 @@ struct FunctionDef {
   // Variables
   std::vector<VarDef> vars;
   std::vector<VarDef> args;
-  int arg_count = 0;
-  int var_count = 0;
+  uint16_t arg_count = 0;
+  uint16_t var_count = 0;
 
   // Closures
   std::vector<ClosureVar> closure_var;
-  int var_ref_count = 0;
-  int next_upval    = 0; // next available upvalue index in this frame
+  uint16_t var_ref_count = 0;
+  uint16_t next_upval    = 0; // next available upvalue index in this frame
 
   // Scopes
   std::vector<VarScope> scopes;
@@ -182,6 +183,7 @@ struct FunctionDef {
   std::string source;
 
   FunctionDef(Runtime *r) : rt(r) {}
+  ~FunctionDef() { for (auto *c : children) delete c; }
 
   // ── emitter ───────────────────────────────────────────────────────────
 
