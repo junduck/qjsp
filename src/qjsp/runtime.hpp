@@ -14,7 +14,6 @@
 namespace qjsp {
 
 struct Context;
-struct StackFrame;
 struct Shape;
 struct Class;
 struct ModuleDef;
@@ -68,7 +67,8 @@ struct Runtime {
   std::vector<AtomType> atom_types_;
   std::unordered_map<std::string_view, Atom, StringHash, std::equal_to<>> atom_map;
 
-  std::vector<Class> classes;
+  std::unique_ptr<Class[]> classes;
+  uint32_t class_count = 0;
 
   GCObjList gc_objects;
   GCObjList weakrefs;
@@ -85,7 +85,6 @@ struct Runtime {
   bool current_exception_is_uncatchable = false;
   bool in_out_of_memory                 = false;
 
-  StackFrame *current_stack_frame                             = nullptr;
   InterruptHandler *interrupt_handler                         = nullptr;
   void *interrupt_opaque                                      = nullptr;
   HostPromiseRejectionTracker *host_promise_rejection_tracker = nullptr;

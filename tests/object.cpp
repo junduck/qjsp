@@ -60,21 +60,21 @@ static Value test_add(Context *, Value, int argc, const Value *argv) {
 static Value test_identity(Context *, Value, int argc, const Value *argv) { return argc > 0 ? argv[0] : Value::undefined_(); }
 
 TEST_F(ObjFixture, MakeCFunc) {
-  Value fn = Object::make_cfunc(ctx.get(), test_add, "add", 2);
-  auto *f  = fn.as<Object>();
+  Value fn = CFunctionObj::create(ctx.get(), test_add, "add", 2);
+  auto *f  = static_cast<CFunctionObj *>(fn.as<Object>());
   EXPECT_EQ(f->class_id, static_cast<uint16_t>(ClassID::c_function));
-  EXPECT_NE(f->u.cfunc.fn, nullptr);
+  EXPECT_NE(f->fn, nullptr);
   EXPECT_EQ(f->get_own(atom("length")).as_int32(), 2);
 }
 
 TEST_F(ObjFixture, CallCFunc) {
-  Value fn          = Object::make_cfunc(ctx.get(), test_add, "add", 2);
+  Value fn          = CFunctionObj::create(ctx.get(), test_add, "add", 2);
   const Value args[] = {Value::int32(3), Value::int32(4)};
   EXPECT_EQ(call(ctx.get(), fn, Value::undefined_(), 2, args).as_int32(), 7);
 }
 
 TEST_F(ObjFixture, CallIdentity) {
-  Value fn          = Object::make_cfunc(ctx.get(), test_identity, "id", 1);
+  Value fn          = CFunctionObj::create(ctx.get(), test_identity, "id", 1);
   Value s           = String::create("hello");
   const Value args[] = {s};
   Value result      = call(ctx.get(), fn, Value::undefined_(), 1, args);

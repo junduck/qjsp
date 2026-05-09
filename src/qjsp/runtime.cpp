@@ -95,10 +95,11 @@ Value Runtime::atom_to_value(Atom a) const {
 }
 
 bool Runtime::init_class_table() {
-  classes.resize(static_cast<size_t>(ClassID::init_count));
-  for (int i = static_cast<int>(ClassID::object); i < static_cast<int>(ClassID::init_count); ++i) {
-    classes[static_cast<size_t>(i)].class_id   = static_cast<uint32_t>(i);
-    classes[static_cast<size_t>(i)].class_name = kAtomNull;
+  class_count = static_cast<uint32_t>(ClassID::init_count);
+  classes     = std::make_unique<Class[]>(class_count);
+  for (uint32_t i = static_cast<uint32_t>(ClassID::object); i < class_count; ++i) {
+    classes[i].class_id   = i;
+    classes[i].class_name = kAtomNull;
   }
   return true;
 }
@@ -122,43 +123,6 @@ Shape *Runtime::add_shape(Shape *from, Atom atom, int flags) {
 
 // ─── GC ────────────────────────────────────────────────────────────────────
 
-static void mark_object(GCObjectHeader *hdr, std::vector<GCObjectHeader *> &worklist) {
-  switch (hdr->gc_obj_type) {
-  case GCObjType::js_object:
-    static_cast<Object *>(hdr)->gc_mark(worklist);
-    break;
-  case GCObjType::js_context:
-    static_cast<Context *>(hdr)->gc_mark(worklist);
-    break;
-  case GCObjType::function_bytecode:
-    static_cast<FunctionBytecode *>(hdr)->gc_mark(worklist);
-    break;
-  default:
-    hdr->is_marked = true;
-    break;
-  }
-}
-
-static void gc_free_object(GCObjectHeader *p) {
-  switch (p->gc_obj_type) {
-  case GCObjType::js_object: {
-    auto *obj = static_cast<Object *>(p);
-    obj->var_refs.clear();
-    delete obj;
-    break;
-  }
-  case GCObjType::js_context:
-    delete static_cast<Context *>(p);
-    break;
-  case GCObjType::function_bytecode: {
-    delete static_cast<FunctionBytecode *>(p);
-    break;
-  }
-  default:
-    break;
-  }
-}
-
 void Runtime::run_gc() {
   gc_phase = GCPhase::remove_cycles;
 
@@ -168,12 +132,12 @@ void Runtime::run_gc() {
   std::vector<GCObjectHeader *> mark_worklist;
   for (auto *obj : gc_objects)
     if (obj->gc_obj_type == GCObjType::js_context)
-      mark_object(obj, mark_worklist);
+      obj->gc_mark(mark_worklist);
 
   while (!mark_worklist.empty()) {
     auto *p = mark_worklist.back();
     mark_worklist.pop_back();
-    mark_object(p, mark_worklist);
+    p->gc_mark(mark_worklist);
   }
 
   // Sweep: swap-pop unmarked objects.
@@ -183,7 +147,7 @@ void Runtime::run_gc() {
     if (!p->is_marked) {
       gc_objects[i] = gc_objects.back();
       gc_objects.pop_back();
-      gc_free_object(p);
+      delete p;
     } else {
       ++i;
     }

@@ -10,7 +10,7 @@
 //! | `NAN` (quiet)     | `7FF8:0000:0000:0000`    | |
 //! | `Symbol`          | `7FF8:IIII:IIII:IIII`    | Non-zero uint payload |
 //!   ─────── pointer boundary ─────── RC (RefCounted only, no vtable)
-//! | `Generic`         | `7FF9:PPPP:PPPP:PPPP`    | Generic RC ptr, no discriminator, only used internally where type is known |
+//! | `VarRef`          | `7FF9:PPPP:PPPP:PPPP`    | |
 //! | `Bytecode`        | `7FFA:PPPP:PPPP:PPPP`    | |
 //! | `String`          | `7FFB:PPPP:PPPP:PPPP`    | |
 //! | `BigInt`          | `7FFC:PPPP:PPPP:PPPP`    | |
@@ -45,6 +45,9 @@
 
 namespace qjsp {
 
+struct VarRef;
+struct FunctionBytecode;
+
 constexpr int kTagShift         = 48;
 constexpr uint64_t kTagMask     = 0xFFFFull << kTagShift;
 constexpr uint64_t kPayloadMask = (1ull << kTagShift) - 1;
@@ -53,7 +56,7 @@ constexpr uint64_t kPayloadMask = (1ull << kTagShift) - 1;
 constexpr uint64_t kTagSymbol = 0x7FF8ull;
 
 // ─── Pointer tags ─── RC (0x7FF9–0x7FFC): RefCounted only, no vtable ──────
-constexpr uint64_t kTagGeneric  = 0x7FF9ull; // VarRef (internal)
+constexpr uint64_t kTagVarRef  = 0x7FF9ull; // VarRef (internal)
 constexpr uint64_t kTagBytecode = 0x7FFAull; // FunctionBytecode
 constexpr uint64_t kTagString   = 0x7FFBull;
 constexpr uint64_t kTagBigInt   = 0x7FFCull;
@@ -73,7 +76,7 @@ constexpr uint32_t kScalarException   = 0x0003;
 // Uninitialized uses subtype 0xFFFF with payload 0xFFFFFFFF
 
 // ─── Derived boundaries ────────────────────────────────────────────────────
-constexpr uint64_t kPtrStart  = kTagGeneric; // first pointer tag (0x7FF9)
+constexpr uint64_t kPtrStart  = kTagVarRef; // first pointer tag (0x7FF9)
 constexpr uint64_t kPtrEnd    = kTagBigInt;  // last pointer tag (0x7FFC)
 constexpr uint64_t kTaggedMin = kTagSymbol;  // smallest tag in NaN-box range (0x7FF8)
 constexpr uint64_t kTaggedMax = kTagScalar;  // largest tag overall (0x7FFF)
@@ -105,15 +108,7 @@ struct Value {
     swap(data, other.data);
   }
 
-  ~Value() {
-    if (is_pointer() && !is_null_ptr()) {
-      auto *rc = get_ref_counted();
-      rc->unref();
-      if (rc->ref_count == 0 && tag_prefix() < kTagObject) {
-        ::operator delete(as_pointer());
-      }
-    }
-  }
+  ~Value();
 
   Value ref() noexcept {
     assert(is_pointer());
@@ -156,10 +151,10 @@ struct Value {
     return Value{(kTagObject << kTagShift) | p};
   }
 
-  static Value generic(void *ptr) {
+  static Value var_ref(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
-    return Value{(kTagGeneric << kTagShift) | p};
+    return Value{(kTagVarRef << kTagShift) | p};
   }
 
   static Value string(void *ptr) {
@@ -180,9 +175,7 @@ struct Value {
     return Value{(kTagBytecode << kTagShift) | p};
   }
 
-  // ── legacy aliases (used by existing code) ───────────────────────────
-
-  static Value var_ref(void *ptr) { return generic(ptr); }
+  // ── legacy alias ─────────────────────────────────────────────────────
   static Value func_bytecode(void *ptr) { return bytecode(ptr); }
 
   // ── float64 ──────────────────────────────────────────────────────────
@@ -220,11 +213,10 @@ struct Value {
   bool is_string() const { return tag_prefix() == kTagString && !is_null_ptr(); }
   bool is_symbol() const { return tag_prefix() == kTagSymbol; }
   bool is_bigint_ptr() const { return tag_prefix() == kTagBigInt; }
-  bool is_generic() const { return tag_prefix() == kTagGeneric; }
+  bool is_var_ref() const { return tag_prefix() == kTagVarRef; }
   bool is_bytecode() const { return tag_prefix() == kTagBytecode; }
 
   // legacy
-  bool is_var_ref() const { return is_generic(); }
   bool is_func_bytecode() const { return is_bytecode(); }
 
   bool is_pointer() const {
@@ -264,7 +256,7 @@ struct Value {
     // GC-objects (0x7FFD): Object — GCObjectHeader subclass with vtable.
     if (tag_prefix() >= kTagObject)
       return static_cast<RefCounted *>(reinterpret_cast<GCObjectHeader *>(raw));
-    // RC-only (0x7FF9–0x7FFC): Generic, Bytecode, String, BigInt — no vtable.
+    // RC-only (0x7FF9–0x7FFC): VarRef, Bytecode, String, BigInt — no vtable.
     return reinterpret_cast<RefCounted *>(raw);
   }
 

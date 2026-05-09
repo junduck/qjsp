@@ -41,19 +41,19 @@ TEST_F(LexerFixture, Identifiers) {
   init_lexer("foo bar _x $y");
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_IDENT);
-  EXPECT_EQ(rt->atom_view(lexer.token.u.ident.atom), "foo");
+  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "foo");
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_IDENT);
-  EXPECT_EQ(rt->atom_view(lexer.token.u.ident.atom), "bar");
+  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "bar");
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_IDENT);
-  EXPECT_EQ(rt->atom_view(lexer.token.u.ident.atom), "_x");
+  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "_x");
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_IDENT);
-  EXPECT_EQ(rt->atom_view(lexer.token.u.ident.atom), "$y");
+  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "$y");
 }
 
 TEST_F(LexerFixture, Keywords) {
@@ -74,33 +74,33 @@ TEST_F(LexerFixture, StringLiterals) {
   init_lexer("\"hello\" 'world'");
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_STRING);
-  EXPECT_STREQ(lexer.token.u.str.str, "hello");
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "hello");
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_STRING);
-  EXPECT_STREQ(lexer.token.u.str.str, "world");
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "world");
 }
 
 TEST_F(LexerFixture, StringEscapes) {
   init_lexer("\"a\\nb\\tc\"");
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_STRING);
-  EXPECT_STREQ(lexer.token.u.str.str, "a\nb\tc");
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "a\nb\tc");
 }
 
 TEST_F(LexerFixture, Numbers) {
   init_lexer("42 3.14 0xFF");
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_NUMBER);
-  EXPECT_DOUBLE_EQ(lexer.token.u.num.val, 42.0);
+  EXPECT_DOUBLE_EQ(lexer.token.num_val, 42.0);
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_NUMBER);
-  EXPECT_DOUBLE_EQ(lexer.token.u.num.val, 3.14);
+  EXPECT_DOUBLE_EQ(lexer.token.num_val, 3.14);
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_NUMBER);
-  EXPECT_DOUBLE_EQ(lexer.token.u.num.val, 255.0);
+  EXPECT_DOUBLE_EQ(lexer.token.num_val, 255.0);
 }
 
 TEST_F(LexerFixture, Operators) {
@@ -199,8 +199,8 @@ TEST_F(LexerFixture, TemplateLiteral) {
   init_lexer("`hello`");
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.type, TOK_TEMPLATE);
-  EXPECT_STREQ(lexer.token.u.str.str, "hello");
-  EXPECT_EQ(lexer.token.u.str.sep, '`');
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "hello");
+  EXPECT_EQ(lexer.token.str_sep, '`');
 }
 
 TEST_F(LexerFixture, CommentSkip) {

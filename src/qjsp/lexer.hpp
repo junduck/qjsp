@@ -135,32 +135,24 @@ struct Token {
   int type           = TOK_EOF;
   const uint8_t *ptr = nullptr; // position in source buffer
 
-  union {
-    struct {
-      char *str;    // heap-allocated, null-terminated
-      uint32_t len; // byte length
-      int sep;      // opening quote char, or '`' / '}' for templates
-    } str;
-    struct {
-      double val;
-    } num;
-    struct {
-      Atom atom;
-      bool has_escape;
-      bool is_reserved;
-    } ident;
-    struct {
-      char *body; // heap-allocated, null-terminated
-      uint32_t body_len;
-      char *flags; // heap-allocated, null-terminated
-      uint32_t flags_len;
-    } regexp;
-  } u{};
+  // string / template literal
+  std::string str_val;
+  uint32_t str_len = 0;
+  int str_sep      = 0;
 
-  Token() { std::memset(&u, 0, sizeof(u)); }
+  // numeric
+  double num_val = 0;
 
-  /// Free any heap-allocated data owned by this token.
-  void free_token();
+  // identifier
+  Atom ident_atom     = kAtomNull;
+  bool ident_has_escape  = false;
+  bool ident_is_reserved = false;
+
+  // regexp
+  std::string regexp_body;
+  std::string regexp_flags;
+  uint32_t regexp_body_len  = 0;
+  uint32_t regexp_flags_len = 0;
 };
 
 inline bool is_keyword_token(int tok) { return is_keyword(tok); }
@@ -213,7 +205,7 @@ private:
   static uint32_t from_surrogate(uint32_t hi, uint32_t lo);
 
   /// Allocate a null-terminated copy of `buf`, store in `*dst` / `*dst_len`.
-  static void copy_str(char *&dst, uint32_t &dst_len, const std::string &buf);
+  static void copy_str(std::string &dst, uint32_t &dst_len, const std::string &buf);
 };
 
 // ─── inline constants ───────────────────────────────────────────────────────

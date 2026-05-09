@@ -33,7 +33,7 @@ RegSlot RegParseState::parse_primary() {
   }
   case TOK_NUMBER: {
     int r      = alloc_temp();
-    double val = lexer.token.u.num.val;
+    double val = lexer.token.num_val;
     int32_t iv = static_cast<int32_t>(val);
     if (val == static_cast<double>(iv) && iv >= -32768 && iv <= 32767) {
       emit_iAsBx(RegOp::LOADINT, static_cast<uint8_t>(r), static_cast<int16_t>(iv));
@@ -45,14 +45,14 @@ RegSlot RegParseState::parse_primary() {
     return {r};
   }
   case TOK_STRING: {
-    int ci  = cpool_add(String::create(std::string_view{lexer.token.u.str.str, lexer.token.u.str.len}));
+    int ci  = cpool_add(String::create(std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len}));
     int r   = alloc_temp();
     emit_iABx(RegOp::LOADK, static_cast<uint8_t>(r), static_cast<uint16_t>(ci));
     next_token();
     return {r};
   }
   case TOK_IDENT: {
-    Atom atom = lexer.token.u.ident.atom;
+    Atom atom = lexer.token.ident_atom;
     next_token();
 
     // Check all vars (any scope level — let/const are scoped)
@@ -128,7 +128,7 @@ RegSlot RegParseState::parse_object_literal() {
 
     // Property name: ident, string, number, or [
     if (lexer.token.type == TOK_IDENT || is_keyword(lexer.token.type)) {
-      name = lexer.token.u.ident.atom;
+      name = lexer.token.ident_atom;
       next_token();
       // Shorthand: { x } when no ':' follows
       if (lexer.token.type != ':' && lexer.token.type != '(') {
@@ -166,11 +166,11 @@ RegSlot RegParseState::parse_object_literal() {
         goto obj_next;
       }
     } else if (lexer.token.type == TOK_STRING) {
-      auto sv = std::string_view{lexer.token.u.str.str, lexer.token.u.str.len};
+      auto sv = std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len};
       name    = rt->intern(sv);
       next_token();
     } else if (lexer.token.type == TOK_NUMBER) {
-      double d = lexer.token.u.num.val;
+      double d = lexer.token.num_val;
       char buf[32];
       snprintf(buf, sizeof(buf), "%.15g", d);
       name    = rt->intern(buf);
@@ -308,7 +308,7 @@ RegSlot RegParseState::parse_postfix_continue(RegSlot result, int flags) {
       next_token();
       if (lexer.token.type != TOK_IDENT)
         break;
-      Atom prop = lexer.token.u.ident.atom;
+      Atom prop = lexer.token.ident_atom;
       next_token();
       int ci  = cpool_add(rt->atom_to_value(prop));
       int dst = alloc_temp();
@@ -527,7 +527,7 @@ LValue RegParseState::parse_lvalue() {
   int tok = lexer.token.type;
 
   if (tok == TOK_IDENT) {
-    Atom atom = lexer.token.u.ident.atom;
+    Atom atom = lexer.token.ident_atom;
     next_token();
 
     // Check if it's a local var
@@ -570,7 +570,7 @@ LValue RegParseState::parse_lvalue() {
 
 LValue RegParseState::parse_ident_lvalue() {
   LValue lv;
-  Atom atom = lexer.token.u.ident.atom;
+  Atom atom = lexer.token.ident_atom;
   next_token();
 
   for (int i = 0; i < cur_func->var_count; i++) {
@@ -615,7 +615,7 @@ LValue RegParseState::parse_postfix_lvalue() {
         if (lexer.token.type != TOK_IDENT) { /*error*/
           break;
         }
-        Atom prop = lexer.token.u.ident.atom;
+        Atom prop = lexer.token.ident_atom;
         next_token();
         int obj_reg = alloc_temp();
         emit_lvalue_load(lv, {obj_reg});
@@ -647,7 +647,7 @@ LValue RegParseState::parse_postfix_lvalue() {
       if (lexer.token.type != TOK_IDENT) { /*error*/
         break;
       }
-      Atom prop = lexer.token.u.ident.atom;
+      Atom prop = lexer.token.ident_atom;
       next_token();
       lv.kind = LValue::FIELD;
       lv.prop = prop;

@@ -58,7 +58,7 @@ struct Context : GCObjectHeader {
   ~Context();
 
   // ── GC ───────────────────────────────────────────────────────────────
-  void gc_mark(std::vector<GCObjectHeader *> &worklist);
+  void gc_mark(std::vector<GCObjectHeader *> &worklist) override;
 };
 
 } // namespace qjsp

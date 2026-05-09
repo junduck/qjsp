@@ -15,6 +15,17 @@
 
 namespace qjsp {
 
+// ── BytecodeFunction virtuals ──────────────────────────────────────────────
+
+Value BytecodeFunction::call(Context *ctx, Value this_val, int argc, const Value *argv) {
+  std::vector<VarRef *> upvals;
+  upvals.reserve(var_refs.size());
+  for (auto &v : var_refs)
+    upvals.push_back(v.as<VarRef>());
+  RegInterpreter interp{ctx};
+  return interp.call_bytecode(bytecode, this_val, argc, argv, upvals.data());
+}
+
 Runtime *RegInterpreter::rt() const { return ctx_->rt; }
 
 Object *RegInterpreter::global_obj() const { return ctx_->global_obj.as<Object>(); }
@@ -500,27 +511,30 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
       if (func_val.is_object()) {
         auto *obj = func_val.as<Object>();
-        if (obj->class_id == static_cast<uint16_t>(ClassID::c_function) && obj->u.cfunc.fn) {
-          regs[i.a()] = obj->u.cfunc.fn(ctx_, Value::undefined_(), argc, &regs[func_reg + 1]);
-        } else if (obj->class_id == static_cast<uint16_t>(ClassID::bytecode_function) && obj->u.opaque) {
-          auto *inner    = static_cast<FunctionBytecode *>(obj->u.opaque);
-          std::vector<VarRef *> call_upvals;
-          call_upvals.reserve(obj->var_refs.size());
-          for (auto &v : obj->var_refs)
-            call_upvals.push_back(v.as<VarRef>());
-          Value call_ret = call_bytecode(inner, Value::undefined_(), argc, &regs[func_reg + 1], call_upvals.data());
-          if (call_ret.is_exception()) {
-            if (!catch_stack_.empty() && catch_stack_.back().bytecode == b) {
-              auto cf = catch_stack_.back();
-              catch_stack_.pop_back();
-              regs[cf.exc_reg] = pending_exception_;
-              ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + cf.target_pc * 4);
-            } else {
-              return Value::exception();
+        if (obj->is_callable()) {
+          auto *callable = static_cast<Callable *>(obj);
+          if (callable->is_bytecode()) {
+            auto *bf       = static_cast<BytecodeFunction *>(callable);
+            std::vector<VarRef *> call_upvals;
+            call_upvals.reserve(bf->var_refs.size());
+            for (auto &v : bf->var_refs)
+              call_upvals.push_back(v.as<VarRef>());
+            Value call_ret = call_bytecode(bf->bytecode, Value::undefined_(), argc, &regs[func_reg + 1], call_upvals.data());
+            if (call_ret.is_exception()) {
+              if (!catch_stack_.empty() && catch_stack_.back().bytecode == b) {
+                auto cf = catch_stack_.back();
+                catch_stack_.pop_back();
+                regs[cf.exc_reg] = pending_exception_;
+                ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + cf.target_pc * 4);
+              } else {
+                return Value::exception();
+              }
+              break;
             }
-            break;
+            regs[i.a()] = call_ret;
+          } else {
+            regs[i.a()] = callable->call(ctx_, Value::undefined_(), argc, &regs[func_reg + 1]);
           }
-          regs[i.a()] = call_ret;
         } else {
           regs[i.a()] = Value::undefined_();
         }
@@ -538,8 +552,8 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
       if (func_val.is_object()) {
         auto *obj = func_val.as<Object>();
-        if (obj->class_id == static_cast<uint16_t>(ClassID::c_function) && obj->u.cfunc.fn) {
-          regs[i.a()] = obj->u.cfunc.fn(ctx_, this_val, argc - 1, &regs[func_reg + 2]);
+        if (obj->is_callable()) {
+          regs[i.a()] = static_cast<Callable *>(obj)->call(ctx_, this_val, argc - 1, &regs[func_reg + 2]);
         } else {
           regs[i.a()] = Value::undefined_();
         }
@@ -559,9 +573,8 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       int ci = i.bx();
       if (ci < b->cpool_count && b->cpool[ci].is_func_bytecode()) {
         auto *inner_bc    = b->cpool[ci].as<FunctionBytecode>();
-        auto closure      = Object::create(rt(), Value::undefined_(), static_cast<int>(ClassID::bytecode_function));
-        auto *cl          = closure.as<Object>();
-        cl->u.opaque      = inner_bc;
+        auto closure      = BytecodeFunction::create(rt(), inner_bc);
+        auto *cl          = closure.as<BytecodeFunction>();
 
         // Create VarRefs for captured variables from the current frame
         int cv_count = static_cast<int>(inner_bc->closure_var_count);
@@ -726,7 +739,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
 // ─── Call bytecode ──────────────────────────────────────────────────────────
 
-Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int argc, Value *argv, VarRef **upvals) {
+Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals) {
   uint32_t total_regs = b->reg_count > 0 ? static_cast<uint32_t>(b->reg_count) : uint32_t{256};
   auto regs           = std::make_unique<Value[]>(total_regs);
 

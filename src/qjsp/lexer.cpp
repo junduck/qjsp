@@ -7,36 +7,11 @@
 
 namespace qjsp {
 
-// ─── Token cleanup ──────────────────────────────────────────────────────────
-
-void Token::free_token() {
-  switch (type) {
-  case TOK_STRING:
-  case TOK_TEMPLATE:
-    delete[] u.str.str;
-    u.str.str = nullptr;
-    break;
-  case TOK_REGEXP:
-    delete[] u.regexp.body;
-    delete[] u.regexp.flags;
-    u.regexp.body  = nullptr;
-    u.regexp.flags = nullptr;
-    break;
-  default:
-    if (is_keyword(type)) {
-      // keyword: u.ident.atom is owned by Runtime, no free needed
-    }
-    break;
-  }
-}
-
 // ─── Character helpers ──────────────────────────────────────────────────────
 
-void Lexer::copy_str(char *&dst, uint32_t &dst_len, const std::string &buf) {
+void Lexer::copy_str(std::string &dst, uint32_t &dst_len, const std::string &buf) {
   dst_len = static_cast<uint32_t>(buf.size());
-  dst     = new char[dst_len + 1];
-  std::memcpy(dst, buf.data(), dst_len);
-  dst[dst_len] = '\0';
+  dst     = buf;
 }
 
 int Lexer::unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp) {
@@ -291,7 +266,6 @@ bool Lexer::next_token() {
   int c;
   bool ident_has_escape;
 
-  token.free_token();
 
   p = last_ptr = buf_ptr;
   got_lf       = false;
@@ -737,9 +711,9 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
   if (!str)
     return false;
   Atom atom                 = rt->intern_copy(str);
-  token.u.ident.atom        = atom;
-  token.u.ident.has_escape  = has_escape;
-  token.u.ident.is_reserved = false;
+  token.ident_atom        = atom;
+  token.ident_has_escape  = has_escape;
+  token.ident_is_reserved = false;
   token.type                = TOK_IDENT;
   update_token_ident();
   return true;
@@ -785,9 +759,9 @@ bool Lexer::parse_private_name() {
   if (!str)
     return false;
   Atom atom                 = rt->intern_copy(str);
-  token.u.ident.atom        = atom;
-  token.u.ident.has_escape  = false;
-  token.u.ident.is_reserved = false;
+  token.ident_atom        = atom;
+  token.ident_has_escape  = false;
+  token.ident_is_reserved = false;
   token.type                = TOK_PRIVATE_NAME;
   return true;
 }
@@ -795,7 +769,7 @@ bool Lexer::parse_private_name() {
 void Lexer::update_token_ident() {
   if (token.type != TOK_IDENT)
     return;
-  Atom id_atom = token.u.ident.atom;
+  Atom id_atom = token.ident_atom;
 
   bool kw = false;
   if (id_atom <= static_cast<Atom>(AtomEnum::_await)) {
@@ -808,8 +782,8 @@ void Lexer::update_token_ident() {
   }
 
   if (kw) {
-    if (token.u.ident.has_escape) {
-      token.u.ident.is_reserved = true;
+    if (token.ident_has_escape) {
+      token.ident_is_reserved = true;
     } else {
       token.type = tok_from_atom(id_atom);
     }
@@ -913,8 +887,8 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
     append_utf8(buf, c);
   }
 
-  copy_str(out->u.str.str, out->u.str.len, buf);
-  out->u.str.sep = static_cast<int>(c);
+  copy_str(out->str_val, out->str_len, buf);
+  out->str_sep = static_cast<int>(c);
   out->type      = TOK_STRING;
   *pp            = p;
   return true;
@@ -964,8 +938,8 @@ bool Lexer::parse_template_part(const uint8_t *p) {
     append_utf8(buf, c);
   }
 
-  copy_str(token.u.str.str, token.u.str.len, buf);
-  token.u.str.sep = static_cast<int>(c);
+  copy_str(token.str_val, token.str_len, buf);
+  token.str_sep = static_cast<int>(c);
   token.type      = TOK_TEMPLATE;
   buf_ptr         = p;
   return true;
@@ -1039,8 +1013,8 @@ bool Lexer::parse_regexp() {
     p = p_next;
   }
 
-  copy_str(token.u.regexp.body, token.u.regexp.body_len, body);
-  copy_str(token.u.regexp.flags, token.u.regexp.flags_len, flags);
+  copy_str(token.regexp_body, token.regexp_body_len, body);
+  copy_str(token.regexp_flags, token.regexp_flags_len, flags);
   token.type = TOK_REGEXP;
   buf_ptr    = p;
   return true;
@@ -1057,7 +1031,7 @@ bool Lexer::parse_number(const uint8_t *p) {
       double val = std::strtod(c_str, &end);
       if (end == c_str)
         return false;
-      token.u.num.val = val;
+      token.num_val = val;
       token.type      = TOK_NUMBER;
       buf_ptr         = reinterpret_cast<const uint8_t *>(end);
       return true;
@@ -1075,7 +1049,7 @@ bool Lexer::parse_number(const uint8_t *p) {
         val = val * 8 + static_cast<unsigned long long>(*p - '0');
         p++;
       }
-      token.u.num.val = static_cast<double>(val);
+      token.num_val = static_cast<double>(val);
       token.type      = TOK_NUMBER;
       buf_ptr         = p;
       return true;
@@ -1091,7 +1065,7 @@ bool Lexer::parse_number(const uint8_t *p) {
         val = val * 2 + static_cast<unsigned long long>(*p - '0');
         p++;
       }
-      token.u.num.val = static_cast<double>(val);
+      token.num_val = static_cast<double>(val);
       token.type      = TOK_NUMBER;
       buf_ptr         = p;
       return true;
@@ -1108,7 +1082,7 @@ bool Lexer::parse_number(const uint8_t *p) {
   if (val != val || lre_js_is_ident_next(nc))
     return false;
 
-  token.u.num.val = val;
+  token.num_val = val;
   token.type      = TOK_NUMBER;
   buf_ptr         = next;
   return true;

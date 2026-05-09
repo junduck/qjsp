@@ -20,15 +20,34 @@ Value Object::create(Runtime *rt, Value proto, uint16_t class_id) {
   return Value::object(obj);
 }
 
-Value Object::make_cfunc(Context *ctx, CFunction *fn, std::string_view name, int length) {
-  auto obj          = create(ctx->rt, Value::undefined_(), static_cast<int>(ClassID::c_function));
-  auto *o           = obj.as<Object>();
-  o->u.cfunc.fn     = fn;
-  o->u.cfunc.length = static_cast<uint8_t>(length);
-  o->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
-  o->set_own(ctx->rt, ctx->rt->intern("name"), String::create(name));
-  return obj;
+// ── CFunctionObj ──────────────────────────────────────────────────────────
+
+Value CFunctionObj::create(Context *ctx, CFunction *fn, std::string_view name, int length) {
+  auto *obj           = new CFunctionObj();
+  obj->ref_count      = 1;
+  obj->gc_obj_type    = GCObjType::js_object;
+  obj->class_id       = static_cast<uint16_t>(ClassID::c_function);
+  obj->fn             = fn;
+  obj->fn_length      = static_cast<uint8_t>(length);
+  ctx->rt->add_gc_object(obj);
+  obj->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
+  obj->set_own(ctx->rt, ctx->rt->intern("name"), String::create(name));
+  return Value::object(obj);
 }
+
+// ── BytecodeFunction ──────────────────────────────────────────────────────
+
+Value BytecodeFunction::create(Runtime *rt, FunctionBytecode *bc) {
+  auto *obj        = new BytecodeFunction();
+  obj->ref_count   = 1;
+  obj->gc_obj_type = GCObjType::js_object;
+  obj->class_id    = static_cast<uint16_t>(ClassID::bytecode_function);
+  obj->bytecode    = bc;
+  rt->add_gc_object(obj);
+  return Value::object(obj);
+}
+
+// ── property access ────────────────────────────────────────────────────────
 
 Value Object::get_own(Atom atom) const {
   if (!shape)
@@ -74,7 +93,6 @@ bool Object::define_own(Runtime *rt, Atom atom, Value value, int flags) {
 
 void Object::destroy(Runtime *rt) {
   rt->remove_gc_object(this);
-  var_refs.clear();
   delete this;
 }
 
@@ -96,32 +114,21 @@ void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
       }
     }
   }
-  if (class_id == static_cast<uint16_t>(ClassID::bytecode_function) && u.opaque) {
-    auto *bc = static_cast<FunctionBytecode *>(u.opaque);
-    if (!bc->is_marked) {
-      bc->is_marked = true;
-      worklist.push_back(bc);
-    }
-  }
 }
 
-// ─── call ──────────────────────────────────────────────────────────────────
+void BytecodeFunction::gc_mark(std::vector<GCObjectHeader *> &worklist) {
+  Object::gc_mark(worklist);
+}
+
+// ─── call (virtual dispatch) ───────────────────────────────────────────────
 
 Value call(Context *ctx, Value func, Value this_val, int argc, const Value *argv) {
   if (!func.is_object())
     return Value::undefined_();
   auto *obj = func.as<Object>();
-
-  switch (static_cast<ClassID>(obj->class_id)) {
-  case ClassID::c_function:
-  case ClassID::c_function_data:
-    if (obj->u.cfunc.fn)
-      return obj->u.cfunc.fn(ctx, this_val, argc, argv);
+  if (!obj->is_callable())
     return Value::undefined_();
-
-  default:
-    return Value::undefined_();
-  }
+  return static_cast<Callable *>(obj)->call(ctx, this_val, argc, argv);
 }
 
 // ─── built-in: print ───────────────────────────────────────────────────────
@@ -150,7 +157,7 @@ static Value builtin_print(Context * /*ctx*/, Value /*this_val*/, int argc, cons
 }
 
 void setup_global(Context *ctx, Object *global) {
-  auto fn = Object::make_cfunc(ctx, builtin_print, "print", 0);
+  auto fn = CFunctionObj::create(ctx, builtin_print, "print", 0);
   global->set_own(ctx->rt, ctx->rt->intern("print"), fn);
 }
 

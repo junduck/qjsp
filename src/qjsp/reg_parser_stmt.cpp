@@ -17,9 +17,9 @@ void RegParseState::parse_statement() { parse_statement_or_decl(0); }
 void RegParseState::parse_statement_or_decl(int decl_mask) {
   // Named label: ident : statement
   if (lexer.token.type == TOK_IDENT &&
-      !lexer.token.u.ident.is_reserved &&
+      !lexer.token.ident_is_reserved &&
       peek_token(true) == ':') {
-    Atom label = lexer.token.u.ident.atom;
+    Atom label = lexer.token.ident_atom;
     next_token(); // skip ident
     next_token(); // skip ':'
 
@@ -103,7 +103,7 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
     next_token();
     Atom name = kAtomNull;
     if (lexer.token.type == TOK_IDENT) {
-      name = lexer.token.u.ident.atom;
+      name = lexer.token.ident_atom;
       next_token();
     }
     FunctionDef *fd = parse_function_decl(name, false, FunctionKind::normal);
@@ -138,7 +138,9 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
 void RegParseState::parse_try_statement() {
   next_token(); // skip 'try'
 
-  int exc_reg        = 200;
+  constexpr int kExcReg = 200; // reserved register for exception value
+
+  int exc_reg        = kExcReg;
   int finalize_label = new_label(); // finally subroutine label
   int catch_label    = new_label();
   int after_label    = new_label();
@@ -178,7 +180,7 @@ void RegParseState::parse_try_statement() {
     if (lexer.token.type == '(') {
       next_token();
       if (lexer.token.type == TOK_IDENT) {
-        Atom catch_name = lexer.token.u.ident.atom;
+        Atom catch_name = lexer.token.ident_atom;
         next_token();
         expect(')');
         push_enter_scope();
@@ -271,7 +273,7 @@ void RegParseState::parse_switch_statement() {
       CaseInfo ci;
       if (!is_default) {
         // Parse case value: capture the literal value into cpool
-        double val = lexer.token.u.num.val;
+        double val = lexer.token.num_val;
         ci.cpool_idx = cpool_add(Value::float64(val));
         next_token(); // skip the number
       }
@@ -637,7 +639,7 @@ void RegParseState::parse_break_continue(bool is_cont) {
   // Check for named label: break foo / continue foo
   Atom label_name = kAtomNull;
   if (lexer.token.type == TOK_IDENT && !lexer.got_lf) {
-    label_name = lexer.token.u.ident.atom;
+    label_name = lexer.token.ident_atom;
     next_token();
   }
 
@@ -686,7 +688,7 @@ void RegParseState::parse_var_decls(int decl_tok) {
   for (;;) {
     if (lexer.token.type != TOK_IDENT)
       return;
-    Atom name = lexer.token.u.ident.atom;
+    Atom name = lexer.token.ident_atom;
     next_token();
 
     if (!js_define_var(name, decl_tok))
@@ -767,7 +769,7 @@ FunctionDef *RegParseState::parse_function_decl(Atom name, bool is_expr, Functio
     for (;;) {
       if (lexer.token.type != TOK_IDENT)
         goto fail;
-      Atom arg_name = lexer.token.u.ident.atom;
+      Atom arg_name = lexer.token.ident_atom;
       next_token();
 
       int idx = fd->add_arg(arg_name);

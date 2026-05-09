@@ -17,6 +17,7 @@ public:
   explicit RegInterpreter(Context *ctx) : ctx_(ctx) {}
 
   Value eval(FunctionBytecode *b);
+  Value call_bytecode(FunctionBytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals);
   Value eval_source(const char *source, const char *filename = "<eval>");
 
 private:
@@ -24,7 +25,6 @@ private:
   Runtime *rt() const;
   Object *global_obj() const;
 
-  Value call_bytecode(FunctionBytecode *b, Value this_obj, int argc, Value *argv, VarRef **upvals);
   Value run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list = nullptr);
 
   Value get_field(Value obj, Atom name);
