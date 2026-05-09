@@ -44,6 +44,14 @@ static bool is_truthy(Value v) {
   return true;
 }
 
+static Atom cpool_to_atom(Runtime *rt, Value field_val) {
+  if (field_val.is_string())
+    return rt->intern(field_val.as<String>()->view());
+  if (field_val.is_symbol())
+    return field_val.as_symbol();
+  return kAtomNull;
+}
+
 static Value add_values(Value l, Value r) {
   if (l.is_int32() && r.is_int32()) {
     int64_t result = static_cast<int64_t>(l.as_int32()) + static_cast<int64_t>(r.as_int32());
@@ -353,39 +361,26 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
     }
 
     case RegOp::GETFIELD: {
-      // A = dst, B = obj, C = cpool index
       int ci          = i.c();
       Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
-      Atom atom       = kAtomNull;
-      if (field_val.is_string()) {
-        atom = rt()->intern(field_val.as<String>()->view());
-      }
-      regs[i.a()] = get_field(regs[i.b()], atom);
+      Atom atom       = cpool_to_atom(rt(), field_val);
+      regs[i.a()]     = get_field(regs[i.b()], atom);
       break;
     }
 
     case RegOp::SETFIELD: {
-      // A = obj, B = cpool index, C = val
-      int ci          = i.b();
+      auto ci         = i.b();
       Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
-      Atom atom       = kAtomNull;
-      if (field_val.is_string()) {
-        atom = rt()->intern(field_val.as<String>()->view());
-      }
+      Atom atom       = cpool_to_atom(rt(), field_val);
       put_field(regs[i.a()], atom, regs[i.c()]);
       break;
     }
 
     case RegOp::DEFINE_FIELD: {
-      // A = obj, B = cpool index, C = val
-      int ci          = i.b();
+      auto ci         = i.b();
       Value field_val = (ci < b->cpool_count) ? b->cpool[ci] : Value::undefined_();
-      Atom atom       = kAtomNull;
-      if (field_val.is_string()) {
-        atom = rt()->intern(field_val.as<String>()->view());
-      }
+      Atom atom       = cpool_to_atom(rt(), field_val);
       put_field(regs[i.a()], atom, regs[i.c()]);
-      // result stays in R[A] (= obj)
       break;
     }
 
@@ -514,7 +509,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         if (obj->is_callable()) {
           auto *callable = static_cast<Callable *>(obj);
           if (callable->is_bytecode()) {
-            auto *bf       = static_cast<BytecodeFunction *>(callable);
+            auto *bf = static_cast<BytecodeFunction *>(callable);
             std::vector<VarRef *> call_upvals;
             call_upvals.reserve(bf->var_refs.size());
             for (auto &v : bf->var_refs)
@@ -570,11 +565,11 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
     case RegOp::FCLOSURE: {
       // Load bytecode from cpool
-      int ci = i.bx();
+      auto ci = i.bx();
       if (ci < b->cpool_count && b->cpool[ci].is_func_bytecode()) {
-        auto *inner_bc    = b->cpool[ci].as<FunctionBytecode>();
-        auto closure      = BytecodeFunction::create(rt(), inner_bc);
-        auto *cl          = closure.as<BytecodeFunction>();
+        auto *inner_bc = b->cpool[ci].as<FunctionBytecode>();
+        auto closure   = BytecodeFunction::create(rt(), inner_bc);
+        auto *cl       = closure.as<BytecodeFunction>();
 
         // Create VarRefs for captured variables from the current frame
         int cv_count = static_cast<int>(inner_bc->closure_var_count);
@@ -604,12 +599,12 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
             cl->var_refs[static_cast<size_t>(j)] = Value::var_ref(upvals[uv_idx]);
             upvals[uv_idx]->ref();
           } else if (reg_idx >= 0) {
-            Value vr = VarRef::create(regs[reg_idx]);
+            Value vr                             = VarRef::create(regs[reg_idx]);
             cl->var_refs[static_cast<size_t>(j)] = vr;
             if (close_list)
               close_list->push_back(vr.as<VarRef>());
           } else {
-            Value vr = VarRef::create_detached(Value::undefined_());
+            Value vr                             = VarRef::create_detached(Value::undefined_());
             cl->var_refs[static_cast<size_t>(j)] = vr;
           }
         }
@@ -693,12 +688,12 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       // A=iter_reg, B=obj_reg
       Value &obj = regs[i.b()];
       if (obj.is_object()) {
-        auto *o        = obj.as<Object>();
+        auto *o = obj.as<Object>();
         ForInState st;
         st.obj           = o;
         st.shape         = o->shape;
         st.current_index = 0;
-        int token = static_cast<int>(for_in_states_.size());
+        int token        = static_cast<int>(for_in_states_.size());
         for_in_states_.push_back(st);
         regs[i.a()] = Value::int32(token);
       } else {
@@ -713,7 +708,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       if (token >= 0 && token < static_cast<int>(for_in_states_.size())) {
         auto &st = for_in_states_[static_cast<size_t>(token)];
         if (st.shape && st.current_index < st.shape->size()) {
-          Atom atom = st.shape->entries[st.current_index].atom;
+          Atom atom   = st.shape->entries[st.current_index].atom;
           regs[i.a()] = rt()->atom_to_value(atom);
           st.current_index++;
           regs[i.c()] = Value::bool_(true);

@@ -547,6 +547,70 @@ void RegParseState::parse_for_statement() {
     return;
   }
 
+  if (is_for_of) {
+    next_token(); // skip 'of'
+
+    // Find the loop variable (last declared var)
+    int val_var_idx = cur_func->var_count - 1;
+    int val_reg     = cur_func->alloc.var(val_var_idx);
+
+    // Parse the iterable expression
+    RegSlot iterable_slot = parse_expr();
+    expect(')');
+
+    // ── Get iterator = iterable[Symbol.iterator]() ──
+    int si_cpool = cpool_add(rt->atom_to_value(static_cast<Atom>(AtomEnum::Symbol_iterator)));
+    int iter_fn_reg = alloc_temp();
+    int iterator_reg = alloc_temp();
+    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(iter_fn_reg), static_cast<uint8_t>(iterable_slot.reg), static_cast<uint8_t>(si_cpool));
+    emit_iABC(RegOp::CALL, static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(iter_fn_reg), 0);
+    free_temp(); // free iter_fn
+    free_temp(); // free iterable_slot
+
+    // ── Cpool entries for "next", "done", "value" ──
+    int next_cpool  = cpool_add(rt->atom_to_value(rt->intern("next")));
+    int done_cpool  = cpool_add(rt->atom_to_value(rt->intern("done")));
+    int value_cpool = cpool_add(rt->atom_to_value(rt->intern("value")));
+
+    // ── Loop ──
+    int loop_label = new_label();
+    int end_label  = new_label();
+    int body_label = new_label();
+
+    emit_jump(RegOp::JMP, loop_label, 0);
+    emit_label(body_label);
+    parse_statement();
+    cur_func->close_scopes(cur_func->scope_level, block_scope_level);
+
+    // ── Loop header: result = iterator.next() ──
+    emit_label(loop_label);
+    int next_fn_reg = alloc_temp();
+    int result_reg  = alloc_temp();
+    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(next_fn_reg), static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(next_cpool));
+    emit_iABC(RegOp::CALL, static_cast<uint8_t>(result_reg), static_cast<uint8_t>(next_fn_reg), 0);
+    free_temp(); // free next_fn
+
+    // Check result.done
+    int done_reg = alloc_temp();
+    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(done_reg), static_cast<uint8_t>(result_reg), static_cast<uint8_t>(done_cpool));
+    emit_jump(RegOp::IS_TRUE, end_label, static_cast<uint8_t>(done_reg));
+    free_temp(); // free done
+
+    // Get result.value → loop variable
+    int value_reg = alloc_temp();
+    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(value_reg), static_cast<uint8_t>(result_reg), static_cast<uint8_t>(value_cpool));
+    emit_iABC(RegOp::MOVE, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(value_reg), 0);
+    emit_jump(RegOp::JMP, body_label, 0);
+
+    emit_label(end_label);
+    free_temp(); // free value_reg
+    free_temp(); // free result_reg
+    free_temp(); // free iterator_reg
+
+    pop_leave_scope();
+    return;
+  }
+
   expect(';'); // consume the semicolon after init (non-for-in path)
 
   // ── Labels ──

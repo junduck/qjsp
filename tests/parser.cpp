@@ -50,3 +50,5 @@ TEST_F(RegParserFixture, MultipleStatements) { EXPECT_TRUE(compile("var a = 1; v
 TEST_F(RegParserFixture, NestedBlocks) { EXPECT_TRUE(compile("{ var x = 1; { var y = 2; } }")); }
 
 TEST_F(RegParserFixture, ThrowStatement) { EXPECT_TRUE(compile("throw 42;")); }
+
+TEST_F(RegParserFixture, ForOf) { EXPECT_TRUE(compile("for (var x of arr) { }")); }

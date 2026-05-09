@@ -87,10 +87,12 @@ Atom Runtime::create_symbol(std::string_view desc) {
 Value Runtime::atom_to_value(Atom a) const {
   if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))
     return Value::undefined_();
+  if (atom_types_[a] == AtomType::symbol)
+    return Value::symbol_from_atom(a);
   auto *s = atom_table[a];
   if (!s)
     return Value::undefined_();
-  s->ref(); // Value will own its own ref; atom_table keeps its ref
+  s->ref();
   return Value::string(s);
 }
 
