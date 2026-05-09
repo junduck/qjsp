@@ -8,7 +8,6 @@
 #include "qjsp/object.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/context.hpp"
-#include "qjsp/stack_frame.hpp"
 #include "qjsp/varref.hpp"
 #include "qjsp/bytecode.hpp"
 
