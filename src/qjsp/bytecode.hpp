@@ -134,13 +134,12 @@ enum class FunctionKind : uint8_t {
   async_generator = (1 << 0) | (1 << 1),
 };
 
-struct FunctionBytecode : GCObjectHeader {
+struct FunctionBytecode : RefCounted {
 
   std::unique_ptr<uint8_t[]> byte_code_buf;
   std::unique_ptr<BytecodeVarDef[]> vardefs;
   std::unique_ptr<ClosureVar[]> closure_var;
   std::unique_ptr<Value[]> cpool;
-  Context *realm;
 
   uint32_t cpool_count       = 0;
   uint32_t closure_var_count = 0;
@@ -188,25 +187,12 @@ struct FunctionBytecode : GCObjectHeader {
   bool read_only_bytecode() const { return (flags2 >> 3) & 1; }
   bool is_direct_or_indirect_eval() const { return (flags2 >> 4) & 1; }
 
-  void gc_mark(std::vector<GCObjectHeader *> &worklist) {
-    is_marked = true;
-    for (uint32_t i = 0; i < cpool_count; i++) {
-      if (cpool[i].is_func_bytecode()) {
-        auto *child = cpool[i].as<FunctionBytecode>();
-        if (child && !child->is_marked) {
-          child->is_marked = true;
-          worklist.push_back(child);
-        }
-      }
-    }
-  }
-
   struct {
     Atom filename;
     int source_len;
     int pc2line_len;
-    uint8_t *pc2line_buf;
-    char *source;
+    std::unique_ptr<uint8_t[]> pc2line_buf;
+    std::unique_ptr<char[]> source;
   } debug;
 };
 
