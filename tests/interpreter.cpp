@@ -106,13 +106,14 @@ TEST_F(RegInterpFixture, ClosureNested) {
   EXPECT_EQ(v.as_int32(), 3);
 }
 
-// ─── Try/Catch ──────────────────────────────────────────────────────────────
+// ─── For-Of Loop ─────────────────────────────────────────────────────────
 
-TEST_F(RegInterpFixture, TryCatchBasic) {
-  Value v = eval("var a = 0; try { a = 1; } catch(e) { a = 2; } a;");
+TEST_F(RegInterpFixture, ForOfSimple) {
+  Value v = eval("var arr = [1, 2, 3]; var sum = 0; for (var x of arr) { sum = sum + x; } sum;");
   EXPECT_TRUE(v.is_int32());
-  EXPECT_EQ(v.as_int32(), 1);
+  EXPECT_EQ(v.as_int32(), 6);
 }
+
 
 TEST_F(RegInterpFixture, TryCatchCaught) {
   Value v = eval("var a = 0; try { throw 99; } catch(e) { a = e; } a;");

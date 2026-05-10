@@ -518,13 +518,23 @@ void RegParseState::parse_for_statement() {
     RegSlot iterable_slot = parse_expr();
     expect(TokenKind::RParen);
 
-    int si_cpool     = cpool_add(rt->atom_to_value(rt->well_known.symbol_iterator));
-    int iter_fn_reg  = alloc_temp();
-    int iterator_reg = alloc_temp();
-    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(iter_fn_reg), static_cast<uint8_t>(iterable_slot.reg), static_cast<uint8_t>(si_cpool));
-    emit_iABC(RegOp::CALL, static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(iter_fn_reg), 0);
-    free_temp();
-    free_temp();
+    int si_cpool = cpool_add(rt->atom_to_value(rt->well_known.symbol_iterator));
+
+    // Pre-allocate all temps for the entire for-of loop.
+    // This avoids LIFO free-order corruption.
+    int iterator_reg   = alloc_temp();
+    int call_base      = alloc_temp();
+    int this_reg       = alloc_temp();
+    int result_reg     = alloc_temp();
+    int next_fn_reg    = alloc_temp();
+    int next_this_reg  = alloc_temp();
+    int done_reg       = alloc_temp();
+    int value_reg      = alloc_temp();
+
+    // Call iterable[Symbol.iterator]() with this=iterable
+    emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(call_base), static_cast<uint8_t>(iterable_slot.reg), static_cast<uint8_t>(si_cpool));
+    emit_iABC(RegOp::MOVE, static_cast<uint8_t>(this_reg), static_cast<uint8_t>(iterable_slot.reg), 0);
+    emit_iABC(RegOp::CALL_M, static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(call_base), 0);
 
     int next_cpool  = cpool_add(rt->atom_to_value(rt->intern("next")));
     int done_cpool  = cpool_add(rt->atom_to_value(rt->intern("done")));
@@ -539,27 +549,30 @@ void RegParseState::parse_for_statement() {
     parse_statement();
     cur_func->close_scopes(cur_func->scope_level, block_scope_level);
 
+    // Loop header: result = iterator.next() with this=iterator
     emit_label(loop_label);
-    int next_fn_reg = alloc_temp();
-    int result_reg  = alloc_temp();
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(next_fn_reg), static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(next_cpool));
-    emit_iABC(RegOp::CALL, static_cast<uint8_t>(result_reg), static_cast<uint8_t>(next_fn_reg), 0);
-    free_temp();
+    emit_iABC(RegOp::MOVE, static_cast<uint8_t>(next_this_reg), static_cast<uint8_t>(iterator_reg), 0);
+    emit_iABC(RegOp::CALL_M, static_cast<uint8_t>(result_reg), static_cast<uint8_t>(next_fn_reg), 0);
 
-    int done_reg = alloc_temp();
+    // Check result.done
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(done_reg), static_cast<uint8_t>(result_reg), static_cast<uint8_t>(done_cpool));
     emit_jump(RegOp::IS_TRUE, end_label, static_cast<uint8_t>(done_reg));
-    free_temp();
 
-    int value_reg = alloc_temp();
+    // Move result.value → loop variable
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(value_reg), static_cast<uint8_t>(result_reg), static_cast<uint8_t>(value_cpool));
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(value_reg), 0);
     emit_jump(RegOp::JMP, body_label, 0);
 
     emit_label(end_label);
-    free_temp();
-    free_temp();
-    free_temp();
+    free_temp(); // value_reg
+    free_temp(); // done_reg
+    free_temp(); // next_this_reg
+    free_temp(); // next_fn_reg
+    free_temp(); // result_reg
+    free_temp(); // this_reg
+    free_temp(); // call_base
+    free_temp(); // iterator_reg
 
     pop_leave_scope();
     return;
