@@ -15,9 +15,7 @@ struct ArrayObject : Object {
 
   static Value create(Runtime *rt, Value proto = Value::undefined_());
 
-  Value get_elem(uint32_t idx) const {
-    return idx < elements.size() ? elements[idx] : Value::undefined_();
-  }
+  Value get_elem(uint32_t idx) const { return idx < elements.size() ? elements[idx] : Value::undefined_(); }
 
   void set_elem(uint32_t idx, Value v) {
     if (idx >= elements.size())

@@ -10,28 +10,28 @@ namespace qjsp {
 // ═══════════════════════════════════════════════════════════════════════════
 
 RegSlot RegParseState::parse_primary() {
-  int tok = lexer.token.type;
+  TokenKind tok = lexer.token.kind;
 
   switch (tok) {
-  case TOK_NULL: {
+  case TokenKind::KwNull: {
     int r = alloc_temp();
     emit_iABx(RegOp::LOADNULL, static_cast<uint8_t>(r), 0);
     next_token();
     return {r};
   }
-  case TOK_FALSE: {
+  case TokenKind::KwFalse: {
     int r = alloc_temp();
     emit_iABx(RegOp::LOADFALSE, static_cast<uint8_t>(r), 0);
     next_token();
     return {r};
   }
-  case TOK_TRUE: {
+  case TokenKind::KwTrue: {
     int r = alloc_temp();
     emit_iABx(RegOp::LOADTRUE, static_cast<uint8_t>(r), 0);
     next_token();
     return {r};
   }
-  case TOK_NUMBER: {
+  case TokenKind::Number: {
     int r      = alloc_temp();
     double val = lexer.token.num_val;
     int32_t iv = static_cast<int32_t>(val);
@@ -44,47 +44,43 @@ RegSlot RegParseState::parse_primary() {
     next_token();
     return {r};
   }
-  case TOK_STRING: {
-    int ci  = cpool_add(String::create(std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len}));
-    int r   = alloc_temp();
+  case TokenKind::StringLit: {
+    int ci = cpool_add(String::create(std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len}));
+    int r  = alloc_temp();
     emit_iABx(RegOp::LOADK, static_cast<uint8_t>(r), static_cast<uint16_t>(ci));
     next_token();
     return {r};
   }
-  case TOK_IDENT: {
+  case TokenKind::Identifier: {
     Atom atom = lexer.token.ident_atom;
     next_token();
 
-    // Check all vars (any scope level — let/const are scoped)
     for (int i = 0; i < cur_func->var_count; i++) {
       if (cur_func->vars[static_cast<size_t>(i)].var_name == atom) {
         return {cur_func->vars[static_cast<size_t>(i)].reg_index};
       }
     }
-    // Check args
     for (int i = 0; i < cur_func->arg_count; i++) {
       if (cur_func->args[static_cast<size_t>(i)].var_name == atom) {
         return {cur_func->args[static_cast<size_t>(i)].reg_index};
       }
     }
-    // Check enclosing scopes (closure variable)
     int upval = cur_func->resolve_upval(atom);
     if (upval >= 0) {
       return emit_upval_read(upval);
     }
-    // Global: load from global object
     int r  = alloc_temp();
     int ci = cpool_add(rt->atom_to_value(atom));
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(r), static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
     return {r};
   }
-  case '(': {
+  case TokenKind::LParen: {
     next_token();
     RegSlot result = parse_expr();
-    expect(')');
+    expect(TokenKind::RParen);
     return result;
   }
-  case TOK_FUNCTION: {
+  case TokenKind::KwFunction: {
     next_token();
     FunctionDef *fd = parse_function_decl(kAtomNull, true, FunctionKind::normal);
     if (!fd) {
@@ -96,29 +92,28 @@ RegSlot RegParseState::parse_primary() {
     emit_iABx(RegOp::FCLOSURE, static_cast<uint8_t>(r), static_cast<uint16_t>(fd->parent_cpool_idx));
     return {r};
   }
-  case '{':
+  case TokenKind::LBrace:
     return parse_object_literal();
-  case '[':
+  case TokenKind::LBracket:
     return parse_array_literal();
   default:
-    return {alloc_temp()}; // error: return a dummy reg
+    return {alloc_temp()};
   }
 }
 
 // ─── Object literal ─────────────────────────────────────────────────────
 
 RegSlot RegParseState::parse_object_literal() {
-  next_token(); // skip '{'
+  next_token();
 
   int obj_reg = alloc_temp();
   emit_iABx(RegOp::NEWOBJ, static_cast<uint8_t>(obj_reg), 0);
 
-  while (lexer.token.type != '}') {
+  while (lexer.token.kind != TokenKind::RBrace) {
     Atom name     = kAtomNull;
     bool computed = false;
 
-    // Spread: { ...expr }
-    if (lexer.token.type == TOK_ELLIPSIS) {
+    if (lexer.token.kind == TokenKind::Ellipsis) {
       next_token();
       RegSlot src = parse_assign_expr();
       emit_iABC(RegOp::SPREAD_OBJ, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(src.reg), 0);
@@ -126,16 +121,12 @@ RegSlot RegParseState::parse_object_literal() {
       goto obj_next;
     }
 
-    // Property name: ident, string, number, or [
-    if (lexer.token.type == TOK_IDENT || is_keyword(lexer.token.type)) {
+    if (lexer.token.kind == TokenKind::Identifier || isKeyword(lexer.token.kind)) {
       name = lexer.token.ident_atom;
       next_token();
-      // Shorthand: { x } when no ':' follows
-      if (lexer.token.type != ':' && lexer.token.type != '(') {
-        // Look up x in scope and load it
+      if (lexer.token.kind != TokenKind::Colon && lexer.token.kind != TokenKind::LParen) {
         int val_reg = alloc_temp();
-        // Try local vars first
-        bool found = false;
+        bool found  = false;
         for (int i = 0; i < cur_func->var_count; i++) {
           if (cur_func->vars[static_cast<size_t>(i)].var_name == name && cur_func->vars[static_cast<size_t>(i)].scope_level == 0) {
             emit_iABC(RegOp::MOVE, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(cur_func->vars[static_cast<size_t>(i)].reg_index), 0);
@@ -153,8 +144,7 @@ RegSlot RegParseState::parse_object_literal() {
         free_temp();
         goto obj_next;
       }
-      // Method shorthand: { foo() { } }
-      if (lexer.token.type == '(') {
+      if (lexer.token.kind == TokenKind::LParen) {
         FunctionDef *fd = parse_function_decl(kAtomNull, true, FunctionKind::normal);
         if (fd) {
           int r = alloc_temp();
@@ -165,35 +155,35 @@ RegSlot RegParseState::parse_object_literal() {
         }
         goto obj_next;
       }
-    } else if (lexer.token.type == TOK_STRING) {
+    } else if (lexer.token.kind == TokenKind::StringLit) {
       auto sv = std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len};
       name    = rt->intern(sv);
       next_token();
-    } else if (lexer.token.type == TOK_NUMBER) {
+    } else if (lexer.token.kind == TokenKind::Number) {
       double d = lexer.token.num_val;
       char buf[32];
       snprintf(buf, sizeof(buf), "%.15g", d);
-      name    = rt->intern(buf);
+      name = rt->intern(buf);
       next_token();
-    } else if (lexer.token.type == '[') {
+    } else if (lexer.token.kind == TokenKind::LBracket) {
       computed = true;
       next_token();
       RegSlot key = parse_assign_expr();
-      expect(']');
+      expect(TokenKind::RBracket);
       name = kAtomNull;
-      if (!expect(':'))
+      if (!expect(TokenKind::Colon))
         return {obj_reg};
       RegSlot val = parse_assign_expr();
       emit_iABC(RegOp::DEFINE_ELEM, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(key.reg), static_cast<uint8_t>(val.reg));
-      free_temp(); // val
-      free_temp(); // key
+      free_temp();
+      free_temp();
       goto obj_next;
     } else {
       goto obj_next;
     }
 
     if (!computed && name != kAtomNull) {
-      if (!expect(':'))
+      if (!expect(TokenKind::Colon))
         return {obj_reg};
       RegSlot val = parse_assign_expr();
       if (name == rt->intern("__proto__")) {
@@ -206,41 +196,38 @@ RegSlot RegParseState::parse_object_literal() {
     }
 
   obj_next:
-    if (lexer.token.type != ',')
+    if (lexer.token.kind != TokenKind::Comma)
       break;
     next_token();
   }
-  expect('}');
+  expect(TokenKind::RBrace);
   return {obj_reg};
 }
 
 // ─── Array literal ──────────────────────────────────────────────────────
 
 RegSlot RegParseState::parse_array_literal() {
-  next_token(); // '['
+  next_token();
 
-  // Parse elements into a vector, collecting their register slots
   std::vector<int> elem_slots;
-  while (lexer.token.type != ']') {
-    if (lexer.token.type == ',') {
+  while (lexer.token.kind != TokenKind::RBracket) {
+    if (lexer.token.kind == TokenKind::Comma) {
       next_token();
       continue;
     }
-    if (lexer.token.type == TOK_ELLIPSIS)
-      break; // spread not yet supported
+    if (lexer.token.kind == TokenKind::Ellipsis)
+      break;
 
     RegSlot elem = parse_assign_expr();
     int slot     = alloc_temp();
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(slot), static_cast<uint8_t>(elem.reg), 0);
     elem_slots.push_back(slot);
-    // Don't free — keep slots contiguous. Element temps from
-    // parse_assign_expr accumulate above our slots.
 
-    if (lexer.token.type != ',')
+    if (lexer.token.kind != TokenKind::Comma)
       break;
     next_token();
   }
-  expect(']');
+  expect(TokenKind::RBracket);
 
   int count   = static_cast<int>(elem_slots.size());
   int arr_reg = alloc_temp();
@@ -248,19 +235,16 @@ RegSlot RegParseState::parse_array_literal() {
   if (count == 0) {
     emit_iABC(RegOp::NEWARR, static_cast<uint8_t>(arr_reg), 0, 0);
   } else {
-    // Move elements into contiguous block for NEWARR
     int base = alloc_temp();
     for (int i = 0; i < count; i++) {
       emit_iABC(RegOp::MOVE, static_cast<uint8_t>(base + i), static_cast<uint8_t>(elem_slots[static_cast<size_t>(i)]), 0);
     }
     cur_func->alloc.ensure_max(base + count);
     emit_iABC(RegOp::NEWARR, static_cast<uint8_t>(arr_reg), static_cast<uint8_t>(base), static_cast<uint8_t>(count));
-    // Free the temporary contiguous block
     for (int i = 0; i < count; i++)
       free_temp();
   }
 
-  // Free element slots
   for (int i = 0; i < count; i++)
     free_temp();
 
@@ -271,20 +255,20 @@ RegSlot RegParseState::parse_array_literal() {
 
 RegSlot RegParseState::parse_postfix_continue(RegSlot result, int flags) {
   for (;;) {
-    int tok = lexer.token.type;
+    TokenKind tok = lexer.token.kind;
 
-    if ((flags & PF_POSTFIX_CALL) && tok == '(') {
+    if ((flags & PF_POSTFIX_CALL) && tok == TokenKind::LParen) {
       next_token();
       int argc = 0;
       std::vector<int> arg_regs;
-      if (lexer.token.type != ')') {
+      if (lexer.token.kind != TokenKind::RParen) {
         for (;;) {
           RegSlot arg = parse_assign_expr();
           arg_regs.push_back(arg.reg);
           argc++;
-          if (lexer.token.type == ')')
+          if (lexer.token.kind == TokenKind::RParen)
             break;
-          if (lexer.token.type != ',') { /* error */
+          if (lexer.token.kind != TokenKind::Comma) { /* error */
           }
           next_token();
         }
@@ -304,9 +288,9 @@ RegSlot RegParseState::parse_postfix_continue(RegSlot result, int flags) {
       continue;
     }
 
-    if (tok == '.') {
+    if (tok == TokenKind::Dot) {
       next_token();
-      if (lexer.token.type != TOK_IDENT)
+      if (lexer.token.kind != TokenKind::Identifier)
         break;
       Atom prop = lexer.token.ident_atom;
       next_token();
@@ -318,10 +302,10 @@ RegSlot RegParseState::parse_postfix_continue(RegSlot result, int flags) {
       continue;
     }
 
-    if (tok == '[') {
+    if (tok == TokenKind::LBracket) {
       next_token();
       RegSlot prop = parse_expr();
-      expect(']');
+      expect(TokenKind::RBracket);
       int dst = alloc_temp();
       emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(dst), static_cast<uint8_t>(result.reg), static_cast<uint8_t>(prop.reg));
       free_temp();
@@ -330,14 +314,14 @@ RegSlot RegParseState::parse_postfix_continue(RegSlot result, int flags) {
       continue;
     }
 
-    if (tok == TOK_INC) {
+    if (tok == TokenKind::Inc) {
       next_token();
       int tmp = alloc_temp();
       emit_iABC(RegOp::INC, static_cast<uint8_t>(tmp), static_cast<uint8_t>(result.reg), 0);
       result = {tmp};
       continue;
     }
-    if (tok == TOK_DEC) {
+    if (tok == TokenKind::Dec) {
       next_token();
       int tmp = alloc_temp();
       emit_iABC(RegOp::DEC, static_cast<uint8_t>(tmp), static_cast<uint8_t>(result.reg), 0);
@@ -355,17 +339,16 @@ RegSlot RegParseState::parse_postfix(int flags) { return parse_postfix_continue(
 // ─── Unary ──────────────────────────────────────────────────────────────────
 
 RegSlot RegParseState::parse_unary(int flags) {
-  int tok = lexer.token.type;
+  TokenKind tok = lexer.token.kind;
 
   switch (tok) {
-  case '+':
+  case TokenKind::Plus:
     next_token();
     {
       RegSlot opnd = parse_unary(flags);
-      // plus no-op, just return operand
       return opnd;
     }
-  case '-':
+  case TokenKind::Minus:
     next_token();
     {
       RegSlot opnd = parse_unary(flags);
@@ -374,7 +357,7 @@ RegSlot RegParseState::parse_unary(int flags) {
       free_temp();
       return {r};
     }
-  case '!':
+  case TokenKind::Bang:
     next_token();
     {
       RegSlot opnd = parse_unary(flags);
@@ -383,7 +366,7 @@ RegSlot RegParseState::parse_unary(int flags) {
       free_temp();
       return {r};
     }
-  case '~':
+  case TokenKind::Tilde:
     next_token();
     {
       RegSlot opnd = parse_unary(flags);
@@ -392,7 +375,7 @@ RegSlot RegParseState::parse_unary(int flags) {
       free_temp();
       return {r};
     }
-  case TOK_TYPEOF:
+  case TokenKind::KwTypeof:
     next_token();
     {
       RegSlot opnd = parse_unary(flags);
@@ -401,34 +384,33 @@ RegSlot RegParseState::parse_unary(int flags) {
       free_temp();
       return {r};
     }
-  case TOK_VOID:
-    next_token();
-    {
-      parse_unary(flags); // evaluate but discard
-      int r = alloc_temp();
-      emit_iABx(RegOp::LOADUNDEF, static_cast<uint8_t>(r), 0);
-      return {r};
-    }
-  case TOK_DELETE:
+  case TokenKind::KwVoid:
     next_token();
     {
       parse_unary(flags);
       int r = alloc_temp();
-      emit_iABx(RegOp::LOADTRUE, static_cast<uint8_t>(r), 0); // simplified
+      emit_iABx(RegOp::LOADUNDEF, static_cast<uint8_t>(r), 0);
       return {r};
     }
-  case TOK_INC:
+  case TokenKind::KwDelete:
+    next_token();
+    {
+      parse_unary(flags);
+      int r = alloc_temp();
+      emit_iABx(RegOp::LOADTRUE, static_cast<uint8_t>(r), 0);
+      return {r};
+    }
+  case TokenKind::Inc:
     next_token();
     {
       RegSlot opnd = parse_unary(flags);
       int r        = alloc_temp();
       emit_iABC(RegOp::INC, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
-      // Store back (write to lvalue)
       emit_iABC(RegOp::MOVE, static_cast<uint8_t>(opnd.reg), static_cast<uint8_t>(r), 0);
       free_temp();
       return {r};
     }
-  case TOK_DEC:
+  case TokenKind::Dec:
     next_token();
     {
       RegSlot opnd = parse_unary(flags);
@@ -449,44 +431,38 @@ RegSlot RegParseState::parse_binary(int min_prec) {
   RegSlot left = parse_unary(PF_POSTFIX_CALL);
 
   for (;;) {
-    int tok  = lexer.token.type;
-    int prec = binary_precedence(tok);
+    TokenKind tok = lexer.token.kind;
+    int prec      = binary_precedence(tok);
     if (prec < min_prec)
       break;
 
-    // ** is right-associative
-    int next_min = (tok == TOK_POW) ? prec : prec + 1;
+    int next_min = (tok == TokenKind::Pow) ? prec : prec + 1;
 
-    // Short-circuit: &&, ||
-    if (tok == TOK_LAND || tok == TOK_LOR) {
+    if (tok == TokenKind::Land || tok == TokenKind::Lor) {
       next_token();
       int end_label = new_label();
-      if (tok == TOK_LAND)
+      if (tok == TokenKind::Land)
         emit_jump(RegOp::IS_FALSE, end_label, static_cast<uint8_t>(left.reg));
       else
         emit_jump(RegOp::IS_TRUE, end_label, static_cast<uint8_t>(left.reg));
-      free_temp(); // free left (will be overwritten)
+      free_temp();
 
       RegSlot right = parse_binary(next_min);
       emit_iABC(RegOp::MOVE, static_cast<uint8_t>(left.reg), static_cast<uint8_t>(right.reg), 0);
-      free_temp(); // free right
+      free_temp();
       emit_label(end_label);
       continue;
     }
 
     next_token();
-
-    // Handle 'in' conditionally
-    // (skip for now, just parse right side)
-
     RegSlot right = parse_binary(next_min);
     int r         = alloc_temp();
     RegOp op      = binop_to_reg(tok);
     if (op != RegOp::NOP) {
       emit_iABC(op, static_cast<uint8_t>(r), static_cast<uint8_t>(left.reg), static_cast<uint8_t>(right.reg));
     }
-    free_temp(); // free right
-    free_temp(); // free left
+    free_temp();
+    free_temp();
     left = {r};
   }
   return left;
@@ -495,9 +471,9 @@ RegSlot RegParseState::parse_binary(int min_prec) {
 // ─── Ternary ────────────────────────────────────────────────────────────────
 
 RegSlot RegParseState::parse_cond_expr(int /*flags*/) {
-  RegSlot cond = parse_binary(1); // min_prec=1 so non-operator tokens (prec=0) break
+  RegSlot cond = parse_binary(1);
 
-  if (lexer.token.type == '?') {
+  if (lexer.token.kind == TokenKind::Question) {
     next_token();
     int false_label = new_label();
     int end_label   = new_label();
@@ -506,14 +482,14 @@ RegSlot RegParseState::parse_cond_expr(int /*flags*/) {
 
     RegSlot then_val = parse_assign_expr();
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(cond.reg), static_cast<uint8_t>(then_val.reg), 0);
-    free_temp(); // free then_val
+    free_temp();
     emit_jump(RegOp::JMP, end_label, 0);
 
     emit_label(false_label);
-    expect(':');
+    expect(TokenKind::Colon);
     RegSlot else_val = parse_assign_expr();
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(cond.reg), static_cast<uint8_t>(else_val.reg), 0);
-    free_temp(); // free else_val
+    free_temp();
     emit_label(end_label);
     return cond;
   }
@@ -524,13 +500,12 @@ RegSlot RegParseState::parse_cond_expr(int /*flags*/) {
 
 LValue RegParseState::parse_lvalue() {
   LValue lv;
-  int tok = lexer.token.type;
+  TokenKind tok = lexer.token.kind;
 
-  if (tok == TOK_IDENT) {
+  if (tok == TokenKind::Identifier) {
     Atom atom = lexer.token.ident_atom;
     next_token();
 
-    // Check if it's a local var
     for (int i = 0; i < cur_func->var_count; i++) {
       if (cur_func->vars[static_cast<size_t>(i)].var_name == atom && cur_func->vars[static_cast<size_t>(i)].scope_level == 0) {
         lv.kind    = LValue::LOCAL;
@@ -539,7 +514,6 @@ LValue RegParseState::parse_lvalue() {
         return lv;
       }
     }
-    // Check args
     for (int i = 0; i < cur_func->arg_count; i++) {
       if (cur_func->args[static_cast<size_t>(i)].var_name == atom) {
         lv.kind    = LValue::ARG;
@@ -548,23 +522,15 @@ LValue RegParseState::parse_lvalue() {
         return lv;
       }
     }
-    // Global fallback
     lv.kind = LValue::GLOBAL;
     lv.prop = atom;
     return lv;
   }
 
-  // Member access: x.y
-  if (tok == '.' && lexer.peek_token(false) == TOK_IDENT) {
-    // This is called after parse_postfix for the LHS; the LHS is already parsed.
-    // Actually, parse_lvalue is called BEFORE we know if it's an lvalue.
-    // For now, simple case: ident only.
-    // Complex lvalue support (x.y, x[y]) deferred.
+  if (tok == TokenKind::Dot && lexer.peek_token(false) == TokenKind::Identifier) {
+    // Complex lvalue support deferred.
   }
 
-  // Default: treat as if it was parsed via primary + postfix
-  // We assume the last emitted instruction(s) described the access.
-  // For the initial implementation, support only simple identifier lvalues.
   return lv;
 }
 
@@ -589,7 +555,6 @@ LValue RegParseState::parse_ident_lvalue() {
       return lv;
     }
   }
-  // Check enclosing scopes (closure variable)
   int upval = cur_func->resolve_upval(atom);
   if (upval >= 0) {
     lv.kind      = LValue::UPVAL;
@@ -603,16 +568,16 @@ LValue RegParseState::parse_ident_lvalue() {
 }
 
 LValue RegParseState::parse_postfix_lvalue() {
-  int tok = lexer.token.type;
+  TokenKind tok = lexer.token.kind;
 
-  if (tok == TOK_IDENT) {
+  if (tok == TokenKind::Identifier) {
     LValue lv = parse_ident_lvalue();
 
     for (;;) {
-      tok = lexer.token.type;
-      if (tok == '.') {
+      tok = lexer.token.kind;
+      if (tok == TokenKind::Dot) {
         next_token();
-        if (lexer.token.type != TOK_IDENT) { /*error*/
+        if (lexer.token.kind != TokenKind::Identifier) { /*error*/
           break;
         }
         Atom prop = lexer.token.ident_atom;
@@ -622,10 +587,10 @@ LValue RegParseState::parse_postfix_lvalue() {
         lv = {LValue::FIELD, obj_reg, prop};
         continue;
       }
-      if (tok == '[') {
+      if (tok == TokenKind::LBracket) {
         next_token();
         RegSlot key = parse_expr();
-        expect(']');
+        expect(TokenKind::RBracket);
         int obj_reg = alloc_temp();
         emit_lvalue_load(lv, {obj_reg});
         lv = {LValue::ELEM, obj_reg, kAtomNull, key.reg};
@@ -636,15 +601,14 @@ LValue RegParseState::parse_postfix_lvalue() {
     return lv;
   }
 
-  // Non-ident: parse primary then check for member access (for (expr).prop etc)
   RegSlot prim = parse_primary();
   LValue lv{LValue::FIELD, prim.reg, kAtomNull};
 
   for (;;) {
-    tok = lexer.token.type;
-    if (tok == '.') {
+    tok = lexer.token.kind;
+    if (tok == TokenKind::Dot) {
       next_token();
-      if (lexer.token.type != TOK_IDENT) { /*error*/
+      if (lexer.token.kind != TokenKind::Identifier) { /*error*/
         break;
       }
       Atom prop = lexer.token.ident_atom;
@@ -653,10 +617,10 @@ LValue RegParseState::parse_postfix_lvalue() {
       lv.prop = prop;
       continue;
     }
-    if (tok == '[') {
+    if (tok == TokenKind::LBracket) {
       next_token();
       RegSlot key = parse_expr();
-      expect(']');
+      expect(TokenKind::RBracket);
       lv.kind    = LValue::ELEM;
       lv.key_reg = key.reg;
       lv.prop    = kAtomNull;
@@ -669,17 +633,17 @@ LValue RegParseState::parse_postfix_lvalue() {
 
 RegSlot RegParseState::parse_binary_from(RegSlot left, int min_prec) {
   for (;;) {
-    int tok  = lexer.token.type;
-    int prec = binary_precedence(tok);
+    TokenKind tok = lexer.token.kind;
+    int prec      = binary_precedence(tok);
     if (prec < min_prec)
       break;
 
-    int next_min = (tok == TOK_POW) ? prec : prec + 1;
+    int next_min = (tok == TokenKind::Pow) ? prec : prec + 1;
 
-    if (tok == TOK_LAND || tok == TOK_LOR) {
+    if (tok == TokenKind::Land || tok == TokenKind::Lor) {
       next_token();
       int end_label = new_label();
-      if (tok == TOK_LAND)
+      if (tok == TokenKind::Land)
         emit_jump(RegOp::IS_FALSE, end_label, static_cast<uint8_t>(left.reg));
       else
         emit_jump(RegOp::IS_TRUE, end_label, static_cast<uint8_t>(left.reg));
@@ -764,30 +728,36 @@ void RegParseState::emit_lvalue_store(LValue lv, RegSlot val) {
   }
 }
 
-RegSlot RegParseState::parse_assign_expr2(int flags) {
-  int tok = lexer.token.type;
+namespace {
+bool isArithAssign(TokenKind k) {
+  return k == TokenKind::MulAssign || k == TokenKind::DivAssign || k == TokenKind::ModAssign || k == TokenKind::PlusAssign ||
+         k == TokenKind::MinusAssign || k == TokenKind::ShlAssign || k == TokenKind::SarAssign || k == TokenKind::ShrAssign ||
+         k == TokenKind::AndAssign || k == TokenKind::XorAssign || k == TokenKind::OrAssign || k == TokenKind::PowAssign;
+}
+bool isLogicAssign(TokenKind k) { return k == TokenKind::LandAssign || k == TokenKind::LorAssign || k == TokenKind::DoubleQuestionMarkAssign; }
+} // namespace
 
-  // Try to parse an lvalue (identifier + optional member chains)
+RegSlot RegParseState::parse_assign_expr2(int flags) {
+  TokenKind tok = lexer.token.kind;
+
   LValue lv;
   bool is_lvalue = false;
-  if (tok == TOK_IDENT || tok == '(') {
+  if (tok == TokenKind::Identifier || tok == TokenKind::LParen) {
     lv        = parse_postfix_lvalue();
     is_lvalue = true;
   }
 
   if (is_lvalue) {
-    int assign_tok = lexer.token.type;
+    TokenKind assign_tok = lexer.token.kind;
 
-    // Simple assignment: =
-    if (assign_tok == '=') {
+    if (assign_tok == TokenKind::EqAssign) {
       next_token();
       RegSlot rhs = parse_assign_expr2(flags);
       emit_lvalue_store(lv, rhs);
       return rhs;
     }
 
-    // Compound assignment: +=, -=, etc.
-    if (assign_tok >= TOK_MUL_ASSIGN && assign_tok <= TOK_POW_ASSIGN) {
+    if (isArithAssign(assign_tok)) {
       next_token();
       RegSlot rhs = parse_assign_expr2(flags);
       int lhs_val = alloc_temp();
@@ -798,19 +768,18 @@ RegSlot RegParseState::parse_assign_expr2(int flags) {
         emit_iABC(binop, static_cast<uint8_t>(result), static_cast<uint8_t>(lhs_val), static_cast<uint8_t>(rhs.reg));
       }
       emit_lvalue_store(lv, {result});
-      free_temp(); // rhs
-      free_temp(); // result (after store)
-      free_temp(); // lhs_val
+      free_temp();
+      free_temp();
+      free_temp();
       return {result};
     }
 
-    // Logical assignment: &&=, ||=
-    if (assign_tok >= TOK_LAND_ASSIGN && assign_tok <= TOK_DOUBLE_QUESTION_MARK_ASSIGN) {
+    if (isLogicAssign(assign_tok)) {
       next_token();
       int lhs_val = alloc_temp();
       emit_lvalue_load(lv, {lhs_val});
       int end_label = new_label();
-      if (assign_tok == TOK_LOR_ASSIGN)
+      if (assign_tok == TokenKind::LorAssign)
         emit_jump(RegOp::IS_TRUE, end_label, static_cast<uint8_t>(lhs_val));
       else
         emit_jump(RegOp::IS_FALSE, end_label, static_cast<uint8_t>(lhs_val));
@@ -825,7 +794,6 @@ RegSlot RegParseState::parse_assign_expr2(int flags) {
       return {r};
     }
 
-    // Not an assignment — load from lvalue and continue
     RegSlot val = alloc_temp();
     emit_lvalue_load(lv, {val});
     val = parse_postfix_continue(val, flags | PF_POSTFIX_CALL);
@@ -844,7 +812,7 @@ RegSlot RegParseState::parse_expr() {
     result = parse_assign_expr2(PF_IN_ACCEPTED);
     if (comma) { /* drop intermediate results */
     }
-    if (lexer.token.type != ',')
+    if (lexer.token.kind != TokenKind::Comma)
       break;
     comma = true;
     next_token();

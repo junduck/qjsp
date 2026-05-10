@@ -42,15 +42,15 @@ private:
 
   // for-in iteration state
   struct ForInState {
-    Object *obj = nullptr;
+    Object *obj               = nullptr;
     const struct Shape *shape = nullptr;
-    int current_index = 0;
+    int current_index         = 0;
   };
   std::vector<ForInState> for_in_states_;
 
   // for-of iteration state (array elements)
   struct ForOfState {
-    ArrayObject *arr = nullptr;
+    ArrayObject *arr       = nullptr;
     uint32_t current_index = 0;
   };
   std::vector<ForOfState> for_of_states_;

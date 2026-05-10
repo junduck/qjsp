@@ -26,7 +26,7 @@ struct Object : GCObjectHeader {
   std::vector<Property> properties;
 
   ClassID class_id = ClassID::object;
-  bool extensible   = true;
+  bool extensible  = true;
 
   static Value create(Runtime *rt, Value proto, ClassID class_id);
 
@@ -58,14 +58,12 @@ struct Callable : Object {
 // ── CFunction ──────────────────────────────────────────────────────────
 
 struct CFunctionObj : Callable {
-  CFunction *fn      = nullptr;
-  uint8_t   fn_length = 0;
+  CFunction *fn     = nullptr;
+  uint8_t fn_length = 0;
 
   static Value create(Context *ctx, CFunction *fn, std::string_view name, int length);
 
-  Value call(Context *ctx, Value this_val, int argc, const Value *argv) override {
-    return fn(ctx, this_val, argc, argv);
-  }
+  Value call(Context *ctx, Value this_val, int argc, const Value *argv) override { return fn(ctx, this_val, argc, argv); }
 };
 
 // ── BytecodeFunction ───────────────────────────────────────────────────

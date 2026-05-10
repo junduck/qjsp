@@ -88,23 +88,23 @@ inline constexpr RegOpInfo kRegOpInfo[] = {
     {"CTOR", InstrFmt::ABC},     // 56
     {"FCLOSURE", InstrFmt::ABx}, // 57
     {"RETURN", InstrFmt::ABC},   // 58
-    {"RETURN0",       InstrFmt::ABx},   // 59
-    {"THROW",         InstrFmt::ABC},   // 60
-    {"CATCH",         InstrFmt::ABx},   // 61  A=exc_reg, Bx=catch_pc (patched)
-    {"UNCATCH",       InstrFmt::ABx},   // 62
-    {"GOSUB",         InstrFmt::AsBx},  // 63  A unused, sbx=relative offset
-    {"RET",           InstrFmt::ABx},   // 64
+    {"RETURN0", InstrFmt::ABx},  // 59
+    {"THROW", InstrFmt::ABC},    // 60
+    {"CATCH", InstrFmt::ABx},    // 61  A=exc_reg, Bx=catch_pc (patched)
+    {"UNCATCH", InstrFmt::ABx},  // 62
+    {"GOSUB", InstrFmt::AsBx},   // 63  A unused, sbx=relative offset
+    {"RET", InstrFmt::ABx},      // 64
 
     // ── upvalue (3) ─────────────────────────────────────────────────────────
-    {"GETUPVAL",      InstrFmt::ABC},   // 65
-    {"SETUPVAL",      InstrFmt::ABC},   // 66
-    {"CLOSEUPVAL",    InstrFmt::ABx},   // 67
+    {"GETUPVAL", InstrFmt::ABC},   // 65
+    {"SETUPVAL", InstrFmt::ABC},   // 66
+    {"CLOSEUPVAL", InstrFmt::ABx}, // 67
 
     // ── iteration (4) ────────────────────────────────────────────────────────
-    {"FOR_IN_START",  InstrFmt::ABC},   // 68  A=iter_reg, B=obj_reg
-    {"FOR_IN_NEXT",   InstrFmt::ABC},   // 69  A=key_reg, B=iter_reg, C=more_reg
-    {"FOR_OF_START",  InstrFmt::ABC},   // 70  A=iter_reg, B=obj_reg
-    {"FOR_OF_NEXT",   InstrFmt::ABC},   // 71  A=val_reg, B=iter_reg, C=more_reg
+    {"FOR_IN_START", InstrFmt::ABC}, // 68  A=iter_reg, B=obj_reg
+    {"FOR_IN_NEXT", InstrFmt::ABC},  // 69  A=key_reg, B=iter_reg, C=more_reg
+    {"FOR_OF_START", InstrFmt::ABC}, // 70  A=iter_reg, B=obj_reg
+    {"FOR_OF_NEXT", InstrFmt::ABC},  // 71  A=val_reg, B=iter_reg, C=more_reg
 };
 
 static_assert(sizeof(kRegOpInfo) / sizeof(kRegOpInfo[0]) == static_cast<int>(RegOp::NUM_OPCODES), "kRegOpInfo size mismatch");

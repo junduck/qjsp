@@ -248,8 +248,8 @@ struct RegParseState {
   // ── token helpers ─────────────────────────────────────────────────────
 
   bool next_token() { return lexer.next_token(); }
-  int peek_token(bool no_lf) { return lexer.peek_token(no_lf); }
-  bool expect(int tok);
+  TokenKind peek_token(bool no_lf) { return lexer.peek_token(no_lf); }
+  bool expect(TokenKind tok);
 
   // ── emitter ───────────────────────────────────────────────────────────
 
@@ -306,7 +306,7 @@ struct RegParseState {
   void parse_do_statement();
   void parse_for_statement();
   void parse_break_continue(bool is_cont);
-  void parse_var_decls(int decl_tok);
+  void parse_var_decls(TokenKind decl_tok);
   void parse_try_statement();
   void parse_switch_statement();
 
@@ -321,7 +321,7 @@ struct RegParseState {
 
   // ── helpers ───────────────────────────────────────────────────────────
 
-  bool js_define_var(Atom name, int tok);
+  bool js_define_var(Atom name, TokenKind tok);
   void push_enter_scope() { cur_func->push_scope(); }
   void pop_leave_scope() { cur_func->pop_scope(); }
 };
@@ -359,120 +359,120 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx);
 
 // ─── Inline helpers ─────────────────────────────────────────────────────────
 
-inline int binary_precedence(int tok) {
+inline int binary_precedence(TokenKind tok) {
   switch (tok) {
-  case '*':
-  case '/':
-  case '%':
+  case TokenKind::Star:
+  case TokenKind::SlashChar:
+  case TokenKind::Percent:
     return PREC_MULT;
-  case '+':
-  case '-':
+  case TokenKind::Plus:
+  case TokenKind::Minus:
     return PREC_ADD;
-  case TOK_SHL:
-  case TOK_SAR:
-  case TOK_SHR:
+  case TokenKind::Shl:
+  case TokenKind::Sar:
+  case TokenKind::Shr:
     return PREC_SHIFT;
-  case '<':
-  case '>':
-  case TOK_LTE:
-  case TOK_GTE:
+  case TokenKind::Less:
+  case TokenKind::Greater:
+  case TokenKind::Lte:
+  case TokenKind::Gte:
     return PREC_COMPARE;
-  case TOK_EQ:
-  case TOK_NEQ:
-  case TOK_STRICT_EQ:
-  case TOK_STRICT_NEQ:
+  case TokenKind::Eq:
+  case TokenKind::StrictEq:
+  case TokenKind::Neq:
+  case TokenKind::StrictNeq:
     return PREC_EQ;
-  case '&':
+  case TokenKind::Amp:
     return PREC_BIT_AND;
-  case '^':
+  case TokenKind::Caret:
     return PREC_BIT_XOR;
-  case '|':
+  case TokenKind::Pipe:
     return PREC_BIT_OR;
-  case TOK_LAND:
+  case TokenKind::Land:
     return PREC_LOGICAL_AND;
-  case TOK_LOR:
+  case TokenKind::Lor:
     return PREC_LOGICAL_OR;
-  case TOK_POW:
+  case TokenKind::Pow:
     return PREC_POW;
-  case TOK_DOUBLE_QUESTION_MARK:
+  case TokenKind::DoubleQuestionMark:
     return PREC_LOGICAL_OR;
   default:
     return 0;
   }
 }
 
-inline RegOp binop_to_reg(int tok) {
+inline RegOp binop_to_reg(TokenKind tok) {
   switch (tok) {
-  case '*':
+  case TokenKind::Star:
     return RegOp::MUL;
-  case '/':
+  case TokenKind::SlashChar:
     return RegOp::DIV;
-  case '%':
+  case TokenKind::Percent:
     return RegOp::MOD;
-  case '+':
+  case TokenKind::Plus:
     return RegOp::ADD;
-  case '-':
+  case TokenKind::Minus:
     return RegOp::SUB;
-  case TOK_SHL:
+  case TokenKind::Shl:
     return RegOp::SHL;
-  case TOK_SAR:
+  case TokenKind::Sar:
     return RegOp::SAR;
-  case TOK_SHR:
+  case TokenKind::Shr:
     return RegOp::SHR;
-  case '<':
+  case TokenKind::Less:
     return RegOp::LT;
-  case '>':
+  case TokenKind::Greater:
     return RegOp::GT;
-  case TOK_LTE:
+  case TokenKind::Lte:
     return RegOp::LTE;
-  case TOK_GTE:
+  case TokenKind::Gte:
     return RegOp::GTE;
-  case TOK_EQ:
+  case TokenKind::Eq:
     return RegOp::EQ;
-  case TOK_NEQ:
+  case TokenKind::Neq:
     return RegOp::NEQ;
-  case TOK_STRICT_EQ:
+  case TokenKind::StrictEq:
     return RegOp::SEQ;
-  case TOK_STRICT_NEQ:
+  case TokenKind::StrictNeq:
     return RegOp::SNEQ;
-  case '&':
+  case TokenKind::Amp:
     return RegOp::AND;
-  case '^':
+  case TokenKind::Caret:
     return RegOp::XOR;
-  case '|':
+  case TokenKind::Pipe:
     return RegOp::OR;
-  case TOK_POW:
+  case TokenKind::Pow:
     return RegOp::POW;
   default:
     return RegOp::NOP;
   }
 }
 
-inline RegOp compound_to_binop(int tok) {
+inline RegOp compound_to_binop(TokenKind tok) {
   switch (tok) {
-  case TOK_MUL_ASSIGN:
+  case TokenKind::MulAssign:
     return RegOp::MUL;
-  case TOK_DIV_ASSIGN:
+  case TokenKind::DivAssign:
     return RegOp::DIV;
-  case TOK_MOD_ASSIGN:
+  case TokenKind::ModAssign:
     return RegOp::MOD;
-  case TOK_PLUS_ASSIGN:
+  case TokenKind::PlusAssign:
     return RegOp::ADD;
-  case TOK_MINUS_ASSIGN:
+  case TokenKind::MinusAssign:
     return RegOp::SUB;
-  case TOK_SHL_ASSIGN:
+  case TokenKind::ShlAssign:
     return RegOp::SHL;
-  case TOK_SAR_ASSIGN:
+  case TokenKind::SarAssign:
     return RegOp::SAR;
-  case TOK_SHR_ASSIGN:
+  case TokenKind::ShrAssign:
     return RegOp::SHR;
-  case TOK_AND_ASSIGN:
+  case TokenKind::AndAssign:
     return RegOp::AND;
-  case TOK_OR_ASSIGN:
+  case TokenKind::OrAssign:
     return RegOp::OR;
-  case TOK_XOR_ASSIGN:
+  case TokenKind::XorAssign:
     return RegOp::XOR;
-  case TOK_POW_ASSIGN:
+  case TokenKind::PowAssign:
     return RegOp::POW;
   default:
     return RegOp::NOP;

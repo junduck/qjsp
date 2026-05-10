@@ -62,12 +62,12 @@ TEST(ValueSymbol, CreateSymbolUnique) {
   Atom a  = rt->create_symbol("x");
   Atom b  = rt->create_symbol("x");
   EXPECT_NE(a, b);
-  EXPECT_EQ(rt->atom_type(a), AtomType::symbol);
-  EXPECT_EQ(rt->atom_type(b), AtomType::symbol);
+  EXPECT_TRUE(rt->atom_is_symbol(a));
+  EXPECT_TRUE(rt->atom_is_symbol(b));
 }
 
 TEST(ValueSymbol, PredefSymbolIsAtom) {
   auto rt = std::make_unique<Runtime>();
-  Atom si = static_cast<Atom>(AtomEnum::Symbol_iterator);
-  EXPECT_EQ(rt->atom_type(si), AtomType::symbol);
+  Atom si = rt->well_known.symbol_iterator;
+  EXPECT_TRUE(rt->atom_is_symbol(si));
 }

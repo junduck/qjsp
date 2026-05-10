@@ -266,7 +266,6 @@ bool Lexer::next_token() {
   int c;
   bool ident_has_escape;
 
-
   p = last_ptr = buf_ptr;
   got_lf       = false;
 
@@ -277,7 +276,7 @@ redo:
   switch (c) {
   case 0:
     if (p >= buf_end)
-      token.type = TOK_EOF;
+      token.kind = TokenKind::Eof;
     else
       goto def_token;
     break;
@@ -358,10 +357,10 @@ redo:
       goto redo;
     } else if (p[1] == '=') {
       p += 2;
-      token.type = TOK_DIV_ASSIGN;
+      token.kind = TokenKind::DivAssign;
     } else {
       p++;
-      token.type = c;
+      token.kind = static_cast<TokenKind>(c);
     }
     break;
 
@@ -450,7 +449,7 @@ redo:
   case '.':
     if (p[1] == '.' && p[2] == '.') {
       p += 3;
-      token.type = TOK_ELLIPSIS;
+      token.kind = TokenKind::Ellipsis;
       break;
     }
     if (p[1] >= '0' && p[1] <= '9')
@@ -477,14 +476,14 @@ redo:
   case '*':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_MUL_ASSIGN;
+      token.kind = TokenKind::MulAssign;
     } else if (p[1] == '*') {
       if (p[2] == '=') {
         p += 3;
-        token.type = TOK_POW_ASSIGN;
+        token.kind = TokenKind::PowAssign;
       } else {
         p += 2;
-        token.type = TOK_POW;
+        token.kind = TokenKind::Pow;
       }
     } else
       goto def_token;
@@ -493,7 +492,7 @@ redo:
   case '%':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_MOD_ASSIGN;
+      token.kind = TokenKind::ModAssign;
     } else
       goto def_token;
     break;
@@ -501,10 +500,10 @@ redo:
   case '+':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_PLUS_ASSIGN;
+      token.kind = TokenKind::PlusAssign;
     } else if (p[1] == '+') {
       p += 2;
-      token.type = TOK_INC;
+      token.kind = TokenKind::Inc;
     } else
       goto def_token;
     break;
@@ -512,12 +511,12 @@ redo:
   case '-':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_MINUS_ASSIGN;
+      token.kind = TokenKind::MinusAssign;
     } else if (p[1] == '-') {
       if (allow_html_comments && p[2] == '>' && (got_lf || last_ptr == buf_start))
         goto skip_line_comment;
       p += 2;
-      token.type = TOK_DEC;
+      token.kind = TokenKind::Dec;
     } else
       goto def_token;
     break;
@@ -525,14 +524,14 @@ redo:
   case '<':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_LTE;
+      token.kind = TokenKind::Lte;
     } else if (p[1] == '<') {
       if (p[2] == '=') {
         p += 3;
-        token.type = TOK_SHL_ASSIGN;
+        token.kind = TokenKind::ShlAssign;
       } else {
         p += 2;
-        token.type = TOK_SHL;
+        token.kind = TokenKind::Shl;
       }
     } else if (allow_html_comments && p[1] == '!' && p[2] == '-' && p[3] == '-')
       goto skip_line_comment;
@@ -543,22 +542,22 @@ redo:
   case '>':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_GTE;
+      token.kind = TokenKind::Gte;
     } else if (p[1] == '>') {
       if (p[2] == '>') {
         if (p[3] == '=') {
           p += 4;
-          token.type = TOK_SHR_ASSIGN;
+          token.kind = TokenKind::ShrAssign;
         } else {
           p += 3;
-          token.type = TOK_SHR;
+          token.kind = TokenKind::Shr;
         }
       } else if (p[2] == '=') {
         p += 3;
-        token.type = TOK_SAR_ASSIGN;
+        token.kind = TokenKind::SarAssign;
       } else {
         p += 2;
-        token.type = TOK_SAR;
+        token.kind = TokenKind::Sar;
       }
     } else
       goto def_token;
@@ -568,14 +567,14 @@ redo:
     if (p[1] == '=') {
       if (p[2] == '=') {
         p += 3;
-        token.type = TOK_STRICT_EQ;
+        token.kind = TokenKind::StrictEq;
       } else {
         p += 2;
-        token.type = TOK_EQ;
+        token.kind = TokenKind::Eq;
       }
     } else if (p[1] == '>') {
       p += 2;
-      token.type = TOK_ARROW;
+      token.kind = TokenKind::Arrow;
     } else
       goto def_token;
     break;
@@ -584,10 +583,10 @@ redo:
     if (p[1] == '=') {
       if (p[2] == '=') {
         p += 3;
-        token.type = TOK_STRICT_NEQ;
+        token.kind = TokenKind::StrictNeq;
       } else {
         p += 2;
-        token.type = TOK_NEQ;
+        token.kind = TokenKind::Neq;
       }
     } else
       goto def_token;
@@ -596,14 +595,14 @@ redo:
   case '&':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_AND_ASSIGN;
+      token.kind = TokenKind::AndAssign;
     } else if (p[1] == '&') {
       if (p[2] == '=') {
         p += 3;
-        token.type = TOK_LAND_ASSIGN;
+        token.kind = TokenKind::LandAssign;
       } else {
         p += 2;
-        token.type = TOK_LAND;
+        token.kind = TokenKind::Land;
       }
     } else
       goto def_token;
@@ -612,7 +611,7 @@ redo:
   case '^':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_XOR_ASSIGN;
+      token.kind = TokenKind::XorAssign;
     } else
       goto def_token;
     break;
@@ -620,14 +619,14 @@ redo:
   case '|':
     if (p[1] == '=') {
       p += 2;
-      token.type = TOK_OR_ASSIGN;
+      token.kind = TokenKind::OrAssign;
     } else if (p[1] == '|') {
       if (p[2] == '=') {
         p += 3;
-        token.type = TOK_LOR_ASSIGN;
+        token.kind = TokenKind::LorAssign;
       } else {
         p += 2;
-        token.type = TOK_LOR;
+        token.kind = TokenKind::Lor;
       }
     } else
       goto def_token;
@@ -637,14 +636,14 @@ redo:
     if (p[1] == '?') {
       if (p[2] == '=') {
         p += 3;
-        token.type = TOK_DOUBLE_QUESTION_MARK_ASSIGN;
+        token.kind = TokenKind::DoubleQuestionMarkAssign;
       } else {
         p += 2;
-        token.type = TOK_DOUBLE_QUESTION_MARK;
+        token.kind = TokenKind::DoubleQuestionMark;
       }
     } else if (p[1] == '.' && !(p[2] >= '0' && p[2] <= '9')) {
       p += 2;
-      token.type = TOK_QUESTION_MARK_DOT;
+      token.kind = TokenKind::QuestionMarkDot;
     } else
       goto def_token;
     break;
@@ -672,7 +671,7 @@ redo:
       }
     }
   def_token:
-    token.type = c;
+    token.kind = static_cast<TokenKind>(c);
     p++;
     break;
   }
@@ -710,12 +709,21 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
   auto *str = String::allocate_raw(ident_buf);
   if (!str)
     return false;
-  Atom atom                 = rt->intern_copy(str);
+  Atom atom               = rt->intern_copy(str);
   token.ident_atom        = atom;
   token.ident_has_escape  = has_escape;
   token.ident_is_reserved = false;
-  token.type                = TOK_IDENT;
-  update_token_ident();
+
+  // Keyword detection via lookup table (not atom index ranges)
+  if (!has_escape) {
+    auto it = kKeywordTable.find(ident_buf);
+    if (it != kKeywordTable.end()) {
+      token.kind = it->second;
+      return true;
+    }
+  }
+
+  token.kind = TokenKind::Identifier;
   return true;
 }
 
@@ -758,36 +766,12 @@ bool Lexer::parse_private_name() {
   auto *str = String::allocate_raw(ident_buf);
   if (!str)
     return false;
-  Atom atom                 = rt->intern_copy(str);
+  Atom atom               = rt->intern_copy(str);
   token.ident_atom        = atom;
   token.ident_has_escape  = false;
   token.ident_is_reserved = false;
-  token.type                = TOK_PRIVATE_NAME;
+  token.kind              = TokenKind::PrivateName;
   return true;
-}
-
-void Lexer::update_token_ident() {
-  if (token.type != TOK_IDENT)
-    return;
-  Atom id_atom = token.ident_atom;
-
-  bool kw = false;
-  if (id_atom <= static_cast<Atom>(AtomEnum::_await)) {
-    if (id_atom <= static_cast<Atom>(kAtomLastKeyword))
-      kw = true;
-    else if (id_atom <= static_cast<Atom>(kAtomLastStrictKeyword))
-      kw = true;
-    else
-      kw = true; // await
-  }
-
-  if (kw) {
-    if (token.ident_has_escape) {
-      token.ident_is_reserved = true;
-    } else {
-      token.type = atom_token(id_atom);
-    }
-  }
 }
 
 // ─── String parsing ─────────────────────────────────────────────────────────
@@ -889,8 +873,8 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
 
   copy_str(out->str_val, out->str_len, buf);
   out->str_sep = static_cast<int>(c);
-  out->type      = TOK_STRING;
-  *pp            = p;
+  out->kind    = TokenKind::StringLit;
+  *pp          = p;
   return true;
 
 invalid_char:
@@ -940,8 +924,8 @@ bool Lexer::parse_template_part(const uint8_t *p) {
 
   copy_str(token.str_val, token.str_len, buf);
   token.str_sep = static_cast<int>(c);
-  token.type      = TOK_TEMPLATE;
-  buf_ptr         = p;
+  token.kind    = TokenKind::TemplateLit;
+  buf_ptr       = p;
   return true;
 }
 
@@ -1015,7 +999,7 @@ bool Lexer::parse_regexp() {
 
   copy_str(token.regexp_body, token.regexp_body_len, body);
   copy_str(token.regexp_flags, token.regexp_flags_len, flags);
-  token.type = TOK_REGEXP;
+  token.kind = TokenKind::RegexpLit;
   buf_ptr    = p;
   return true;
 }
@@ -1032,8 +1016,8 @@ bool Lexer::parse_number(const uint8_t *p) {
       if (end == c_str)
         return false;
       token.num_val = val;
-      token.type      = TOK_NUMBER;
-      buf_ptr         = reinterpret_cast<const uint8_t *>(end);
+      token.kind    = TokenKind::Number;
+      buf_ptr       = reinterpret_cast<const uint8_t *>(end);
       return true;
     }
     if (p[1] == 'o' || p[1] == 'O') {
@@ -1050,8 +1034,8 @@ bool Lexer::parse_number(const uint8_t *p) {
         p++;
       }
       token.num_val = static_cast<double>(val);
-      token.type      = TOK_NUMBER;
-      buf_ptr         = p;
+      token.kind    = TokenKind::Number;
+      buf_ptr       = p;
       return true;
     }
     if (p[1] == 'b' || p[1] == 'B') {
@@ -1066,8 +1050,8 @@ bool Lexer::parse_number(const uint8_t *p) {
         p++;
       }
       token.num_val = static_cast<double>(val);
-      token.type      = TOK_NUMBER;
-      buf_ptr         = p;
+      token.kind    = TokenKind::Number;
+      buf_ptr       = p;
       return true;
     }
   }
@@ -1083,23 +1067,25 @@ bool Lexer::parse_number(const uint8_t *p) {
     return false;
 
   token.num_val = val;
-  token.type      = TOK_NUMBER;
-  buf_ptr         = next;
+  token.kind    = TokenKind::Number;
+  buf_ptr       = next;
   return true;
 }
 
 // ─── Peek ahead ─────────────────────────────────────────────────────────────
 
-int Lexer::peek_token(bool no_line_terminator) {
-  const uint8_t *p = buf_ptr;
+TokenKind Lexer::peek_token(bool no_line_terminator) {
+  const uint8_t *p    = buf_ptr;
+  const uint8_t *last = p;
 
   for (;;) {
     int c = *p++;
+    last  = p - 1;
     switch (c) {
     case '\r':
     case '\n':
       if (no_line_terminator)
-        return '\n';
+        return static_cast<TokenKind>('\n');
       continue;
     case ' ':
     case '\t':
@@ -1109,7 +1095,7 @@ int Lexer::peek_token(bool no_line_terminator) {
     case '/':
       if (*p == '/') {
         if (no_line_terminator)
-          return '\n';
+          return static_cast<TokenKind>('\n');
         while (*p && *p != '\r' && *p != '\n')
           p++;
         continue;
@@ -1117,7 +1103,7 @@ int Lexer::peek_token(bool no_line_terminator) {
       if (*p == '*') {
         while (*++p) {
           if ((*p == '\r' || *p == '\n') && no_line_terminator)
-            return '\n';
+            return static_cast<TokenKind>('\n');
           if (*p == '*' && p[1] == '/') {
             p += 2;
             break;
@@ -1125,52 +1111,51 @@ int Lexer::peek_token(bool no_line_terminator) {
         }
         continue;
       }
-      break;
+      return static_cast<TokenKind>(c);
     case '=':
       if (*p == '>')
-        return TOK_ARROW;
-      break;
+        return TokenKind::Arrow;
+      return static_cast<TokenKind>(c);
     case 'i':
       if (p[0] == 'n' && !lre_js_is_ident_next(static_cast<uint32_t>(p[1])))
-        return TOK_IN;
+        return TokenKind::KwIn;
       if (p[0] == 'm' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !lre_js_is_ident_next(static_cast<uint32_t>(p[5])))
-        return TOK_IMPORT;
-      return TOK_IDENT;
+        return TokenKind::KwImport;
+      return TokenKind::Identifier;
     case 'o':
       if (p[0] == 'f' && !lre_js_is_ident_next(static_cast<uint32_t>(p[1])))
-        return TOK_OF;
-      return TOK_IDENT;
+        return TokenKind::KwOf;
+      return TokenKind::Identifier;
     case 'e':
       if (p[0] == 'x' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !lre_js_is_ident_next(static_cast<uint32_t>(p[5])))
-        return TOK_EXPORT;
-      return TOK_IDENT;
+        return TokenKind::KwExport;
+      return TokenKind::Identifier;
     case 'f':
       if (p[0] == 'u' && p[1] == 'n' && p[2] == 'c' && p[3] == 't' && p[4] == 'i' && p[5] == 'o' && p[6] == 'n' &&
           !lre_js_is_ident_next(static_cast<uint32_t>(p[7])))
-        return TOK_FUNCTION;
-      return TOK_IDENT;
+        return TokenKind::KwFunction;
+      return TokenKind::Identifier;
     case '\\':
       if (*p == 'u') {
         const uint8_t *p1 = p + 1;
         if (lre_js_is_ident_first(static_cast<uint32_t>(parse_escape(&p1, true))))
-          return TOK_IDENT;
+          return TokenKind::Identifier;
       }
-      break;
+      return static_cast<TokenKind>(c);
     default:
       if (c >= 128) {
         const uint8_t *p_next;
         c = unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next);
         p = p_next;
         if (no_line_terminator && (c == CP_PS || c == CP_LS))
-          return '\n';
+          return static_cast<TokenKind>('\n');
       }
       if (lre_is_space(static_cast<uint32_t>(c)))
         continue;
       if (lre_js_is_ident_first(static_cast<uint32_t>(c)))
-        return TOK_IDENT;
-      break;
+        return TokenKind::Identifier;
+      return static_cast<TokenKind>(c);
     }
-    return c;
   }
 }
 

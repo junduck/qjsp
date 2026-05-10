@@ -14,9 +14,9 @@ Context::Context(Runtime *rt) : rt(rt) {
   is_marked   = false;
   rt->add_gc_object(this);
 
-  uint32_t count = rt->class_count;
+  uint32_t count    = rt->class_count;
   class_proto_count = count;
-  class_protos = std::make_unique<Value[]>(count);
+  class_protos      = std::make_unique<Value[]>(count);
   for (uint32_t i = 0; i < count; ++i)
     class_protos[static_cast<size_t>(i)] = Value::null_();
 
@@ -24,14 +24,11 @@ Context::Context(Runtime *rt) : rt(rt) {
     native_error_proto[i] = Value::undefined_();
 
   for (uint32_t i = static_cast<uint32_t>(ClassID::object); i < class_proto_count; ++i) {
-    constexpr int kClassBase = static_cast<int>(AtomEnum::Object);
-    int atom_idx             = kClassBase + static_cast<int>(i - static_cast<uint32_t>(ClassID::object));
-    if (atom_idx < static_cast<int>(AtomEnum::end))
-      rt->classes[i].class_name = static_cast<Atom>(atom_idx);
+    rt->classes[i].class_name = kAtomNull;
   }
 
-  auto global     = Object::create(rt, Value::undefined_(), ClassID::global_object);
-  global_obj = global;
+  auto global = Object::create(rt, Value::undefined_(), ClassID::global_object);
+  global_obj  = global;
   setup_global(this, global.as<Object>());
   init_array_prototype(this);
 }

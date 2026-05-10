@@ -64,8 +64,30 @@ struct Runtime {
   const char *rt_info = nullptr;
 
   std::vector<String *> atom_table;
-  std::vector<AtomType> atom_types_;
+  std::vector<bool> atom_is_symbol_;
   std::unordered_map<std::string_view, Atom, StringHash, std::equal_to<>> atom_map;
+
+  /// Eagerly-interned atoms the engine references by index.
+  /// Populated during init_atoms() and stable thereafter.
+  struct WellKnownAtoms {
+    Atom empty_string          = 0;
+    Atom prototype             = 0;
+    Atom constructor           = 0;
+    Atom length                = 0;
+    Atom name                  = 0;
+    Atom toString              = 0;
+    Atom valueOf               = 0;
+    Atom eval                  = 0;
+    Atom undefined             = 0;
+    Atom of                    = 0;
+    Atom __proto__             = 0;
+    Atom symbol_iterator       = 0;
+    Atom symbol_asyncIterator  = 0;
+    Atom symbol_toPrimitive    = 0;
+    Atom symbol_toStringTag    = 0;
+    Atom symbol_hasInstance    = 0;
+    Atom symbol_species        = 0;
+  } well_known;
 
   std::unique_ptr<Class[]> classes;
   uint32_t class_count = 0;
@@ -144,7 +166,7 @@ struct Runtime {
   void maybe_trigger_gc(size_t size_hint = 0);
 
   Atom intern(std::string_view sv);
-  Atom intern_copy(String *s);  // takes ownership of s, stores in atom_table
+  Atom intern_copy(String *s);
   Value atom_to_value(Atom a) const;
   std::string_view atom_view(Atom a) const {
     if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))
@@ -152,10 +174,10 @@ struct Runtime {
     auto *s = atom_table[a];
     return s ? s->view() : std::string_view{};
   }
-  AtomType atom_type(Atom a) const {
-    return (a < static_cast<Atom>(atom_types_.size())) ? atom_types_[a] : AtomType::string;
-  }
   Atom create_symbol(std::string_view desc = {});
+  bool atom_is_symbol(Atom a) const {
+    return a < static_cast<Atom>(atom_is_symbol_.size()) && atom_is_symbol_[a];
+  }
 };
 
 } // namespace qjsp

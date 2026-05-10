@@ -15,8 +15,6 @@ enum class GCObjType : uint8_t {
   module,
 };
 
-enum class WeakRefType : uint8_t { map, weakref, finrec };
-
 struct RefCounted {
   int ref_count = 1;
   void ref() { ++ref_count; }
@@ -28,15 +26,9 @@ struct GCObjectHeader : RefCounted {
   bool is_marked        = false;
 
   virtual void gc_mark(std::vector<GCObjectHeader *> &worklist) = 0;
-  virtual ~GCObjectHeader() = default;
+  virtual ~GCObjectHeader()                                     = default;
 };
 
 using GCObjList = std::vector<GCObjectHeader *>;
-
-struct WeakRefHeader {
-  WeakRefType weakref_type{};
-};
-
-using MarkFunc = void(void *, GCObjectHeader *);
 
 } // namespace qjsp

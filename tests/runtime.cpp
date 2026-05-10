@@ -24,7 +24,7 @@ TEST(StringOps, CreateAndCmp) {
 
 TEST(AtomIntern, Predefined) {
   auto rt = std::make_unique<Runtime>();
-  EXPECT_EQ(rt->atom_view(static_cast<Atom>(AtomEnum::Object)), "Object");
+  EXPECT_EQ(rt->atom_view(rt->intern("prototype")), "prototype");
 }
 
 TEST(AtomIntern, Dynamic) {

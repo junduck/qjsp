@@ -33,7 +33,7 @@ struct Context : GCObjectHeader {
   Value function_proto = Value::undefined_();
   Value function_ctor  = Value::undefined_();
   Value array_ctor     = Value::null_();
-  Value array_proto     = Value::undefined_();
+  Value array_proto    = Value::undefined_();
   Value regexp_ctor    = Value::null_();
   Value promise_ctor   = Value::null_();
   Value native_error_proto[static_cast<int>(ErrorEnum::native_error_count)]{};

@@ -31,24 +31,17 @@ struct Instruction {
 
   // ── encoders ──────────────────────────────────────────────────────────
 
-  static constexpr Instruction iABC(uint8_t op, uint8_t a, uint8_t b,
-                                    uint8_t c) {
-    return Instruction{static_cast<uint32_t>(op) |
-                       (static_cast<uint32_t>(a) << 8) |
-                       (static_cast<uint32_t>(b) << 16) |
+  static constexpr Instruction iABC(uint8_t op, uint8_t a, uint8_t b, uint8_t c) {
+    return Instruction{static_cast<uint32_t>(op) | (static_cast<uint32_t>(a) << 8) | (static_cast<uint32_t>(b) << 16) |
                        (static_cast<uint32_t>(c) << 24)};
   }
 
   static constexpr Instruction iABx(uint8_t op, uint8_t a, uint16_t bx) {
-    return Instruction{static_cast<uint32_t>(op) |
-                       (static_cast<uint32_t>(a) << 8) |
-                       (static_cast<uint32_t>(bx) << 16)};
+    return Instruction{static_cast<uint32_t>(op) | (static_cast<uint32_t>(a) << 8) | (static_cast<uint32_t>(bx) << 16)};
   }
 
   static constexpr Instruction iAsBx(uint8_t op, uint8_t a, int16_t sbx) {
-    return Instruction{
-        static_cast<uint32_t>(op) | (static_cast<uint32_t>(a) << 8) |
-        (static_cast<uint32_t>(static_cast<uint16_t>(sbx)) << 16)};
+    return Instruction{static_cast<uint32_t>(op) | (static_cast<uint32_t>(a) << 8) | (static_cast<uint32_t>(static_cast<uint16_t>(sbx)) << 16)};
   }
 };
 
@@ -157,7 +150,7 @@ enum class RegOp : uint8_t {
   FOR_OF_START,
   FOR_OF_NEXT,
 
-  NUM_OPCODES  // sentinel count
+  NUM_OPCODES // sentinel count
 };
 
 // ─── Opcode info ────────────────────────────────────────────────────────────

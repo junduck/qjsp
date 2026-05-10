@@ -10,6 +10,13 @@
 
 namespace qjsp {
 
+static String *alloc_string(std::string_view sv) {
+  auto *s = String::allocate_raw(sv);
+  if (s)
+    s->set_interned();
+  return s;
+}
+
 Runtime::Runtime() {
   init_atoms();
   init_class_table();
@@ -25,25 +32,58 @@ Runtime::~Runtime() {
 }
 
 bool Runtime::init_atoms() {
-  atom_table.reserve(static_cast<size_t>(AtomEnum::end));
-  atom_table.push_back(nullptr);
-  atom_types_.push_back(AtomType::string);
+  atom_table.push_back(nullptr);      // index 0 = kAtomNull
+  atom_is_symbol_.push_back(false);
 
-  // Predefined atoms: index 0 is null placeholder, start from 1
-  for (size_t i = 1; i < std::size(kAtomNames); ++i) {
-    auto sv  = kAtomNames[i];
-    auto *s  = String::allocate_raw(sv);
-    auto type = atom_type_for(static_cast<AtomEnum>(i));
+  auto add = [&](std::string_view sv, Atom &slot, bool is_symbol = false) {
+    auto *s = alloc_string(sv);
     if (!s)
       return false;
-    s->set_interned();
+    slot = static_cast<Atom>(atom_table.size());
     atom_table.push_back(s);
-    atom_types_.push_back(type);
-    // Only string atoms go into the lookup map.
-    // Symbol atoms are identified by their index only.
-    if (type == AtomType::string)
-      atom_map.emplace(s->view(), static_cast<Atom>(i));
-  }
+    atom_is_symbol_.push_back(is_symbol);
+    if (!is_symbol)
+      atom_map.emplace(s->view(), slot);
+    return true;
+  };
+
+  if (!add("", well_known.empty_string))
+    return false;
+  if (!add("prototype", well_known.prototype))
+    return false;
+  if (!add("constructor", well_known.constructor))
+    return false;
+  if (!add("length", well_known.length))
+    return false;
+  if (!add("name", well_known.name))
+    return false;
+  if (!add("toString", well_known.toString))
+    return false;
+  if (!add("valueOf", well_known.valueOf))
+    return false;
+  if (!add("eval", well_known.eval))
+    return false;
+  if (!add("undefined", well_known.undefined))
+    return false;
+  if (!add("of", well_known.of))
+    return false;
+  if (!add("__proto__", well_known.__proto__))
+    return false;
+
+  // Well-known symbols
+  if (!add("Symbol.iterator", well_known.symbol_iterator, true))
+    return false;
+  if (!add("Symbol.asyncIterator", well_known.symbol_asyncIterator, true))
+    return false;
+  if (!add("Symbol.toPrimitive", well_known.symbol_toPrimitive, true))
+    return false;
+  if (!add("Symbol.toStringTag", well_known.symbol_toStringTag, true))
+    return false;
+  if (!add("Symbol.hasInstance", well_known.symbol_hasInstance, true))
+    return false;
+  if (!add("Symbol.species", well_known.symbol_species, true))
+    return false;
+
   return true;
 }
 
@@ -51,11 +91,10 @@ Atom Runtime::intern(std::string_view sv) {
   auto it = atom_map.find(sv);
   if (it != atom_map.end())
     return it->second;
-  auto *s = String::allocate_raw(sv);
-  s->set_interned();
+  auto *s = alloc_string(sv);
   auto idx = static_cast<Atom>(atom_table.size());
   atom_table.push_back(s);
-  atom_types_.push_back(AtomType::string);
+  atom_is_symbol_.push_back(false);
   atom_map.emplace(s->view(), idx);
   return idx;
 }
@@ -65,29 +104,29 @@ Atom Runtime::intern_copy(String *s) {
     return kAtomNull;
   auto it = atom_map.find(s->view());
   if (it != atom_map.end()) {
-    s->unref(); // already interned — free the duplicate
+    s->unref();
     return it->second;
   }
   s->set_interned();
   auto idx = static_cast<Atom>(atom_table.size());
   atom_table.push_back(s);
-  atom_types_.push_back(AtomType::string);
+  atom_is_symbol_.push_back(false);
   atom_map.emplace(s->view(), idx);
   return idx;
 }
 
 Atom Runtime::create_symbol(std::string_view desc) {
   Atom idx = static_cast<Atom>(atom_table.size());
-  auto *s  = !desc.empty() ? String::allocate_raw(desc) : nullptr;
+  auto *s  = !desc.empty() ? alloc_string(desc) : nullptr;
   atom_table.push_back(s);
-  atom_types_.push_back(AtomType::symbol);
+  atom_is_symbol_.push_back(true);
   return idx;
 }
 
 Value Runtime::atom_to_value(Atom a) const {
   if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))
     return Value::undefined_();
-  if (atom_types_[a] == AtomType::symbol)
+  if (atom_is_symbol(a))
     return Value::symbol_from_atom(a);
   auto *s = atom_table[a];
   if (!s)
@@ -142,7 +181,6 @@ void Runtime::run_gc() {
     p->gc_mark(mark_worklist);
   }
 
-  // Sweep: swap-pop unmarked objects.
   size_t i = 0;
   while (i < gc_objects.size()) {
     auto *p = gc_objects[i];

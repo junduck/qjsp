@@ -56,7 +56,7 @@ constexpr uint64_t kPayloadMask = (1ull << kTagShift) - 1;
 constexpr uint64_t kTagSymbol = 0x7FF8ull;
 
 // ─── Pointer tags ─── RC (0x7FF9–0x7FFC): RefCounted only, no vtable ──────
-constexpr uint64_t kTagVarRef  = 0x7FF9ull; // VarRef (internal)
+constexpr uint64_t kTagVarRef   = 0x7FF9ull; // VarRef (internal)
 constexpr uint64_t kTagBytecode = 0x7FFAull; // FunctionBytecode
 constexpr uint64_t kTagString   = 0x7FFBull;
 constexpr uint64_t kTagBigInt   = 0x7FFCull;
@@ -77,9 +77,9 @@ constexpr uint32_t kScalarException   = 0x0003;
 
 // ─── Derived boundaries ────────────────────────────────────────────────────
 constexpr uint64_t kPtrStart  = kTagVarRef; // first pointer tag (0x7FF9)
-constexpr uint64_t kPtrEnd    = kTagBigInt;  // last pointer tag (0x7FFC)
-constexpr uint64_t kTaggedMin = kTagSymbol;  // smallest tag in NaN-box range (0x7FF8)
-constexpr uint64_t kTaggedMax = kTagScalar;  // largest tag overall (0x7FFF)
+constexpr uint64_t kPtrEnd    = kTagBigInt; // last pointer tag (0x7FFC)
+constexpr uint64_t kTaggedMin = kTagSymbol; // smallest tag in NaN-box range (0x7FF8)
+constexpr uint64_t kTaggedMax = kTagScalar; // largest tag overall (0x7FFF)
 
 // ─── Value ─────────────────────────────────────────────────────────────────
 

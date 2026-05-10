@@ -23,12 +23,12 @@ Value Object::create(Runtime *rt, Value proto, ClassID class_id) {
 // ── CFunctionObj ──────────────────────────────────────────────────────────
 
 Value CFunctionObj::create(Context *ctx, CFunction *fn, std::string_view name, int length) {
-  auto *obj           = new CFunctionObj();
-  obj->ref_count      = 1;
-  obj->gc_obj_type    = GCObjType::js_object;
-  obj->class_id       = ClassID::c_function;
-  obj->fn             = fn;
-  obj->fn_length      = static_cast<uint8_t>(length);
+  auto *obj        = new CFunctionObj();
+  obj->ref_count   = 1;
+  obj->gc_obj_type = GCObjType::js_object;
+  obj->class_id    = ClassID::c_function;
+  obj->fn          = fn;
+  obj->fn_length   = static_cast<uint8_t>(length);
   ctx->rt->add_gc_object(obj);
   obj->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
   obj->set_own(ctx->rt, ctx->rt->intern("name"), String::create(name));
@@ -116,9 +116,7 @@ void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   }
 }
 
-void BytecodeFunction::gc_mark(std::vector<GCObjectHeader *> &worklist) {
-  Object::gc_mark(worklist);
-}
+void BytecodeFunction::gc_mark(std::vector<GCObjectHeader *> &worklist) { Object::gc_mark(worklist); }
 
 // ─── call (virtual dispatch) ───────────────────────────────────────────────
 
@@ -166,14 +164,12 @@ void setup_global(Context *ctx, Object *global) {
   // Symbol — exposes well-known symbols as regular string-keyed properties
   Value sym_obj = Object::create(rt, Value::undefined_(), ClassID::object);
   auto *sym     = sym_obj.as<Object>();
-  auto set_sym  = [&](const char *name, AtomEnum se) {
-    sym->set_own(rt, rt->intern(name), Value::symbol_from_atom(static_cast<Atom>(se)));
-  };
-  set_sym("iterator", AtomEnum::Symbol_iterator);
-  set_sym("asyncIterator", AtomEnum::Symbol_asyncIterator);
-  set_sym("toPrimitive", AtomEnum::Symbol_toPrimitive);
-  set_sym("toStringTag", AtomEnum::Symbol_toStringTag);
-  set_sym("hasInstance", AtomEnum::Symbol_hasInstance);
+  auto set_sym  = [&](const char *name, Atom well_known) { sym->set_own(rt, rt->intern(name), Value::symbol_from_atom(well_known)); };
+  set_sym("iterator", rt->well_known.symbol_iterator);
+  set_sym("asyncIterator", rt->well_known.symbol_asyncIterator);
+  set_sym("toPrimitive", rt->well_known.symbol_toPrimitive);
+  set_sym("toStringTag", rt->well_known.symbol_toStringTag);
+  set_sym("hasInstance", rt->well_known.symbol_hasInstance);
   global->set_own(rt, rt->intern("Symbol"), sym_obj);
 }
 

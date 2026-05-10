@@ -11,8 +11,8 @@ namespace qjsp {
 // ─── Lowering ───────────────────────────────────────────────────────────────
 
 FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
-  auto *b        = new FunctionBytecode();
-  b->ref_count   = 1;
+  auto *b      = new FunctionBytecode();
+  b->ref_count = 1;
 
   (void)ctx; // realm reference, not needed for RC-only bytecode
 
@@ -40,15 +40,11 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
     RegOp op = static_cast<RegOp>(instr.opcode());
     if (op == RegOp::CATCH) {
       // CATCH uses absolute target in iABx
-      fd->instructions[static_cast<size_t>(p.instr_idx)] =
-          Instruction::iABx(static_cast<uint8_t>(op), instr.a(),
-                            static_cast<uint16_t>(target)).raw;
+      fd->instructions[static_cast<size_t>(p.instr_idx)] = Instruction::iABx(static_cast<uint8_t>(op), instr.a(), static_cast<uint16_t>(target)).raw;
     } else {
       // JMP, IS_FALSE, IS_TRUE: relative offset from _next_ instruction
-      int rel_off = offset - 1;
-      fd->instructions[static_cast<size_t>(p.instr_idx)] =
-          Instruction::iAsBx(static_cast<uint8_t>(op), instr.a(),
-                             static_cast<int16_t>(rel_off)).raw;
+      int rel_off                                        = offset - 1;
+      fd->instructions[static_cast<size_t>(p.instr_idx)] = Instruction::iAsBx(static_cast<uint8_t>(op), instr.a(), static_cast<int16_t>(rel_off)).raw;
     }
   }
 
@@ -91,10 +87,10 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
   if (total_defs > 0) {
     b->vardefs = std::make_unique<BytecodeVarDef[]>(static_cast<size_t>(total_defs));
     for (int i = 0; i < fd->arg_count; i++) {
-      auto &vd                  = fd->args[static_cast<size_t>(i)];
-      b->vardefs[i].var_name    = vd.var_name;
-      b->vardefs[i].scope_next  = vd.scope_next;
-      b->vardefs[i].flags       = 0;
+      auto &vd                 = fd->args[static_cast<size_t>(i)];
+      b->vardefs[i].var_name   = vd.var_name;
+      b->vardefs[i].scope_next = vd.scope_next;
+      b->vardefs[i].flags      = 0;
       b->vardefs[i].set_is_captured(vd.is_captured);
       b->vardefs[i].var_ref_idx = static_cast<uint16_t>(vd.upval_idx >= 0 ? vd.upval_idx : 0);
     }

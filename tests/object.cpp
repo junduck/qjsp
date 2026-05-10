@@ -126,7 +126,7 @@ TEST_F(ObjFixture, ArrayIteratorManual) {
   a->elements.push_back(Value::int32(20));
 
   // Get Symbol.iterator method from array
-  auto si_atom = static_cast<Atom>(AtomEnum::Symbol_iterator);
+  auto si_atom = rt->well_known.symbol_iterator;
   Value si_fn  = arr.as<Object>()->get(si_atom);
   EXPECT_TRUE(si_fn.is_object());
   EXPECT_TRUE(si_fn.as<Object>()->is_callable());

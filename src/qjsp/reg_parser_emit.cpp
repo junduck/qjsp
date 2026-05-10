@@ -37,15 +37,14 @@ int FunctionDef::emit_label(int id) {
   return label_slots[static_cast<size_t>(id)].pos;
 }
 
-// Emit a conditional or unconditional jump. Returns the instruction index.
 int FunctionDef::emit_jump(RegOp op, int label, uint8_t reg_a) {
   if (label < 0)
     return -1;
   label_slots[static_cast<size_t>(label)].ref_count++;
   if (op == RegOp::CATCH) {
-    emit_iABx(op, reg_a, 0); // placeholder (patched to absolute Bx)
+    emit_iABx(op, reg_a, 0);
   } else {
-    emit_iAsBx(op, reg_a, 0); // placeholder offset (patched to relative sBx)
+    emit_iAsBx(op, reg_a, 0);
   }
   patches.push_back({static_cast<int>(instructions.size()) - 1, label});
   return static_cast<int>(instructions.size()) - 1;
@@ -90,9 +89,8 @@ int FunctionDef::add_var(Atom name) {
   vars.emplace_back();
   vars[static_cast<size_t>(idx)].var_name  = name;
   vars[static_cast<size_t>(idx)].reg_index = 1 + arg_count + idx;
-  // Update alloc so temps don't collide with var slots
-  alloc.var_count_ = var_count;
-  int min_temp     = 1 + alloc.arg_count_ + alloc.var_count_;
+  alloc.var_count_                         = var_count;
+  int min_temp                             = 1 + alloc.arg_count_ + alloc.var_count_;
   if (alloc.next_temp_ < min_temp)
     alloc.next_temp_ = min_temp;
   if (alloc.max_temp_ < min_temp)
@@ -129,7 +127,7 @@ int FunctionDef::push_scope() {
   scopes.emplace_back();
   scopes[static_cast<size_t>(scope)].parent = scope_level;
   scopes[static_cast<size_t>(scope)].first  = scope_first;
-  emit_iABx(RegOp::NOP, 0, 0); // scope marker (placeholder)
+  emit_iABx(RegOp::NOP, 0, 0);
   scope_level = scope;
   return scope;
 }
@@ -138,7 +136,7 @@ void FunctionDef::pop_scope() {
   int scope   = scope_level;
   scope_level = scopes[static_cast<size_t>(scope)].parent;
   scope_first = first_lexical_var(scope_level);
-  emit_iABx(RegOp::NOP, 0, 0); // scope exit marker (placeholder)
+  emit_iABx(RegOp::NOP, 0, 0);
 }
 
 void FunctionDef::close_scopes(int scope, int scope_stop) {
@@ -165,16 +163,16 @@ void RegParseState::init(const char *source, const char *filename) {
   lexer.init(rt, filename, reinterpret_cast<const uint8_t *>(source), std::strlen(source));
 }
 
-bool RegParseState::expect(int tok) {
-  if (lexer.token.type != tok)
+bool RegParseState::expect(TokenKind tok) {
+  if (lexer.token.kind != tok)
     return false;
   return next_token();
 }
 
-bool RegParseState::js_define_var(Atom name, int tok) {
+bool RegParseState::js_define_var(Atom name, TokenKind tok) {
   FunctionDef *fd = cur_func;
   switch (tok) {
-  case TOK_LET:
+  case TokenKind::KwLet:
     if (fd->find_scope_var(name, fd->scope_level))
       return false;
     {
@@ -190,7 +188,7 @@ bool RegParseState::js_define_var(Atom name, int tok) {
       fd->scope_first                                        = idx;
     }
     return true;
-  case TOK_CONST:
+  case TokenKind::KwConst:
     if (fd->find_scope_var(name, fd->scope_level))
       return false;
     {
@@ -207,7 +205,7 @@ bool RegParseState::js_define_var(Atom name, int tok) {
       fd->scope_first                                        = idx;
     }
     return true;
-  case TOK_VAR:
+  case TokenKind::KwVar:
     if (fd->find_var(name) < 0) {
       int idx = fd->add_var(name);
       if (idx < 0)
@@ -225,7 +223,7 @@ bool RegParseState::js_define_var(Atom name, int tok) {
 
 } // namespace qjsp
 
-// ─── FunctionDef closure helpers (defined in namespace) ─────────────────────
+// ─── FunctionDef closure helpers ─────────────────────────────────────────────
 
 namespace qjsp {
 
@@ -275,18 +273,15 @@ int FunctionDef::resolve_upval(Atom name) {
   if (!find_enclosing_var(name, vd, owner, var_idx, is_arg))
     return -1;
   if (owner == this)
-    return -1; // local var, not an upvalue
+    return -1;
 
-  // Mark captured in owning function
   owner->capture_var(vd);
 
-  // Check if we already have a closure var for this
   for (size_t i = 0; i < closure_var.size(); i++) {
     if (closure_var[i].var_name == name)
       return static_cast<int>(i);
   }
 
-  // Add new closure var
   ClosureVar cv;
   cv.var_name = name;
   cv.var_idx  = static_cast<uint16_t>(var_idx);

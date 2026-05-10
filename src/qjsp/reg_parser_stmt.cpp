@@ -16,26 +16,23 @@ void RegParseState::parse_statement() { parse_statement_or_decl(0); }
 
 void RegParseState::parse_statement_or_decl(int decl_mask) {
   // Named label: ident : statement
-  if (lexer.token.type == TOK_IDENT &&
-      !lexer.token.ident_is_reserved &&
-      peek_token(true) == ':') {
+  if (lexer.token.kind == TokenKind::Identifier && !lexer.token.ident_is_reserved && peek_token(true) == TokenKind::Colon) {
     Atom label = lexer.token.ident_atom;
     next_token(); // skip ident
     next_token(); // skip ':'
 
-    bool is_loop = (lexer.token.type == TOK_FOR ||
-                    lexer.token.type == TOK_WHILE ||
-                    lexer.token.type == TOK_DO);
+    bool is_loop = (lexer.token.kind == TokenKind::KwFor || lexer.token.kind == TokenKind::KwWhile || lexer.token.kind == TokenKind::KwDo);
 
     if (is_loop) {
-      // For labeled loops, pass label name to the loop via pending_label
       pending_label = label;
-      if (lexer.token.type == TOK_FOR)         parse_for_statement();
-      else if (lexer.token.type == TOK_WHILE)  parse_while_statement();
-      else                                     parse_do_statement();
+      if (lexer.token.kind == TokenKind::KwFor)
+        parse_for_statement();
+      else if (lexer.token.kind == TokenKind::KwWhile)
+        parse_while_statement();
+      else
+        parse_do_statement();
       pending_label = kAtomNull;
     } else {
-      // Labeled regular statement: create BlockEnv with label_break only
       BlockEnv be;
       int lbreak = new_label();
       cur_func->push_break(&be, label, lbreak, -1);
@@ -46,63 +43,62 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
     return;
   }
 
-  int tok = lexer.token.type;
+  TokenKind tok = lexer.token.kind;
 
   switch (tok) {
-  case '{':
+  case TokenKind::LBrace:
     parse_block();
     return;
-  case TOK_IF:
+  case TokenKind::KwIf:
     parse_if_statement();
     return;
-  case TOK_RETURN:
+  case TokenKind::KwReturn:
     parse_return_statement();
     return;
-  case TOK_THROW:
+  case TokenKind::KwThrow:
     parse_throw_statement();
     return;
-  case TOK_WHILE:
+  case TokenKind::KwWhile:
     parse_while_statement();
     return;
-  case TOK_FOR:
+  case TokenKind::KwFor:
     parse_for_statement();
     return;
-  case TOK_DO:
+  case TokenKind::KwDo:
     parse_do_statement();
     return;
-  case TOK_BREAK:
+  case TokenKind::KwBreak:
     parse_break_continue(false);
     return;
-  case TOK_CONTINUE:
+  case TokenKind::KwContinue:
     parse_break_continue(true);
     return;
-  case TOK_SWITCH:
+  case TokenKind::KwSwitch:
     parse_switch_statement();
     return;
-  case TOK_TRY: {
+  case TokenKind::KwTry: {
     parse_try_statement();
     return;
   }
 
-  case TOK_LET:
-  case TOK_CONST:
+  case TokenKind::KwLet:
+  case TokenKind::KwConst:
     if (!(decl_mask & 1)) {
       parse_expr_statement();
       return;
     }
-  case TOK_VAR: {
+  case TokenKind::KwVar: {
     next_token();
     parse_var_decls(tok);
-    // Semicolon
-  if (lexer.token.type == ';')
-    next_token();
-  return;
-}
+    if (lexer.token.kind == TokenKind::Semicolon)
+      next_token();
+    return;
+  }
 
-  case TOK_FUNCTION: {
+  case TokenKind::KwFunction: {
     next_token();
     Atom name = kAtomNull;
-    if (lexer.token.type == TOK_IDENT) {
+    if (lexer.token.kind == TokenKind::Identifier) {
       name = lexer.token.ident_atom;
       next_token();
     }
@@ -110,11 +106,10 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
     if (!fd)
       return;
 
-    // Store the function object into a local variable
     if (name != kAtomNull) {
       int var_idx = cur_func->find_var(name);
       if (var_idx < 0) {
-        js_define_var(name, TOK_VAR);
+        js_define_var(name, TokenKind::KwVar);
         var_idx = cur_func->find_var(name);
       }
       int r = alloc_temp();
@@ -125,7 +120,7 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
     return;
   }
 
-  case ';':
+  case TokenKind::Semicolon:
     next_token();
     return;
 
@@ -138,33 +133,29 @@ void RegParseState::parse_statement_or_decl(int decl_mask) {
 void RegParseState::parse_try_statement() {
   next_token(); // skip 'try'
 
-  constexpr int kExcReg = 200; // reserved register for exception value
+  constexpr int kExcReg = 200;
 
   int exc_reg        = kExcReg;
-  int finalize_label = new_label(); // finally subroutine label
+  int finalize_label = new_label();
   int catch_label    = new_label();
   int after_label    = new_label();
 
-  // Push try info (finally_label may stay unused if no finally)
   TryInfo ti;
   ti.exc_reg       = exc_reg;
   ti.scope_level   = cur_func->scope_level;
   ti.finally_label = finalize_label;
   try_stack_.push_back(ti);
 
-  // CATCH — push catch frame
   cur_func->emit_jump(RegOp::CATCH, catch_label, static_cast<uint8_t>(exc_reg));
 
-  // Parse try body
-  expect('{');
-  while (lexer.token.type != '}') {
+  expect(TokenKind::LBrace);
+  while (lexer.token.kind != TokenKind::RBrace) {
     parse_statement_or_decl(1);
   }
   next_token();
 
-  // Normal exit
   bool has_finally = false;
-  if (lexer.token.type == TOK_FINALLY) {
+  if (lexer.token.kind == TokenKind::KwFinally) {
     has_finally = true;
     cur_func->emit_jump(RegOp::GOSUB, finalize_label, 0);
   }
@@ -172,64 +163,58 @@ void RegParseState::parse_try_statement() {
   int skip_catch_label = new_label();
   emit_jump(RegOp::JMP, skip_catch_label, 0);
 
-  // Catch block
   emit_label(catch_label);
 
-  if (lexer.token.type == TOK_CATCH) {
+  if (lexer.token.kind == TokenKind::KwCatch) {
     next_token();
-    if (lexer.token.type == '(') {
+    if (lexer.token.kind == TokenKind::LParen) {
       next_token();
-      if (lexer.token.type == TOK_IDENT) {
+      if (lexer.token.kind == TokenKind::Identifier) {
         Atom catch_name = lexer.token.ident_atom;
         next_token();
-        expect(')');
+        expect(TokenKind::RParen);
         push_enter_scope();
-        js_define_var(catch_name, TOK_LET);
+        js_define_var(catch_name, TokenKind::KwLet);
         LValue catch_lv;
         for (int i = 0; i < cur_func->var_count; i++) {
           if (cur_func->vars[static_cast<size_t>(i)].var_name == catch_name &&
               cur_func->vars[static_cast<size_t>(i)].scope_level == cur_func->scope_level) {
-            catch_lv.kind = LValue::LOCAL;
+            catch_lv.kind    = LValue::LOCAL;
             catch_lv.var_idx = i;
             break;
           }
         }
         emit_lvalue_store(catch_lv, {exc_reg});
-      } else if (lexer.token.type == ')') {
+      } else if (lexer.token.kind == TokenKind::RParen) {
         next_token();
       }
-      expect('{');
-      while (lexer.token.type != '}') {
+      expect(TokenKind::LBrace);
+      while (lexer.token.kind != TokenKind::RBrace) {
         parse_statement_or_decl(1);
       }
       next_token();
       pop_leave_scope();
     }
-    // If there's a finally after catch, emit GOSUB before UNCATCH
-    if (lexer.token.type == TOK_FINALLY) {
+    if (lexer.token.kind == TokenKind::KwFinally) {
       has_finally = true;
       cur_func->emit_jump(RegOp::GOSUB, finalize_label, 0);
     }
   } else if (has_finally) {
-    // No catch, but has finally: call finally then re-throw
     cur_func->emit_jump(RegOp::GOSUB, finalize_label, 0);
     emit_iABC(RegOp::THROW, static_cast<uint8_t>(exc_reg), 0, 0);
   }
   emit_iABx(RegOp::UNCATCH, 0, 0);
 
-  // Both paths converge here — skip the finally subroutine
   emit_label(skip_catch_label);
   emit_jump(RegOp::JMP, after_label, 0);
 
-  // Pop try info
   try_stack_.pop_back();
 
-  // Finally block — emitted as subroutine
   if (has_finally) {
     next_token(); // skip 'finally'
     emit_label(finalize_label);
-    expect('{');
-    while (lexer.token.type != '}') {
+    expect(TokenKind::LBrace);
+    while (lexer.token.kind != TokenKind::RBrace) {
       parse_statement_or_decl(1);
     }
     next_token();
@@ -241,95 +226,83 @@ void RegParseState::parse_try_statement() {
 }
 
 void RegParseState::parse_switch_statement() {
-  next_token(); // skip 'switch'
+  next_token();
 
-  expect('(');
+  expect(TokenKind::LParen);
   RegSlot expr = parse_expr();
-  expect(')');
-  expect('{');
+  expect(TokenKind::RParen);
+  expect(TokenKind::LBrace);
 
   int label_end   = new_label();
-  int label_chain = new_label(); // comparison chain start
+  int label_chain = new_label();
 
-  // Block env for break
   BlockEnv be;
   cur_func->push_break(&be, kAtomNull, label_end, -1);
 
-  // JMP over bodies to comparison chain
   emit_jump(RegOp::JMP, label_chain, 0);
 
-  // Case info
   struct CaseInfo {
     int body_lab;
-    int cpool_idx = -1; // cpool index for case value (if not default)
+    int cpool_idx = -1;
   };
   std::vector<CaseInfo> cases;
 
-  while (lexer.token.type != '}') {
-    if (lexer.token.type == TOK_CASE || lexer.token.type == TOK_DEFAULT) {
-      bool is_default = (lexer.token.type == TOK_DEFAULT);
+  while (lexer.token.kind != TokenKind::RBrace) {
+    if (lexer.token.kind == TokenKind::KwCase || lexer.token.kind == TokenKind::KwDefault) {
+      bool is_default = (lexer.token.kind == TokenKind::KwDefault);
       next_token();
 
       CaseInfo ci;
       if (!is_default) {
-        // Parse case value: capture the literal value into cpool
-        double val = lexer.token.num_val;
+        double val   = lexer.token.num_val;
         ci.cpool_idx = cpool_add(Value::float64(val));
-        next_token(); // skip the number
+        next_token();
       }
-      expect(':');
+      expect(TokenKind::Colon);
       ci.body_lab = new_label();
       cases.push_back(ci);
 
       emit_label(ci.body_lab);
-      while (lexer.token.type != TOK_CASE &&
-             lexer.token.type != TOK_DEFAULT &&
-             lexer.token.type != '}') {
+      while (lexer.token.kind != TokenKind::KwCase && lexer.token.kind != TokenKind::KwDefault && lexer.token.kind != TokenKind::RBrace) {
         parse_statement_or_decl(1);
       }
     } else {
       break;
     }
   }
-  expect('}');
+  expect(TokenKind::RBrace);
 
   emit_jump(RegOp::JMP, label_end, 0);
 
-  // ── Comparison chain ──────────────────────────────────────────────────
   emit_label(label_chain);
 
   for (auto &ci : cases) {
     if (ci.cpool_idx < 0) {
-      // default — jump to its body
       emit_jump(RegOp::JMP, ci.body_lab, 0);
     } else {
-      // Load case value from cpool, then compare
       int case_reg = alloc_temp();
-      emit_iABx(RegOp::LOADK, static_cast<uint8_t>(case_reg),
-                static_cast<uint16_t>(ci.cpool_idx));
+      emit_iABx(RegOp::LOADK, static_cast<uint8_t>(case_reg), static_cast<uint16_t>(ci.cpool_idx));
       int cmp = alloc_temp();
-      emit_iABC(RegOp::SEQ, static_cast<uint8_t>(cmp),
-                static_cast<uint8_t>(expr.reg),
-                static_cast<uint8_t>(case_reg));
+      emit_iABC(RegOp::SEQ, static_cast<uint8_t>(cmp), static_cast<uint8_t>(expr.reg), static_cast<uint8_t>(case_reg));
       emit_jump(RegOp::IS_TRUE, ci.body_lab, static_cast<uint8_t>(cmp));
-      free_temp(); // cmp
-      free_temp(); // case_reg
+      free_temp();
+      free_temp();
     }
   }
   emit_jump(RegOp::JMP, label_end, 0);
 
   emit_label(label_end);
   cur_func->pop_break();
-  free_temp(); // free expr
+  free_temp();
 }
 
 void RegParseState::parse_block() {
-  expect('{');
-  if (lexer.token.type != '}') {
+  expect(TokenKind::LBrace);
+  if (lexer.token.kind != TokenKind::RBrace) {
     push_enter_scope();
     for (;;) {
       parse_statement_or_decl(1);
-      if (lexer.token.type == '}')
+      if (lexer.token.kind == TokenKind::RBrace)
         break;
     }
     pop_leave_scope();
@@ -339,13 +312,11 @@ void RegParseState::parse_block() {
 
 void RegParseState::parse_expr_statement() {
   RegSlot result = parse_expr();
-  // Semicolon
-  if (lexer.token.type == ';') {
+  if (lexer.token.kind == TokenKind::Semicolon) {
     next_token();
-  } else if (lexer.token.type == TOK_EOF || lexer.token.type == '}' || lexer.got_lf) {
+  } else if (lexer.token.kind == TokenKind::Eof || lexer.token.kind == TokenKind::RBrace || lexer.got_lf) {
     // ASI
   }
-  // Store result to eval_ret for implicit return
   if (cur_func->eval_ret_reg >= 0) {
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(cur_func->eval_ret_reg), static_cast<uint8_t>(result.reg), 0);
   }
@@ -356,9 +327,9 @@ void RegParseState::parse_if_statement() {
   next_token();
   push_enter_scope();
 
-  expect('(');
+  expect(TokenKind::LParen);
   RegSlot cond = parse_expr();
-  expect(')');
+  expect(TokenKind::RParen);
 
   int false_label = new_label();
   emit_jump(RegOp::IS_FALSE, false_label, static_cast<uint8_t>(cond.reg));
@@ -366,7 +337,7 @@ void RegParseState::parse_if_statement() {
 
   parse_statement();
 
-  if (lexer.token.type == TOK_ELSE) {
+  if (lexer.token.kind == TokenKind::KwElse) {
     int end_label = new_label();
     emit_jump(RegOp::JMP, end_label, 0);
     next_token();
@@ -383,14 +354,13 @@ void RegParseState::parse_if_statement() {
 void RegParseState::parse_return_statement() {
   next_token();
 
-  // Emit GOSUB to any active finally blocks before returning
   for (auto &ti : try_stack_) {
     if (ti.finally_label >= 0) {
       cur_func->emit_jump(RegOp::GOSUB, ti.finally_label, 0);
     }
   }
 
-  if (lexer.token.type != ';' && lexer.token.type != '}' && !lexer.got_lf) {
+  if (lexer.token.kind != TokenKind::Semicolon && lexer.token.kind != TokenKind::RBrace && !lexer.got_lf) {
     RegSlot result = parse_expr();
     emit_iABC(RegOp::RETURN, static_cast<uint8_t>(result.reg), 0, 0);
     free_temp();
@@ -398,7 +368,7 @@ void RegParseState::parse_return_statement() {
     emit_iABx(RegOp::RETURN0, 0, 0);
   }
 
-  if (lexer.token.type == ';')
+  if (lexer.token.kind == TokenKind::Semicolon)
     next_token();
 }
 
@@ -409,7 +379,7 @@ void RegParseState::parse_throw_statement() {
   RegSlot result = parse_expr();
   emit_iABC(RegOp::THROW, static_cast<uint8_t>(result.reg), 0, 0);
   free_temp();
-  if (lexer.token.type == ';')
+  if (lexer.token.kind == TokenKind::Semicolon)
     next_token();
 }
 
@@ -423,9 +393,9 @@ void RegParseState::parse_while_statement() {
   next_token();
   emit_label(label_cont);
 
-  expect('(');
+  expect(TokenKind::LParen);
   RegSlot cond = parse_expr();
-  expect(')');
+  expect(TokenKind::RParen);
 
   emit_jump(RegOp::IS_FALSE, label_break, static_cast<uint8_t>(cond.reg));
   free_temp();
@@ -449,12 +419,12 @@ void RegParseState::parse_do_statement() {
   emit_label(label_body);
 
   parse_statement();
-  expect(TOK_WHILE);
+  expect(TokenKind::KwWhile);
 
   emit_label(label_cont);
-  expect('(');
+  expect(TokenKind::LParen);
   RegSlot cond = parse_expr();
-  expect(')');
+  expect(TokenKind::RParen);
 
   emit_jump(RegOp::IS_TRUE, label_body, static_cast<uint8_t>(cond.reg));
   free_temp();
@@ -462,31 +432,30 @@ void RegParseState::parse_do_statement() {
 
   cur_func->pop_break();
 
-  if (lexer.token.type == ';')
+  if (lexer.token.kind == TokenKind::Semicolon)
     next_token();
 }
 
 void RegParseState::parse_for_statement() {
   next_token();
-  expect('(');
+  expect(TokenKind::LParen);
 
   int block_scope_level = cur_func->scope_level;
   push_enter_scope();
 
-  // ── INIT ──
   bool is_for_in = false;
-  bool is_for_of = false; (void)is_for_of;
+  bool is_for_of = false;
+  (void)is_for_of;
 
-  int tok = lexer.token.type;
-  if (tok != ';') {
-    if (tok == TOK_VAR || tok == TOK_LET || tok == TOK_CONST) {
+  TokenKind tok = lexer.token.kind;
+  if (tok != TokenKind::Semicolon) {
+    if (tok == TokenKind::KwVar || tok == TokenKind::KwLet || tok == TokenKind::KwConst) {
       next_token();
       parse_var_decls(tok);
 
-      // Check if next token is 'in' or 'of'
-      if (lexer.token.type == TOK_IN) {
+      if (lexer.token.kind == TokenKind::KwIn) {
         is_for_in = true;
-      } else if (lexer.token.type == TOK_OF) {
+      } else if (lexer.token.kind == TokenKind::KwOf) {
         is_for_of = true;
       }
 
@@ -497,32 +466,27 @@ void RegParseState::parse_for_statement() {
       (void)parse_assign_expr2(0);
       free_temp();
 
-      if (lexer.token.type == TOK_IN) {
-        // for (expr in ...) — not supported yet, skip
+      if (lexer.token.kind == TokenKind::KwIn) {
         is_for_in = false;
       }
     }
   }
 
   if (is_for_in) {
-    // Continue parsing: skip 'in', parse object expr
     next_token(); // skip 'in'
 
-    // Find the loop variable (last declared var)
     int key_var_idx = cur_func->var_count - 1;
     int key_reg     = cur_func->alloc.var(key_var_idx);
 
-    // Parse the object expression
     RegSlot obj_slot = parse_expr();
-    expect(')');
+    expect(TokenKind::RParen);
 
     int iter_reg = alloc_temp();
     int more_reg = alloc_temp();
 
     emit_iABC(RegOp::FOR_IN_START, static_cast<uint8_t>(iter_reg), static_cast<uint8_t>(obj_slot.reg), 0);
-    free_temp(); // free obj_slot
+    free_temp();
 
-    // Labels
     int loop_label = new_label();
     int end_label  = new_label();
 
@@ -530,17 +494,15 @@ void RegParseState::parse_for_statement() {
     int body_label = new_label();
     emit_label(body_label);
 
-    // Parse body
     parse_statement();
 
-    // Loop back
     emit_label(loop_label);
     emit_iABC(RegOp::FOR_IN_NEXT, static_cast<uint8_t>(key_reg), static_cast<uint8_t>(iter_reg), static_cast<uint8_t>(more_reg));
     emit_jump(RegOp::IS_TRUE, body_label, static_cast<uint8_t>(more_reg));
     emit_label(end_label);
 
-    free_temp(); // free more_reg
-    free_temp(); // free iter_reg
+    free_temp();
+    free_temp();
 
     cur_func->close_scopes(cur_func->scope_level, block_scope_level);
     pop_leave_scope();
@@ -550,29 +512,24 @@ void RegParseState::parse_for_statement() {
   if (is_for_of) {
     next_token(); // skip 'of'
 
-    // Find the loop variable (last declared var)
     int val_var_idx = cur_func->var_count - 1;
     int val_reg     = cur_func->alloc.var(val_var_idx);
 
-    // Parse the iterable expression
     RegSlot iterable_slot = parse_expr();
-    expect(')');
+    expect(TokenKind::RParen);
 
-    // ── Get iterator = iterable[Symbol.iterator]() ──
-    int si_cpool = cpool_add(rt->atom_to_value(static_cast<Atom>(AtomEnum::Symbol_iterator)));
-    int iter_fn_reg = alloc_temp();
+    int si_cpool     = cpool_add(rt->atom_to_value(rt->well_known.symbol_iterator));
+    int iter_fn_reg  = alloc_temp();
     int iterator_reg = alloc_temp();
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(iter_fn_reg), static_cast<uint8_t>(iterable_slot.reg), static_cast<uint8_t>(si_cpool));
     emit_iABC(RegOp::CALL, static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(iter_fn_reg), 0);
-    free_temp(); // free iter_fn
-    free_temp(); // free iterable_slot
+    free_temp();
+    free_temp();
 
-    // ── Cpool entries for "next", "done", "value" ──
     int next_cpool  = cpool_add(rt->atom_to_value(rt->intern("next")));
     int done_cpool  = cpool_add(rt->atom_to_value(rt->intern("done")));
     int value_cpool = cpool_add(rt->atom_to_value(rt->intern("value")));
 
-    // ── Loop ──
     int loop_label = new_label();
     int end_label  = new_label();
     int body_label = new_label();
@@ -582,38 +539,34 @@ void RegParseState::parse_for_statement() {
     parse_statement();
     cur_func->close_scopes(cur_func->scope_level, block_scope_level);
 
-    // ── Loop header: result = iterator.next() ──
     emit_label(loop_label);
     int next_fn_reg = alloc_temp();
     int result_reg  = alloc_temp();
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(next_fn_reg), static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(next_cpool));
     emit_iABC(RegOp::CALL, static_cast<uint8_t>(result_reg), static_cast<uint8_t>(next_fn_reg), 0);
-    free_temp(); // free next_fn
+    free_temp();
 
-    // Check result.done
     int done_reg = alloc_temp();
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(done_reg), static_cast<uint8_t>(result_reg), static_cast<uint8_t>(done_cpool));
     emit_jump(RegOp::IS_TRUE, end_label, static_cast<uint8_t>(done_reg));
-    free_temp(); // free done
+    free_temp();
 
-    // Get result.value → loop variable
     int value_reg = alloc_temp();
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(value_reg), static_cast<uint8_t>(result_reg), static_cast<uint8_t>(value_cpool));
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(value_reg), 0);
     emit_jump(RegOp::JMP, body_label, 0);
 
     emit_label(end_label);
-    free_temp(); // free value_reg
-    free_temp(); // free result_reg
-    free_temp(); // free iterator_reg
+    free_temp();
+    free_temp();
+    free_temp();
 
     pop_leave_scope();
     return;
   }
 
-  expect(';'); // consume the semicolon after init (non-for-in path)
+  expect(TokenKind::Semicolon);
 
-  // ── Labels ──
   int label_test  = new_label();
   int label_cont  = new_label();
   int label_body  = new_label();
@@ -622,8 +575,7 @@ void RegParseState::parse_for_statement() {
   BlockEnv be;
   cur_func->push_break(&be, pending_label, label_break, label_cont);
 
-  // ── COND ──
-  if (lexer.token.type == ';') {
+  if (lexer.token.kind == TokenKind::Semicolon) {
     label_test = label_body;
   } else {
     emit_label(label_test);
@@ -631,11 +583,10 @@ void RegParseState::parse_for_statement() {
     emit_jump(RegOp::IS_FALSE, label_break, static_cast<uint8_t>(cond.reg));
     free_temp();
   }
-  expect(';');
+  expect(TokenKind::Semicolon);
 
-  // ── UPDATE ──
   int update_start = -1;
-  if (lexer.token.type == ')') {
+  if (lexer.token.kind == TokenKind::RParen) {
     be.label_cont = label_cont = label_test;
   } else {
     emit_jump(RegOp::JMP, label_body, 0);
@@ -651,29 +602,24 @@ void RegParseState::parse_for_statement() {
       emit_jump(RegOp::JMP, label_test, 0);
   }
 
-  expect(')');
+  expect(TokenKind::RParen);
 
-  // ── BODY ──
   int body_start = (int)cur_func->instructions.size();
   emit_label(label_body);
   parse_statement();
 
   cur_func->close_scopes(cur_func->scope_level, block_scope_level);
 
-  // ── Move update code after body ──
   if (update_start >= 0) {
     int update_size = body_start - update_start;
 
-    // Copy update instructions to end
     if (update_size > 0) {
       cur_func->instructions.insert(cur_func->instructions.end(), cur_func->instructions.begin() + update_start,
                                     cur_func->instructions.begin() + body_start);
 
-      // Fill original positions with NOP
       for (int i = 0; i < update_size; i++)
         cur_func->instructions[static_cast<size_t>(update_start + i)] = Instruction::iABx(static_cast<uint8_t>(RegOp::NOP), 0, 0).raw;
 
-      // Relocate labels that were in the moved range
       int offset = (int)cur_func->instructions.size() - body_start;
       for (size_t li = 0; li < cur_func->label_slots.size(); li++) {
         int p = cur_func->label_slots[li].pos;
@@ -681,7 +627,6 @@ void RegParseState::parse_for_statement() {
           cur_func->label_slots[li].pos = p + offset;
       }
 
-      // Relocate patches that reference moved instructions
       int new_dest = (int)cur_func->instructions.size() - update_size;
       for (auto &p : cur_func->patches) {
         if (p.instr_idx >= update_start && p.instr_idx < body_start)
@@ -700,9 +645,8 @@ void RegParseState::parse_for_statement() {
 void RegParseState::parse_break_continue(bool is_cont) {
   next_token();
 
-  // Check for named label: break foo / continue foo
   Atom label_name = kAtomNull;
-  if (lexer.token.type == TOK_IDENT && !lexer.got_lf) {
+  if (lexer.token.kind == TokenKind::Identifier && !lexer.got_lf) {
     label_name = lexer.token.ident_atom;
     next_token();
   }
@@ -714,14 +658,12 @@ void RegParseState::parse_break_continue(bool is_cont) {
   while (top) {
     fd->close_scopes(scope, top->scope_level);
     scope = top->scope_level;
-    // Check label match
     if (label_name != kAtomNull && top->label_name != label_name) {
       top = top->prev;
       continue;
     }
 
     if (is_cont && top->label_cont >= 0) {
-      // Emit GOSUB for finally blocks we're exiting (reverse: inner first)
       for (auto it = try_stack_.rbegin(); it != try_stack_.rend(); ++it) {
         if (it->finally_label >= 0) {
           fd->emit_jump(RegOp::GOSUB, it->finally_label, 0);
@@ -731,7 +673,6 @@ void RegParseState::parse_break_continue(bool is_cont) {
       goto done;
     }
     if (!is_cont && top->label_break >= 0) {
-      // Emit GOSUB for finally blocks we're exiting (reverse: inner first)
       for (auto it = try_stack_.rbegin(); it != try_stack_.rend(); ++it) {
         if (it->finally_label >= 0) {
           fd->emit_jump(RegOp::GOSUB, it->finally_label, 0);
@@ -744,13 +685,13 @@ void RegParseState::parse_break_continue(bool is_cont) {
   }
 
 done:
-  if (lexer.token.type == ';')
+  if (lexer.token.kind == TokenKind::Semicolon)
     next_token();
 }
 
-void RegParseState::parse_var_decls(int decl_tok) {
+void RegParseState::parse_var_decls(TokenKind decl_tok) {
   for (;;) {
-    if (lexer.token.type != TOK_IDENT)
+    if (lexer.token.kind != TokenKind::Identifier)
       return;
     Atom name = lexer.token.ident_atom;
     next_token();
@@ -758,12 +699,11 @@ void RegParseState::parse_var_decls(int decl_tok) {
     if (!js_define_var(name, decl_tok))
       return;
 
-    if (lexer.token.type == '=') {
+    if (lexer.token.kind == TokenKind::EqAssign) {
       next_token();
-      // Find the variable we just defined
       LValue lv;
       bool found = false;
-      if (decl_tok != TOK_VAR) {
+      if (decl_tok != TokenKind::KwVar) {
         VarDef *vd = cur_func->find_scope_var(name, cur_func->scope_level);
         if (vd) {
           int idx = 0;
@@ -795,11 +735,11 @@ void RegParseState::parse_var_decls(int decl_tok) {
       if (found)
         emit_lvalue_store(lv, rhs);
       free_temp();
-    } else if (decl_tok == TOK_CONST) {
+    } else if (decl_tok == TokenKind::KwConst) {
       return; // const must have initializer
     }
 
-    if (lexer.token.type != ',')
+    if (lexer.token.kind != TokenKind::Comma)
       break;
     next_token();
   }
@@ -824,14 +764,13 @@ FunctionDef *RegParseState::parse_function_decl(Atom name, bool is_expr, Functio
 
   cur_func = fd;
 
-  // Parse parameters: (a, b, c)
-  expect('(');
+  expect(TokenKind::LParen);
   fd->push_scope();
   fd->body_scope = fd->scope_level;
 
-  if (lexer.token.type != ')') {
+  if (lexer.token.kind != TokenKind::RParen) {
     for (;;) {
-      if (lexer.token.type != TOK_IDENT)
+      if (lexer.token.kind != TokenKind::Identifier)
         goto fail;
       Atom arg_name = lexer.token.ident_atom;
       next_token();
@@ -840,25 +779,23 @@ FunctionDef *RegParseState::parse_function_decl(Atom name, bool is_expr, Functio
       if (idx < 0)
         goto fail;
 
-      if (lexer.token.type == ')')
+      if (lexer.token.kind == TokenKind::RParen)
         break;
-      if (lexer.token.type != ',')
+      if (lexer.token.kind != TokenKind::Comma)
         goto fail;
       next_token();
     }
   }
-  expect(')');
+  expect(TokenKind::RParen);
 
-  // Initialize register allocator
   fd->alloc.init(fd->arg_count, fd->var_count);
 
-  // Parse body
-  expect('{');
+  expect(TokenKind::LBrace);
 
   fd->in_function_body = true;
 
-  while (lexer.token.type != '}') {
-    parse_statement_or_decl(1 /* DECL_MASK_ALL */);
+  while (lexer.token.kind != TokenKind::RBrace) {
+    parse_statement_or_decl(1);
   }
   next_token();
 
@@ -866,13 +803,11 @@ FunctionDef *RegParseState::parse_function_decl(Atom name, bool is_expr, Functio
 
   fd->pop_scope();
 
-  // Add to parent's cpool (placeholder)
   {
     int cpool_idx        = parent_fd->cpool_add(Value::bytecode(nullptr));
     fd->parent_cpool_idx = cpool_idx;
   }
 
-  // Track child
   parent_fd->children.push_back(fd);
 
   cur_func = parent_fd;
@@ -901,15 +836,12 @@ bool RegParseState::compile() {
   fd->push_scope();
   fd->body_scope = fd->scope_level;
 
-  // Initialize reg alloc: no args, no vars yet
   fd->alloc.init(0, 0);
 
-  // Use R[0] (this slot, unused in top-level eval) as implicit return register
-  fd->eval_ret_reg = 0; // R[0] = this (unused) → repurpose as eval_ret
+  fd->eval_ret_reg = 0;
 
-  // Parse statements until EOF
-  while (lexer.token.type != TOK_EOF) {
-    parse_statement_or_decl(1 /* DECL_MASK_ALL */);
+  while (lexer.token.kind != TokenKind::Eof) {
+    parse_statement_or_decl(1);
   }
 
   emit_iABC(RegOp::RETURN, static_cast<uint8_t>(fd->eval_ret_reg), 0, 0);
