@@ -97,10 +97,10 @@ Value Runtime::atom_to_value(Atom a) const {
 }
 
 bool Runtime::init_class_table() {
-  class_count = static_cast<uint32_t>(ClassID::init_count);
+  class_count = std::max<uint32_t>(static_cast<uint16_t>(ClassID::init_count), 1u);
   classes     = std::make_unique<Class[]>(class_count);
   for (uint32_t i = static_cast<uint32_t>(ClassID::object); i < class_count; ++i) {
-    classes[i].class_id   = i;
+    classes[i].class_id   = static_cast<ClassID>(i);
     classes[i].class_name = kAtomNull;
   }
   return true;

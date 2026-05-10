@@ -8,7 +8,7 @@
 
 namespace qjsp {
 
-Value Object::create(Runtime *rt, Value proto, uint16_t class_id) {
+Value Object::create(Runtime *rt, Value proto, ClassID class_id) {
   rt->maybe_trigger_gc(sizeof(Object));
   auto *obj        = new Object();
   obj->ref_count   = 1;
@@ -26,7 +26,7 @@ Value CFunctionObj::create(Context *ctx, CFunction *fn, std::string_view name, i
   auto *obj           = new CFunctionObj();
   obj->ref_count      = 1;
   obj->gc_obj_type    = GCObjType::js_object;
-  obj->class_id       = static_cast<uint16_t>(ClassID::c_function);
+  obj->class_id       = ClassID::c_function;
   obj->fn             = fn;
   obj->fn_length      = static_cast<uint8_t>(length);
   ctx->rt->add_gc_object(obj);
@@ -41,7 +41,7 @@ Value BytecodeFunction::create(Runtime *rt, FunctionBytecode *bc) {
   auto *obj        = new BytecodeFunction();
   obj->ref_count   = 1;
   obj->gc_obj_type = GCObjType::js_object;
-  obj->class_id    = static_cast<uint16_t>(ClassID::bytecode_function);
+  obj->class_id    = ClassID::bytecode_function;
   obj->bytecode    = bc;
   rt->add_gc_object(obj);
   return Value::object(obj);
@@ -157,8 +157,24 @@ static Value builtin_print(Context * /*ctx*/, Value /*this_val*/, int argc, cons
 }
 
 void setup_global(Context *ctx, Object *global) {
+  auto *rt = ctx->rt;
+
+  // print
   auto fn = CFunctionObj::create(ctx, builtin_print, "print", 0);
-  global->set_own(ctx->rt, ctx->rt->intern("print"), fn);
+  global->set_own(rt, rt->intern("print"), fn);
+
+  // Symbol — exposes well-known symbols as regular string-keyed properties
+  Value sym_obj = Object::create(rt, Value::undefined_(), ClassID::object);
+  auto *sym     = sym_obj.as<Object>();
+  auto set_sym  = [&](const char *name, AtomEnum se) {
+    sym->set_own(rt, rt->intern(name), Value::symbol_from_atom(static_cast<Atom>(se)));
+  };
+  set_sym("iterator", AtomEnum::Symbol_iterator);
+  set_sym("asyncIterator", AtomEnum::Symbol_asyncIterator);
+  set_sym("toPrimitive", AtomEnum::Symbol_toPrimitive);
+  set_sym("toStringTag", AtomEnum::Symbol_toStringTag);
+  set_sym("hasInstance", AtomEnum::Symbol_hasInstance);
+  global->set_own(rt, rt->intern("Symbol"), sym_obj);
 }
 
 } // namespace qjsp

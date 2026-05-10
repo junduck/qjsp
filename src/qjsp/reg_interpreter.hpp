@@ -11,6 +11,7 @@ struct Runtime;
 struct Object;
 struct String;
 struct VarRef;
+struct ArrayObject;
 
 class RegInterpreter {
 public:
@@ -46,6 +47,13 @@ private:
     int current_index = 0;
   };
   std::vector<ForInState> for_in_states_;
+
+  // for-of iteration state (array elements)
+  struct ForOfState {
+    ArrayObject *arr = nullptr;
+    uint32_t current_index = 0;
+  };
+  std::vector<ForOfState> for_of_states_;
 };
 
 } // namespace qjsp

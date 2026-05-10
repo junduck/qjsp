@@ -47,6 +47,7 @@ add_library(qjsp
   src/qjsp/value.cpp
   src/qjsp/string.cpp
   src/qjsp/object.cpp
+  src/qjsp/array.cpp
   src/qjsp/lexer.cpp
   src/qjsp/varref.cpp
   src/qjsp/reg_parser_emit.cpp

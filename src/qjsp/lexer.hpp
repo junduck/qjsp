@@ -68,60 +68,56 @@ constexpr int TOK_EOF                         = -86;
 constexpr int TOK_FIRST_KEYWORD = -85;
 constexpr int TOK_LAST_KEYWORD  = -40;
 
-/// Convert an Atom value to its keyword token type.
-inline constexpr int tok_from_atom(Atom atom) { return TOK_FIRST_KEYWORD + static_cast<int>(atom) - 1; }
-
-/// Convert a keyword token type back to the Atom.
-inline constexpr Atom atom_from_keyword_tok(int tok) { return static_cast<Atom>(tok - TOK_FIRST_KEYWORD + 1); }
+// atom_token(Atom) is defined in atom.hpp — resolves keywords to TOK_* values
 
 // Individual keyword token constants
-constexpr int TOK_NULL       = tok_from_atom(static_cast<Atom>(AtomEnum::_null));
-constexpr int TOK_FALSE      = tok_from_atom(static_cast<Atom>(AtomEnum::_false));
-constexpr int TOK_TRUE       = tok_from_atom(static_cast<Atom>(AtomEnum::_true));
-constexpr int TOK_IF         = tok_from_atom(static_cast<Atom>(AtomEnum::_if));
-constexpr int TOK_ELSE       = tok_from_atom(static_cast<Atom>(AtomEnum::_else));
-constexpr int TOK_RETURN     = tok_from_atom(static_cast<Atom>(AtomEnum::_return));
-constexpr int TOK_VAR        = tok_from_atom(static_cast<Atom>(AtomEnum::_var));
-constexpr int TOK_THIS       = tok_from_atom(static_cast<Atom>(AtomEnum::_this));
-constexpr int TOK_DELETE     = tok_from_atom(static_cast<Atom>(AtomEnum::_delete));
-constexpr int TOK_VOID       = tok_from_atom(static_cast<Atom>(AtomEnum::_void));
-constexpr int TOK_TYPEOF     = tok_from_atom(static_cast<Atom>(AtomEnum::_typeof));
-constexpr int TOK_NEW        = tok_from_atom(static_cast<Atom>(AtomEnum::_new));
-constexpr int TOK_IN         = tok_from_atom(static_cast<Atom>(AtomEnum::_in));
-constexpr int TOK_INSTANCEOF = tok_from_atom(static_cast<Atom>(AtomEnum::_instanceof));
-constexpr int TOK_DO         = tok_from_atom(static_cast<Atom>(AtomEnum::_do));
-constexpr int TOK_WHILE      = tok_from_atom(static_cast<Atom>(AtomEnum::_while));
-constexpr int TOK_FOR        = tok_from_atom(static_cast<Atom>(AtomEnum::_for));
-constexpr int TOK_BREAK      = tok_from_atom(static_cast<Atom>(AtomEnum::_break));
-constexpr int TOK_CONTINUE   = tok_from_atom(static_cast<Atom>(AtomEnum::_continue));
-constexpr int TOK_SWITCH     = tok_from_atom(static_cast<Atom>(AtomEnum::_switch));
-constexpr int TOK_CASE       = tok_from_atom(static_cast<Atom>(AtomEnum::_case));
-constexpr int TOK_DEFAULT    = tok_from_atom(static_cast<Atom>(AtomEnum::_default));
-constexpr int TOK_THROW      = tok_from_atom(static_cast<Atom>(AtomEnum::_throw));
-constexpr int TOK_TRY        = tok_from_atom(static_cast<Atom>(AtomEnum::_try));
-constexpr int TOK_CATCH      = tok_from_atom(static_cast<Atom>(AtomEnum::_catch));
-constexpr int TOK_FINALLY    = tok_from_atom(static_cast<Atom>(AtomEnum::_finally));
-constexpr int TOK_FUNCTION   = tok_from_atom(static_cast<Atom>(AtomEnum::_function));
-constexpr int TOK_DEBUGGER   = tok_from_atom(static_cast<Atom>(AtomEnum::_debugger));
-constexpr int TOK_WITH       = tok_from_atom(static_cast<Atom>(AtomEnum::_with));
-constexpr int TOK_CLASS      = tok_from_atom(static_cast<Atom>(AtomEnum::_class));
-constexpr int TOK_CONST      = tok_from_atom(static_cast<Atom>(AtomEnum::_const));
-constexpr int TOK_ENUM       = tok_from_atom(static_cast<Atom>(AtomEnum::_enum));
-constexpr int TOK_EXPORT     = tok_from_atom(static_cast<Atom>(AtomEnum::_export));
-constexpr int TOK_EXTENDS    = tok_from_atom(static_cast<Atom>(AtomEnum::_extends));
-constexpr int TOK_IMPORT     = tok_from_atom(static_cast<Atom>(AtomEnum::_import));
-constexpr int TOK_SUPER      = tok_from_atom(static_cast<Atom>(AtomEnum::_super));
-constexpr int TOK_IMPLEMENTS = tok_from_atom(static_cast<Atom>(AtomEnum::_implements));
-constexpr int TOK_INTERFACE  = tok_from_atom(static_cast<Atom>(AtomEnum::_interface));
-constexpr int TOK_LET        = tok_from_atom(static_cast<Atom>(AtomEnum::_let));
-constexpr int TOK_PACKAGE    = tok_from_atom(static_cast<Atom>(AtomEnum::_package));
-constexpr int TOK_PRIVATE    = tok_from_atom(static_cast<Atom>(AtomEnum::_private));
-constexpr int TOK_PROTECTED  = tok_from_atom(static_cast<Atom>(AtomEnum::_protected));
-constexpr int TOK_PUBLIC     = tok_from_atom(static_cast<Atom>(AtomEnum::_public));
-constexpr int TOK_STATIC     = tok_from_atom(static_cast<Atom>(AtomEnum::_static));
-constexpr int TOK_YIELD      = tok_from_atom(static_cast<Atom>(AtomEnum::_yield));
-constexpr int TOK_AWAIT      = tok_from_atom(static_cast<Atom>(AtomEnum::_await));
-constexpr int TOK_OF         = tok_from_atom(static_cast<Atom>(AtomEnum::of));
+constexpr int TOK_NULL       = atom_token(static_cast<Atom>(AtomEnum::_null));
+constexpr int TOK_FALSE      = atom_token(static_cast<Atom>(AtomEnum::_false));
+constexpr int TOK_TRUE       = atom_token(static_cast<Atom>(AtomEnum::_true));
+constexpr int TOK_IF         = atom_token(static_cast<Atom>(AtomEnum::_if));
+constexpr int TOK_ELSE       = atom_token(static_cast<Atom>(AtomEnum::_else));
+constexpr int TOK_RETURN     = atom_token(static_cast<Atom>(AtomEnum::_return));
+constexpr int TOK_VAR        = atom_token(static_cast<Atom>(AtomEnum::_var));
+constexpr int TOK_THIS       = atom_token(static_cast<Atom>(AtomEnum::_this));
+constexpr int TOK_DELETE     = atom_token(static_cast<Atom>(AtomEnum::_delete));
+constexpr int TOK_VOID       = atom_token(static_cast<Atom>(AtomEnum::_void));
+constexpr int TOK_TYPEOF     = atom_token(static_cast<Atom>(AtomEnum::_typeof));
+constexpr int TOK_NEW        = atom_token(static_cast<Atom>(AtomEnum::_new));
+constexpr int TOK_IN         = atom_token(static_cast<Atom>(AtomEnum::_in));
+constexpr int TOK_INSTANCEOF = atom_token(static_cast<Atom>(AtomEnum::_instanceof));
+constexpr int TOK_DO         = atom_token(static_cast<Atom>(AtomEnum::_do));
+constexpr int TOK_WHILE      = atom_token(static_cast<Atom>(AtomEnum::_while));
+constexpr int TOK_FOR        = atom_token(static_cast<Atom>(AtomEnum::_for));
+constexpr int TOK_BREAK      = atom_token(static_cast<Atom>(AtomEnum::_break));
+constexpr int TOK_CONTINUE   = atom_token(static_cast<Atom>(AtomEnum::_continue));
+constexpr int TOK_SWITCH     = atom_token(static_cast<Atom>(AtomEnum::_switch));
+constexpr int TOK_CASE       = atom_token(static_cast<Atom>(AtomEnum::_case));
+constexpr int TOK_DEFAULT    = atom_token(static_cast<Atom>(AtomEnum::_default));
+constexpr int TOK_THROW      = atom_token(static_cast<Atom>(AtomEnum::_throw));
+constexpr int TOK_TRY        = atom_token(static_cast<Atom>(AtomEnum::_try));
+constexpr int TOK_CATCH      = atom_token(static_cast<Atom>(AtomEnum::_catch));
+constexpr int TOK_FINALLY    = atom_token(static_cast<Atom>(AtomEnum::_finally));
+constexpr int TOK_FUNCTION   = atom_token(static_cast<Atom>(AtomEnum::_function));
+constexpr int TOK_DEBUGGER   = atom_token(static_cast<Atom>(AtomEnum::_debugger));
+constexpr int TOK_WITH       = atom_token(static_cast<Atom>(AtomEnum::_with));
+constexpr int TOK_CLASS      = atom_token(static_cast<Atom>(AtomEnum::_class));
+constexpr int TOK_CONST      = atom_token(static_cast<Atom>(AtomEnum::_const));
+constexpr int TOK_ENUM       = atom_token(static_cast<Atom>(AtomEnum::_enum));
+constexpr int TOK_EXPORT     = atom_token(static_cast<Atom>(AtomEnum::_export));
+constexpr int TOK_EXTENDS    = atom_token(static_cast<Atom>(AtomEnum::_extends));
+constexpr int TOK_IMPORT     = atom_token(static_cast<Atom>(AtomEnum::_import));
+constexpr int TOK_SUPER      = atom_token(static_cast<Atom>(AtomEnum::_super));
+constexpr int TOK_IMPLEMENTS = atom_token(static_cast<Atom>(AtomEnum::_implements));
+constexpr int TOK_INTERFACE  = atom_token(static_cast<Atom>(AtomEnum::_interface));
+constexpr int TOK_LET        = atom_token(static_cast<Atom>(AtomEnum::_let));
+constexpr int TOK_PACKAGE    = atom_token(static_cast<Atom>(AtomEnum::_package));
+constexpr int TOK_PRIVATE    = atom_token(static_cast<Atom>(AtomEnum::_private));
+constexpr int TOK_PROTECTED  = atom_token(static_cast<Atom>(AtomEnum::_protected));
+constexpr int TOK_PUBLIC     = atom_token(static_cast<Atom>(AtomEnum::_public));
+constexpr int TOK_STATIC     = atom_token(static_cast<Atom>(AtomEnum::_static));
+constexpr int TOK_YIELD      = atom_token(static_cast<Atom>(AtomEnum::_yield));
+constexpr int TOK_AWAIT      = atom_token(static_cast<Atom>(AtomEnum::_await));
+constexpr int TOK_OF         = atom_token(static_cast<Atom>(AtomEnum::of));
 
 /// True if `tok` is any keyword token.
 inline constexpr bool is_keyword(int tok) { return tok >= TOK_FIRST_KEYWORD && tok <= TOK_LAST_KEYWORD; }

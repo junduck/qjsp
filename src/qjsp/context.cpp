@@ -1,4 +1,5 @@
 #include "qjsp/context.hpp"
+#include "qjsp/array.hpp"
 #include "qjsp/class.hpp"
 #include "qjsp/object.hpp"
 #include "qjsp/runtime.hpp"
@@ -24,14 +25,15 @@ Context::Context(Runtime *rt) : rt(rt) {
 
   for (uint32_t i = static_cast<uint32_t>(ClassID::object); i < class_proto_count; ++i) {
     constexpr int kClassBase = static_cast<int>(AtomEnum::Object);
-    int atom_idx             = kClassBase + (i - static_cast<int>(ClassID::object));
+    int atom_idx             = kClassBase + static_cast<int>(i - static_cast<uint32_t>(ClassID::object));
     if (atom_idx < static_cast<int>(AtomEnum::end))
-      rt->classes[static_cast<size_t>(i)].class_name = static_cast<Atom>(atom_idx);
+      rt->classes[i].class_name = static_cast<Atom>(atom_idx);
   }
 
-  auto global     = Object::create(rt, Value::undefined_(), static_cast<int>(ClassID::global_object));
+  auto global     = Object::create(rt, Value::undefined_(), ClassID::global_object);
   global_obj = global;
   setup_global(this, global.as<Object>());
+  init_array_prototype(this);
 }
 
 Context::~Context() {
@@ -43,6 +45,13 @@ void Context::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   is_marked = true;
   if (global_obj.is_object()) {
     auto *obj = global_obj.as<Object>();
+    if (obj && !obj->is_marked) {
+      obj->is_marked = true;
+      worklist.push_back(obj);
+    }
+  }
+  if (array_proto.is_object()) {
+    auto *obj = array_proto.as<Object>();
     if (obj && !obj->is_marked) {
       obj->is_marked = true;
       worklist.push_back(obj);

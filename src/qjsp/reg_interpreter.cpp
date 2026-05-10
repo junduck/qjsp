@@ -355,7 +355,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       // ── object ──────────────────────────────────────────────────────────────
 
     case RegOp::NEWOBJ: {
-      auto obj    = Object::create(rt(), Value::undefined_(), static_cast<int>(ClassID::object));
+      auto obj    = Object::create(rt(), Value::undefined_(), ClassID::object);
       regs[i.a()] = obj;
       break;
     }
@@ -437,7 +437,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       // ── array ───────────────────────────────────────────────────────────────
 
     case RegOp::NEWARR: {
-      auto arr  = Object::create(rt(), Value::undefined_(), static_cast<int>(ClassID::array));
+      auto arr  = Object::create(rt(), Value::undefined_(), ClassID::array);
       auto *a   = arr.as<Object>();
       int base  = i.b();
       int count = i.c();

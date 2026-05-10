@@ -1,5 +1,6 @@
 #pragma once
 
+#include "class.hpp"
 #include "gc.hpp"
 #include "shape.hpp"
 #include "value.hpp"
@@ -24,10 +25,10 @@ struct Object : GCObjectHeader {
   Shape *shape = nullptr;
   std::vector<Property> properties;
 
-  uint16_t class_id = 0;
+  ClassID class_id = ClassID::object;
   bool extensible   = true;
 
-  static Value create(Runtime *rt, Value proto, uint16_t class_id);
+  static Value create(Runtime *rt, Value proto, ClassID class_id);
 
   // ── property access ──────────────────────────────────────────────────
   Value get_own(Atom atom) const;

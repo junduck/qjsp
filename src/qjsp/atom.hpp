@@ -513,6 +513,20 @@ static_assert(static_cast<size_t>(AtomEnum::end) == std::size(kAtomNames),
 /// Get the string name for a built-in atom, or empty view if out of range.
 inline constexpr std::string_view atom_name(Atom a) { return (a < std::size(kAtomNames)) ? kAtomNames[a] : std::string_view{}; }
 
+/// Get the token type for a built-in atom. Returns 0 to mean "use default TOK_IDENT".
+/// Keywords are mapped to negative TOK_* values. 'of' is context-sensitive (TOK_OF = 3).
+inline constexpr int atom_token(Atom a) {
+  if (a == 0) return 0;
+  // Keywords: atoms 1.._super map to negative tokens via the legacy formula
+  if (a <= static_cast<Atom>(kAtomLastKeyword))
+    return -85 + static_cast<int>(a) - 1;
+  // 'of' is context-sensitive — positive token 3
+  if (a == static_cast<Atom>(AtomEnum::of))
+    return 3;
+  // Everything else is a plain identifier
+  return 0;
+}
+
 /// Get the AtomType for a given AtomEnum value (1..267).
 inline constexpr AtomType atom_type_for(AtomEnum e) {
   if (e >= AtomEnum::Symbol_toPrimitive || e == AtomEnum::Private_brand)

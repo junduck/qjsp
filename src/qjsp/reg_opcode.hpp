@@ -151,9 +151,11 @@ enum class RegOp : uint8_t {
   SETUPVAL,
   CLOSEUPVAL,
 
-  // ── iteration (2) ──────────────────────────────────────────────────────
+  // ── iteration (4) ──────────────────────────────────────────────────────
   FOR_IN_START,
   FOR_IN_NEXT,
+  FOR_OF_START,
+  FOR_OF_NEXT,
 
   NUM_OPCODES  // sentinel count
 };

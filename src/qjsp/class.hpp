@@ -10,7 +10,7 @@ namespace qjsp {
 struct Object;
 struct Runtime;
 
-enum class ClassID : uint32_t {
+enum class ClassID : uint16_t {
   object = 1,
   array,
   error,
@@ -108,7 +108,7 @@ struct ClassDef {
 };
 
 struct Class {
-  uint32_t class_id;
+  ClassID class_id;
   Atom class_name;
   ClassFinalizer *finalizer;
   ClassGCMark *gc_mark;

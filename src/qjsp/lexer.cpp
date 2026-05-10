@@ -785,7 +785,7 @@ void Lexer::update_token_ident() {
     if (token.ident_has_escape) {
       token.ident_is_reserved = true;
     } else {
-      token.type = tok_from_atom(id_atom);
+      token.type = atom_token(id_atom);
     }
   }
 }
