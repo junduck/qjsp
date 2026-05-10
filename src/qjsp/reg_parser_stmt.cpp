@@ -704,6 +704,108 @@ done:
 
 void RegParseState::parse_var_decls(TokenKind decl_tok) {
   for (;;) {
+    // ── Array destructuring: var/let/const [a, b] = expr ───────────────
+    if (lexer.token.kind == TokenKind::LBracket) {
+      next_token(); // skip '['
+
+      struct ArrBind { Atom name; int reg = -1; };
+      std::vector<ArrBind> binds;
+
+      while (lexer.token.kind != TokenKind::RBracket) {
+        if (lexer.token.kind == TokenKind::Comma) {
+          binds.push_back({kAtomNull, -1}); // elision
+          next_token();
+          continue;
+        }
+        if (lexer.token.kind != TokenKind::Identifier)
+          return;
+        Atom name = lexer.token.ident_atom;
+        next_token();
+        if (!js_define_var(name, decl_tok))
+          return;
+        int idx = cur_func->find_var(name);
+        binds.push_back({name, cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx))});
+
+        if (lexer.token.kind != TokenKind::RBracket && lexer.token.kind != TokenKind::Comma)
+          return;
+        if (lexer.token.kind == TokenKind::Comma)
+          next_token();
+      }
+      next_token(); // skip ']'
+
+      if (lexer.token.kind != TokenKind::EqAssign) {
+        if (decl_tok == TokenKind::KwConst) return;
+      } else {
+        next_token();
+        RegSlot rhs = parse_assign_expr2(PF_IN_ACCEPTED);
+        for (size_t i = 0; i < binds.size(); ++i) {
+          if (binds[i].name == kAtomNull) continue; // elision
+          int idx_reg = alloc_temp();
+          emit_iAsBx(RegOp::LOADINT, static_cast<uint8_t>(idx_reg), static_cast<int16_t>(i));
+          emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(binds[i].reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(idx_reg));
+          free_temp(); // idx_reg
+        }
+        free_temp(); // rhs
+      }
+
+      if (lexer.token.kind != TokenKind::Comma)
+        return;
+      next_token();
+      continue;
+    }
+
+    // ── Object destructuring: var/let/const {a, b: c} = expr ───────────
+    if (lexer.token.kind == TokenKind::LBrace) {
+      next_token(); // skip '{'
+
+      struct ObjBind { Atom prop; int reg = -1; };
+      std::vector<ObjBind> binds;
+
+      while (lexer.token.kind != TokenKind::RBrace) {
+        if (lexer.token.kind != TokenKind::Identifier)
+          return;
+        Atom prop = lexer.token.ident_atom;
+        next_token();
+
+        Atom var_name = prop; // shorthand: {x}
+        if (lexer.token.kind == TokenKind::Colon) {
+          next_token();
+          if (lexer.token.kind != TokenKind::Identifier)
+            return;
+          var_name = lexer.token.ident_atom;
+          next_token();
+        }
+        if (!js_define_var(var_name, decl_tok))
+          return;
+        int idx = cur_func->find_var(var_name);
+        binds.push_back({prop, cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx))});
+
+        if (lexer.token.kind != TokenKind::RBrace && lexer.token.kind != TokenKind::Comma)
+          return;
+        if (lexer.token.kind == TokenKind::Comma)
+          next_token();
+      }
+      next_token(); // skip '}'
+
+      if (lexer.token.kind != TokenKind::EqAssign) {
+        if (decl_tok == TokenKind::KwConst) return;
+      } else {
+        next_token();
+        RegSlot rhs = parse_assign_expr2(PF_IN_ACCEPTED);
+        for (auto &b : binds) {
+          int ci = cpool_add(rt->atom_to_value(b.prop));
+          emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(b.reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(ci));
+        }
+        free_temp();
+      }
+
+      if (lexer.token.kind != TokenKind::Comma)
+        return;
+      next_token();
+      continue;
+    }
+
+    // ── Simple identifier ───────────────────────────────────────────────
     if (lexer.token.kind != TokenKind::Identifier)
       return;
     Atom name = lexer.token.ident_atom;
@@ -749,7 +851,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         emit_lvalue_store(lv, rhs);
       free_temp();
     } else if (decl_tok == TokenKind::KwConst) {
-      return; // const must have initializer
+      return;
     }
 
     if (lexer.token.kind != TokenKind::Comma)

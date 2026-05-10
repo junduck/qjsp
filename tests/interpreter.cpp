@@ -114,6 +114,38 @@ TEST_F(RegInterpFixture, ForOfSimple) {
   EXPECT_EQ(v.as_int32(), 6);
 }
 
+// ─── Destructuring ───────────────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, DestructureArray) {
+  Value v = eval("var arr = [10, 20]; var [a, b] = arr; a + b;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 30);
+}
+
+TEST_F(RegInterpFixture, DestructureObject) {
+  Value v = eval("var obj = {x: 1, y: 2}; var {x, y} = obj; x + y;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(RegInterpFixture, DestructureObjectRename) {
+  Value v = eval("var obj = {x: 10}; var {x: a} = obj; a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+
+TEST_F(RegInterpFixture, DestructureArrayElision) {
+  Value v = eval("var arr = [1, 2, 3]; var [a, , b] = arr; a + b;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 4);
+}
+
+TEST_F(RegInterpFixture, DestructureEmpty) {
+  Value v = eval("var arr = [1]; var [a] = arr; a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
 
 TEST_F(RegInterpFixture, TryCatchCaught) {
   Value v = eval("var a = 0; try { throw 99; } catch(e) { a = e; } a;");

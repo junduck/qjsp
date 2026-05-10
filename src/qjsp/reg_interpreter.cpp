@@ -386,13 +386,24 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
     }
 
     case RegOp::GETELEM: {
-      // A = dst, B = obj, C = key
       Value &obj = regs[i.b()];
       Value &key = regs[i.c()];
-      Atom atom  = kAtomNull;
-      if (key.is_string()) {
+      if (key.is_int32() && obj.is_object()) {
+        auto *o = obj.as<Object>();
+        if (o && o->class_id == ClassID::array) {
+          auto *arr = static_cast<ArrayObject *>(o);
+          int idx = key.as_int32();
+          if (idx >= 0 && static_cast<size_t>(idx) < arr->elements.size())
+            regs[i.a()] = arr->elements[static_cast<size_t>(idx)];
+          else
+            regs[i.a()] = Value::undefined_();
+          break;
+        }
+      }
+      Atom atom = kAtomNull;
+      if (key.is_string())
         atom = rt()->intern(key.as<String>()->view());
-      } else if (key.is_int32()) {
+      else if (key.is_int32()) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
         atom = rt()->intern(buf);
