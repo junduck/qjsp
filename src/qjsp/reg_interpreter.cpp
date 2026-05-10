@@ -1,4 +1,5 @@
 #include "qjsp/reg_interpreter.hpp"
+#include "qjsp/array.hpp"
 #include "qjsp/context.hpp"
 #include "qjsp/object.hpp"
 #include "qjsp/reg_opcode.hpp"
@@ -437,16 +438,12 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       // ── array ───────────────────────────────────────────────────────────────
 
     case RegOp::NEWARR: {
-      auto arr  = Object::create(rt(), Value::undefined_(), ClassID::array);
-      auto *a   = arr.as<Object>();
+      auto arr  = ArrayObject::create(rt(), ctx_->array_proto);
+      auto *a   = static_cast<ArrayObject *>(arr.as<Object>());
       int base  = i.b();
       int count = i.c();
-      for (int idx = 0; idx < count; idx++) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%d", idx);
-        Atom key = rt()->intern(buf);
-        a->set_own(rt(), key, regs[base + idx]);
-      }
+      for (int idx = 0; idx < count; idx++)
+        a->elements.push_back(regs[base + idx]);
       regs[i.a()] = arr;
       break;
     }
@@ -548,7 +545,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       if (func_val.is_object()) {
         auto *obj = func_val.as<Object>();
         if (obj->is_callable()) {
-          regs[i.a()] = static_cast<Callable *>(obj)->call(ctx_, this_val, argc - 1, &regs[func_reg + 2]);
+          regs[i.a()] = static_cast<Callable *>(obj)->call(ctx_, this_val, argc, &regs[func_reg + 2]);
         } else {
           regs[i.a()] = Value::undefined_();
         }
