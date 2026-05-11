@@ -259,6 +259,15 @@ void Lexer::init(Runtime *rt_val, const char *filename_val, const uint8_t *sourc
   got_lf    = false;
 }
 
+void Lexer::reset(const uint8_t *source, size_t source_len) {
+  buf_start = source;
+  buf_ptr   = source;
+  buf_end   = source + source_len;
+  last_ptr  = source;
+  got_lf    = false;
+  token = Token{};
+}
+
 // ─── next_token() — the main dispatcher ─────────────────────────────────────
 
 bool Lexer::next_token() {

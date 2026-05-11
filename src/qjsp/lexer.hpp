@@ -50,6 +50,8 @@ struct Lexer {
   bool allow_html_comments = false;
 
   void init(Runtime *rt, const char *filename, const uint8_t *source, size_t source_len);
+  void reset(const uint8_t *source, size_t source_len);
+  size_t buf_pos() const { return static_cast<size_t>(buf_ptr - buf_start); }
 
   bool next_token();
   TokenKind peek_token(bool no_line_terminator);
