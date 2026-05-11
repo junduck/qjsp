@@ -42,7 +42,7 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
       // CATCH uses absolute target in iABx
       fd->instructions[static_cast<size_t>(p.instr_idx)] = Instruction::iABx(static_cast<uint8_t>(op), instr.a(), static_cast<uint16_t>(target)).raw;
     } else {
-      // JMP, IS_FALSE, IS_TRUE: relative offset from _next_ instruction
+      // JMP, IS_FALSE, IS_TRUE, IS_UNDEF: relative offset from _next_ instruction
       int rel_off                                        = offset - 1;
       fd->instructions[static_cast<size_t>(p.instr_idx)] = Instruction::iAsBx(static_cast<uint8_t>(op), instr.a(), static_cast<int16_t>(rel_off)).raw;
     }

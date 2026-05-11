@@ -835,7 +835,10 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
           // Default value: re-parse expression from saved source range
           if (b.has_default) {
             int skip_label = new_label();
-            emit_jump(RegOp::IS_TRUE, skip_label, {elem_reg}); // skip if value is truthy
+            int def_label  = new_label();
+            emit_jump(RegOp::IS_UNDEF, def_label, {elem_reg});
+            emit_jump(RegOp::JMP, skip_label, 0);
+            emit_label(def_label);
             Lexer saved = lexer;
             lexer.reset(lexer.buf_start + b.def_start, b.def_end - b.def_start);
             lexer.next_token();
@@ -926,7 +929,10 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
 
           if (b.has_default) {
             int skip_label = new_label();
-            emit_jump(RegOp::IS_TRUE, skip_label, {elem_reg});
+            int def_label  = new_label();
+            emit_jump(RegOp::IS_UNDEF, def_label, {elem_reg});
+            emit_jump(RegOp::JMP, skip_label, 0);
+            emit_label(def_label);
             Lexer saved = lexer;
             lexer.reset(lexer.buf_start + b.def_start, b.def_end - b.def_start);
             lexer.next_token();

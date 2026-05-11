@@ -98,10 +98,11 @@ enum class RegOp : uint8_t {
   LTE,
   GTE,
 
-  // ── control (3, + NOP above) ─────────────────────────────────────────
+  // ── control (4, + NOP above) ─────────────────────────────────────────
   JMP,
   IS_FALSE,
   IS_TRUE,
+  IS_UNDEF,
 
   // ── object (7) ────────────────────────────────────────────────────────
   NEWOBJ,

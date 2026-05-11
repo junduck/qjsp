@@ -5,106 +5,107 @@
 namespace qjsp {
 
 inline constexpr RegOpInfo kRegOpInfo[] = {
-    {"INVALID", InstrFmt::ABx}, // 0
+    {"INVALID", InstrFmt::ABx},
 
     // ── padding ─────────────────────────────────────────────────────────────
-    {"NOP", InstrFmt::ABx}, // 1
+    {"NOP", InstrFmt::ABx},
 
     // ── const / move (9) ────────────────────────────────────────────────────
-    {"LOADK", InstrFmt::ABx},     // 2
-    {"LOADINT", InstrFmt::AsBx},  // 3
-    {"LOADNIL", InstrFmt::ABC},   // 4
-    {"LOADBOOL", InstrFmt::ABC},  // 5
-    {"LOADUNDEF", InstrFmt::ABx}, // 6
-    {"LOADNULL", InstrFmt::ABx},  // 7
-    {"LOADTRUE", InstrFmt::ABx},  // 8
-    {"LOADFALSE", InstrFmt::ABx}, // 9
-    {"MOVE", InstrFmt::ABC},      // 10
+    {"LOADK", InstrFmt::ABx},
+    {"LOADINT", InstrFmt::AsBx},
+    {"LOADNIL", InstrFmt::ABC},
+    {"LOADBOOL", InstrFmt::ABC},
+    {"LOADUNDEF", InstrFmt::ABx},
+    {"LOADNULL", InstrFmt::ABx},
+    {"LOADTRUE", InstrFmt::ABx},
+    {"LOADFALSE", InstrFmt::ABx},
+    {"MOVE", InstrFmt::ABC},
 
     // ── arithmetic (6) ──────────────────────────────────────────────────────
-    {"ADD", InstrFmt::ABC}, // 11
-    {"SUB", InstrFmt::ABC}, // 12
-    {"MUL", InstrFmt::ABC}, // 13
-    {"DIV", InstrFmt::ABC}, // 14
-    {"MOD", InstrFmt::ABC}, // 15
-    {"POW", InstrFmt::ABC}, // 16
+    {"ADD", InstrFmt::ABC},
+    {"SUB", InstrFmt::ABC},
+    {"MUL", InstrFmt::ABC},
+    {"DIV", InstrFmt::ABC},
+    {"MOD", InstrFmt::ABC},
+    {"POW", InstrFmt::ABC},
 
     // ── bitwise (6) ─────────────────────────────────────────────────────────
-    {"AND", InstrFmt::ABC}, // 17
-    {"OR", InstrFmt::ABC},  // 18
-    {"XOR", InstrFmt::ABC}, // 19
-    {"SHL", InstrFmt::ABC}, // 20
-    {"SAR", InstrFmt::ABC}, // 21
-    {"SHR", InstrFmt::ABC}, // 22
+    {"AND", InstrFmt::ABC},
+    {"OR", InstrFmt::ABC},
+    {"XOR", InstrFmt::ABC},
+    {"SHL", InstrFmt::ABC},
+    {"SAR", InstrFmt::ABC},
+    {"SHR", InstrFmt::ABC},
 
     // ── unary (5) ───────────────────────────────────────────────────────────
-    {"NEG", InstrFmt::ABC},  // 23
-    {"BNOT", InstrFmt::ABC}, // 24
-    {"LNOT", InstrFmt::ABC}, // 25
-    {"INC", InstrFmt::ABC},  // 26
-    {"DEC", InstrFmt::ABC},  // 27
+    {"NEG", InstrFmt::ABC},
+    {"BNOT", InstrFmt::ABC},
+    {"LNOT", InstrFmt::ABC},
+    {"INC", InstrFmt::ABC},
+    {"DEC", InstrFmt::ABC},
 
     // ── compare (8) ─────────────────────────────────────────────────────────
-    {"EQ", InstrFmt::ABC},   // 28
-    {"NEQ", InstrFmt::ABC},  // 29
-    {"SEQ", InstrFmt::ABC},  // 30
-    {"SNEQ", InstrFmt::ABC}, // 31
-    {"LT", InstrFmt::ABC},   // 32
-    {"GT", InstrFmt::ABC},   // 33
-    {"LTE", InstrFmt::ABC},  // 34
-    {"GTE", InstrFmt::ABC},  // 35
+    {"EQ", InstrFmt::ABC},
+    {"NEQ", InstrFmt::ABC},
+    {"SEQ", InstrFmt::ABC},
+    {"SNEQ", InstrFmt::ABC},
+    {"LT", InstrFmt::ABC},
+    {"GT", InstrFmt::ABC},
+    {"LTE", InstrFmt::ABC},
+    {"GTE", InstrFmt::ABC},
 
-    // ── control (3) ─────────────────────────────────────────────────────────
-    {"JMP", InstrFmt::AsBx},      // 36
-    {"IS_FALSE", InstrFmt::AsBx}, // 37
-    {"IS_TRUE", InstrFmt::AsBx},  // 38
+    // ── control (4) ─────────────────────────────────────────────────────────
+    {"JMP", InstrFmt::AsBx},
+    {"IS_FALSE", InstrFmt::AsBx},
+    {"IS_TRUE", InstrFmt::AsBx},
+    {"IS_UNDEF", InstrFmt::AsBx},
 
     // ── object (7) ──────────────────────────────────────────────────────────
-    {"NEWOBJ", InstrFmt::ABx},       // 39
-    {"GETFIELD", InstrFmt::ABC},     // 40
-    {"SETFIELD", InstrFmt::ABC},     // 41
-    {"DEFINE_FIELD", InstrFmt::ABC}, // 42
-    {"GETELEM", InstrFmt::ABC},      // 43
-    {"SETELEM", InstrFmt::ABC},      // 44
-    {"DEFINE_ELEM", InstrFmt::ABC},  // 45
+    {"NEWOBJ", InstrFmt::ABx},
+    {"GETFIELD", InstrFmt::ABC},
+    {"SETFIELD", InstrFmt::ABC},
+    {"DEFINE_FIELD", InstrFmt::ABC},
+    {"GETELEM", InstrFmt::ABC},
+    {"SETELEM", InstrFmt::ABC},
+    {"DEFINE_ELEM", InstrFmt::ABC},
 
     // ── array (2) ───────────────────────────────────────────────────────────
-    {"NEWARR", InstrFmt::ABC}, // 46
-    {"APPEND", InstrFmt::ABC}, // 47
+    {"NEWARR", InstrFmt::ABC},
+    {"APPEND", InstrFmt::ABC},
 
     // ── spread (2) ──────────────────────────────────────────────────────────
-    {"SPREAD_OBJ", InstrFmt::ABC},  // 48
-    {"CALL_SPREAD", InstrFmt::ABC}, // 49
+    {"SPREAD_OBJ", InstrFmt::ABC},
+    {"CALL_SPREAD", InstrFmt::ABC},
 
     // ── type / conversion (4) ───────────────────────────────────────────────
-    {"TYPEOF", InstrFmt::ABC},    // 50
-    {"TOPROPKEY", InstrFmt::ABC}, // 51
-    {"SETPROTO", InstrFmt::ABC},  // 52
-    {"TOOBJECT", InstrFmt::ABC},  // 53
+    {"TYPEOF", InstrFmt::ABC},
+    {"TOPROPKEY", InstrFmt::ABC},
+    {"SETPROTO", InstrFmt::ABC},
+    {"TOOBJECT", InstrFmt::ABC},
 
     // ── call / return (6) ───────────────────────────────────────────────────
-    {"CALL", InstrFmt::ABC},     // 54
-    {"CALL_M", InstrFmt::ABC},   // 55
-    {"CTOR", InstrFmt::ABC},     // 56
-    {"FCLOSURE", InstrFmt::ABx}, // 57
-    {"RETURN", InstrFmt::ABC},   // 58
-    {"RETURN0", InstrFmt::ABx},  // 59
-    {"THROW", InstrFmt::ABC},    // 60
-    {"CATCH", InstrFmt::ABx},    // 61  A=exc_reg, Bx=catch_pc (patched)
-    {"UNCATCH", InstrFmt::ABx},  // 62
-    {"GOSUB", InstrFmt::AsBx},   // 63  A unused, sbx=relative offset
-    {"RET", InstrFmt::ABx},      // 64
+    {"CALL", InstrFmt::ABC},
+    {"CALL_M", InstrFmt::ABC},
+    {"CTOR", InstrFmt::ABC},
+    {"FCLOSURE", InstrFmt::ABx},
+    {"RETURN", InstrFmt::ABC},
+    {"RETURN0", InstrFmt::ABx},
+    {"THROW", InstrFmt::ABC},
+    {"CATCH", InstrFmt::ABx}, //  A=exc_reg, Bx=catch_pc (patched)
+    {"UNCATCH", InstrFmt::ABx},
+    {"GOSUB", InstrFmt::AsBx}, //  A unused, sbx=relative offset
+    {"RET", InstrFmt::ABx},
 
     // ── upvalue (3) ─────────────────────────────────────────────────────────
-    {"GETUPVAL", InstrFmt::ABC},   // 65
-    {"SETUPVAL", InstrFmt::ABC},   // 66
-    {"CLOSEUPVAL", InstrFmt::ABx}, // 67
+    {"GETUPVAL", InstrFmt::ABC},
+    {"SETUPVAL", InstrFmt::ABC},
+    {"CLOSEUPVAL", InstrFmt::ABx},
 
     // ── iteration (4) ────────────────────────────────────────────────────────
-    {"FOR_IN_START", InstrFmt::ABC}, // 68  A=iter_reg, B=obj_reg
-    {"FOR_IN_NEXT", InstrFmt::ABC},  // 69  A=key_reg, B=iter_reg, C=more_reg
-    {"FOR_OF_START", InstrFmt::ABC}, // 70  A=iter_reg, B=obj_reg
-    {"FOR_OF_NEXT", InstrFmt::ABC},  // 71  A=val_reg, B=iter_reg, C=more_reg
+    {"FOR_IN_START", InstrFmt::ABC}, //  A=iter_reg, B=obj_reg
+    {"FOR_IN_NEXT", InstrFmt::ABC},  //  A=key_reg, B=iter_reg, C=more_reg
+    {"FOR_OF_START", InstrFmt::ABC}, //  A=iter_reg, B=obj_reg
+    {"FOR_OF_NEXT", InstrFmt::ABC},  //  A=val_reg, B=iter_reg, C=more_reg
 };
 
 static_assert(sizeof(kRegOpInfo) / sizeof(kRegOpInfo[0]) == static_cast<int>(RegOp::NUM_OPCODES), "kRegOpInfo size mismatch");

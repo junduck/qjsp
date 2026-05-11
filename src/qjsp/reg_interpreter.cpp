@@ -353,6 +353,11 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         ip += i.sbx();
       break;
 
+    case RegOp::IS_UNDEF:
+      if (regs[i.a()].is_undefined())
+        ip += i.sbx();
+      break;
+
       // ── object ──────────────────────────────────────────────────────────────
 
     case RegOp::NEWOBJ: {
