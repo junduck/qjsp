@@ -27,10 +27,10 @@ Value CFunctionObj::create(Context *ctx, CFunction *fn, std::string_view name, i
   obj->ref_count   = 1;
   obj->gc_obj_type = GCObjType::js_object;
   obj->class_id    = ClassID::c_function;
-  obj->fn = fn;
+  obj->fn          = fn;
   ctx->rt->add_gc_object(obj);
   obj->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
-  obj->set_own(ctx->rt, ctx->rt->intern("name"), String::create(name));
+  obj->set_own(ctx->rt, ctx->rt->intern("name"), StrPrim::create(name));
   return Value::object(obj);
 }
 
@@ -135,7 +135,7 @@ static Value builtin_print(Context * /*ctx*/, Value /*this_val*/, int argc, cons
     if (i > 0)
       std::putchar(' ');
     if (argv[i].is_string()) {
-      auto *s = argv[i].as<String>();
+      auto *s = argv[i].as<StrPrim>();
       std::fwrite(s->data, 1, s->len(), stdout);
     } else if (argv[i].is_int32()) {
       std::fprintf(stdout, "%d", argv[i].as_int32());

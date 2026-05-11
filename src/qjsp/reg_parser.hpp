@@ -14,7 +14,7 @@ namespace qjsp {
 
 struct Runtime;
 struct Context;
-struct String;
+struct StrPrim;
 
 // ─── RegSlot ────────────────────────────────────────────────────────────────
 

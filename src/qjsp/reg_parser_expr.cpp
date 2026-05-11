@@ -46,7 +46,7 @@ static RegSlot parse_numeric(RegParseState *ps) {
 }
 
 static RegSlot parse_string_literal(RegParseState *ps) {
-  int ci = ps->cpool_add(String::create(std::string_view{ps->lexer.token.str_val.c_str(), ps->lexer.token.str_len}));
+  int ci = ps->cpool_add(StrPrim::create(std::string_view{ps->lexer.token.str_val.c_str(), ps->lexer.token.str_len}));
   int r  = ps->alloc_temp();
   ps->emit_iABx(RegOp::LOADK, static_cast<uint8_t>(r), static_cast<uint16_t>(ci));
   ps->next_token();
@@ -60,25 +60,25 @@ static RegSlot parse_ident(RegParseState *ps) {
   // Check locals (backward to find innermost match first)
   for (int i = ps->cur_func->var_count; i-- > 0;) {
     if (ps->cur_func->vars[static_cast<size_t>(i)].var_name == atom) {
-      ps->has_prefix_lvalue_ = true;
+      ps->has_prefix_lvalue_  = true;
       ps->last_prefix_lvalue_ = {LValue::LOCAL, -1, atom, -1, i, -1};
-      int r = ps->alloc_temp();
+      int r                   = ps->alloc_temp();
       ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->vars[static_cast<size_t>(i)].reg_index), 0);
       return {r};
     }
   }
   for (int i = ps->cur_func->arg_count; i-- > 0;) {
     if (ps->cur_func->args[static_cast<size_t>(i)].var_name == atom) {
-      ps->has_prefix_lvalue_ = true;
+      ps->has_prefix_lvalue_  = true;
       ps->last_prefix_lvalue_ = {LValue::ARG, -1, atom, -1, i, -1};
-      int r = ps->alloc_temp();
+      int r                   = ps->alloc_temp();
       ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->args[static_cast<size_t>(i)].reg_index), 0);
       return {r};
     }
   }
   int upval = ps->cur_func->resolve_upval(atom);
   if (upval >= 0) {
-    ps->has_prefix_lvalue_ = true;
+    ps->has_prefix_lvalue_  = true;
     ps->last_prefix_lvalue_ = {LValue::UPVAL, -1, atom, -1, -1, upval};
     return ps->emit_upval_read(upval);
   }
@@ -86,7 +86,7 @@ static RegSlot parse_ident(RegParseState *ps) {
   int r  = ps->alloc_temp();
   int ci = ps->cpool_add(ps->rt->atom_to_value(atom));
   ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
-  ps->has_prefix_lvalue_ = true;
+  ps->has_prefix_lvalue_  = true;
   ps->last_prefix_lvalue_ = {LValue::GLOBAL, -1, atom};
   return {r};
 }
@@ -118,28 +118,28 @@ static RegSlot parse_unary_prefix(RegParseState *ps, TokenKind op) {
     return ps->parse_expr(PREC_UNARY);
   case TokenKind::Minus: {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
-    int r = ps->alloc_temp();
+    int r        = ps->alloc_temp();
     ps->emit_iABC(RegOp::NEG, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
     ps->free_temp();
     return {r};
   }
   case TokenKind::Bang: {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
-    int r = ps->alloc_temp();
+    int r        = ps->alloc_temp();
     ps->emit_iABC(RegOp::LNOT, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
     ps->free_temp();
     return {r};
   }
   case TokenKind::Tilde: {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
-    int r = ps->alloc_temp();
+    int r        = ps->alloc_temp();
     ps->emit_iABC(RegOp::BNOT, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
     ps->free_temp();
     return {r};
   }
   case TokenKind::KwTypeof: {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
-    int r = ps->alloc_temp();
+    int r        = ps->alloc_temp();
     ps->emit_iABC(RegOp::TYPEOF, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
     ps->free_temp();
     return {r};
@@ -158,7 +158,7 @@ static RegSlot parse_unary_prefix(RegParseState *ps, TokenKind op) {
   }
   case TokenKind::Inc: {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
-    int r = ps->alloc_temp();
+    int r        = ps->alloc_temp();
     ps->emit_iABC(RegOp::INC, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
     if (ps->has_prefix_lvalue_) {
       ps->has_prefix_lvalue_ = false;
@@ -171,7 +171,7 @@ static RegSlot parse_unary_prefix(RegParseState *ps, TokenKind op) {
   }
   case TokenKind::Dec: {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
-    int r = ps->alloc_temp();
+    int r        = ps->alloc_temp();
     ps->emit_iABC(RegOp::DEC, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
     if (ps->has_prefix_lvalue_) {
       ps->has_prefix_lvalue_ = false;
@@ -190,19 +190,35 @@ static RegSlot parse_unary_prefix(RegParseState *ps, TokenKind op) {
 RegSlot RegParseState::parse_prefix() {
   TokenKind tok = lexer.token.kind;
   switch (tok) {
-  case TokenKind::KwNull:      return parse_null_literal(this);
-  case TokenKind::KwFalse:     return parse_bool_literal(this, false);
-  case TokenKind::KwTrue:      return parse_bool_literal(this, true);
-  case TokenKind::Number:      return parse_numeric(this);
-  case TokenKind::StringLit:   return parse_string_literal(this);
-  case TokenKind::Identifier:  return parse_ident(this);
-  case TokenKind::LParen:      return parse_paren_group(this);
-  case TokenKind::LBrace:      return parse_object_literal();
-  case TokenKind::LBracket:    return parse_array_literal();
-  case TokenKind::KwFunction:  return parse_function_expr(this);
-  case TokenKind::Plus: case TokenKind::Minus: case TokenKind::Bang:
-  case TokenKind::Tilde: case TokenKind::KwTypeof: case TokenKind::KwVoid:
-  case TokenKind::KwDelete: case TokenKind::Inc: case TokenKind::Dec:
+  case TokenKind::KwNull:
+    return parse_null_literal(this);
+  case TokenKind::KwFalse:
+    return parse_bool_literal(this, false);
+  case TokenKind::KwTrue:
+    return parse_bool_literal(this, true);
+  case TokenKind::Number:
+    return parse_numeric(this);
+  case TokenKind::StringLit:
+    return parse_string_literal(this);
+  case TokenKind::Identifier:
+    return parse_ident(this);
+  case TokenKind::LParen:
+    return parse_paren_group(this);
+  case TokenKind::LBrace:
+    return parse_object_literal();
+  case TokenKind::LBracket:
+    return parse_array_literal();
+  case TokenKind::KwFunction:
+    return parse_function_expr(this);
+  case TokenKind::Plus:
+  case TokenKind::Minus:
+  case TokenKind::Bang:
+  case TokenKind::Tilde:
+  case TokenKind::KwTypeof:
+  case TokenKind::KwVoid:
+  case TokenKind::KwDelete:
+  case TokenKind::Inc:
+  case TokenKind::Dec:
     return parse_unary_prefix(this, tok);
   default:
     return {alloc_temp()};
@@ -220,7 +236,8 @@ static RegSlot parse_call_infix(RegParseState *ps, RegSlot func) {
       argc++;
       if (ps->lexer.token.kind == TokenKind::RParen)
         break;
-      if (ps->lexer.token.kind != TokenKind::Comma) { /* error */ }
+      if (ps->lexer.token.kind != TokenKind::Comma) { /* error */
+      }
       ps->next_token();
     }
   }
@@ -264,7 +281,7 @@ static RegSlot parse_postfix_incdec(RegParseState *ps, RegSlot base, TokenKind t
 
   if (ps->has_prefix_lvalue_) {
     ps->has_prefix_lvalue_ = false;
-    LValue lv = ps->last_prefix_lvalue_;
+    LValue lv              = ps->last_prefix_lvalue_;
 
     // base is a temp holding the current value (loaded by parse_ident)
     int old_r = base.reg;
@@ -274,7 +291,7 @@ static RegSlot parse_postfix_incdec(RegParseState *ps, RegSlot base, TokenKind t
     // Store new value back to the actual variable
     ps->emit_lvalue_store(lv, {new_r});
     ps->free_temp(); // new_r
-    return {old_r};   // postfix returns old value
+    return {old_r};  // postfix returns old value
   }
 
   // Fallback for non-identifier operands (e.g. 3++ which is invalid JS,
@@ -307,7 +324,7 @@ static RegSlot parse_binary_infix(RegParseState *ps, RegSlot left, TokenKind tok
 
   ps->next_token();
   RegSlot right = ps->parse_expr(next_min);
-  RegOp op = binop_to_reg(tok);
+  RegOp op      = binop_to_reg(tok);
   if (op != RegOp::NOP)
     ps->emit_iABC(op, static_cast<uint8_t>(left.reg), static_cast<uint8_t>(left.reg), static_cast<uint8_t>(right.reg));
   ps->free_temp(); // right
@@ -340,15 +357,20 @@ static bool is_logic_assign_op(TokenKind tok) {
 }
 
 RegSlot RegParseState::parse_infix(RegSlot left, TokenKind tok) {
-  if (tok == TokenKind::Inc || tok == TokenKind::Dec) return parse_postfix_incdec(this, left, tok);
+  if (tok == TokenKind::Inc || tok == TokenKind::Dec)
+    return parse_postfix_incdec(this, left, tok);
 
   // Any infix operator other than INC/DEC invalidates the lvalue tracking
   has_prefix_lvalue_ = false;
 
-  if (tok == TokenKind::LParen) return parse_call_infix(this, left);
-  if (tok == TokenKind::Dot)    return parse_dot_infix(this, left);
-  if (tok == TokenKind::LBracket) return parse_bracket_infix(this, left);
-  if (tok == TokenKind::Question) return parse_ternary_infix(this, left);
+  if (tok == TokenKind::LParen)
+    return parse_call_infix(this, left);
+  if (tok == TokenKind::Dot)
+    return parse_dot_infix(this, left);
+  if (tok == TokenKind::LBracket)
+    return parse_bracket_infix(this, left);
+  if (tok == TokenKind::Question)
+    return parse_ternary_infix(this, left);
 
   // Binary / logical operators
   auto prec = kInfixTable[static_cast<uint16_t>(tok)].prec;
@@ -366,8 +388,9 @@ RegSlot RegParseState::parse_infix(RegSlot left, TokenKind tok) {
 static RegSlot parse_expr_from(RegParseState *ps, RegSlot left, int min_prec) {
   for (;;) {
     TokenKind tok = ps->lexer.token.kind;
-    auto &entry = kInfixTable[static_cast<uint16_t>(tok)];
-    if (entry.prec < min_prec) break;
+    auto &entry   = kInfixTable[static_cast<uint16_t>(tok)];
+    if (entry.prec < min_prec)
+      break;
     left = ps->parse_infix(left, tok);
   }
   return left;
@@ -384,17 +407,15 @@ RegSlot RegParseState::parse_expr(int min_prec) {
 
 // ─── Assignment (lvalue-based, delegates to Pratt for RHS) ──────────────────
 
-static bool is_arith_assign(TokenKind tok) {
-  return tok >= TokenKind::MulAssign && tok <= TokenKind::PowAssign;
-}
+static bool is_arith_assign(TokenKind tok) { return tok >= TokenKind::MulAssign && tok <= TokenKind::PowAssign; }
 
 RegSlot RegParseState::parse_assign_expr() {
   TokenKind tok = lexer.token.kind;
 
   if (tok == TokenKind::Identifier || tok == TokenKind::LParen) {
-    LValue lv   = parse_postfix_lvalue();
-    has_prefix_lvalue_ = true;
-    last_prefix_lvalue_ = lv;
+    LValue lv            = parse_postfix_lvalue();
+    has_prefix_lvalue_   = true;
+    last_prefix_lvalue_  = lv;
     TokenKind assign_tok = lexer.token.kind;
 
     if (assign_tok == TokenKind::EqAssign) {
@@ -408,11 +429,11 @@ RegSlot RegParseState::parse_assign_expr() {
     if (is_arith_assign(assign_tok)) {
       has_prefix_lvalue_ = false;
       next_token();
-      RegSlot rhs   = parse_expr(PREC_ASSIGN);
-      int lhs_val   = alloc_temp();
+      RegSlot rhs = parse_expr(PREC_ASSIGN);
+      int lhs_val = alloc_temp();
       emit_lvalue_load(lv, {lhs_val});
-      int result    = alloc_temp();
-      RegOp binop   = compound_to_binop(assign_tok);
+      int result  = alloc_temp();
+      RegOp binop = compound_to_binop(assign_tok);
       if (binop != RegOp::NOP)
         emit_iABC(binop, static_cast<uint8_t>(result), static_cast<uint8_t>(lhs_val), static_cast<uint8_t>(rhs.reg));
       emit_lvalue_store(lv, {result});
@@ -446,7 +467,7 @@ RegSlot RegParseState::parse_assign_expr() {
     RegSlot val = alloc_temp();
     emit_lvalue_load(lv, {val});
     // Use the Pratt parser for postfix/binary continuation (no assignment)
-    return parse_expr_from(this, val, PREC_ASSIGN + 1);  // stop before any assignment
+    return parse_expr_from(this, val, PREC_ASSIGN + 1); // stop before any assignment
   }
 
   // Assignment destructuring: [a, b] = expr
@@ -454,12 +475,21 @@ RegSlot RegParseState::parse_assign_expr() {
     TokenKind next = peek_token(false);
     if (next == TokenKind::Comma || next == TokenKind::Identifier) {
       next_token(); // skip '['
-      struct AssignTarget { LValue lv; bool has_default; size_t def_start; size_t def_end; };
+      struct AssignTarget {
+        LValue lv;
+        bool has_default;
+        size_t def_start;
+        size_t def_end;
+      };
       std::vector<AssignTarget> targets;
 
       while (lexer.token.kind != TokenKind::RBracket) {
-        if (lexer.token.kind == TokenKind::Comma) { next_token(); continue; }
-        if (lexer.token.kind != TokenKind::Identifier) goto parse_as_value;
+        if (lexer.token.kind == TokenKind::Comma) {
+          next_token();
+          continue;
+        }
+        if (lexer.token.kind != TokenKind::Identifier)
+          goto parse_as_value;
         Atom name = lexer.token.ident_atom;
         next_token();
 
@@ -467,40 +497,62 @@ RegSlot RegParseState::parse_assign_expr() {
         bool found = false;
         for (int j = cur_func->var_count; j-- > 0;) {
           if (cur_func->vars[static_cast<size_t>(j)].var_name == name) {
-            lv.kind = LValue::LOCAL; lv.var_idx = j; lv.prop = name; found = true; break;
+            lv.kind    = LValue::LOCAL;
+            lv.var_idx = j;
+            lv.prop    = name;
+            found      = true;
+            break;
           }
         }
         if (!found) {
           for (int j = cur_func->arg_count; j-- > 0;) {
             if (cur_func->args[static_cast<size_t>(j)].var_name == name) {
-              lv.kind = LValue::ARG; lv.var_idx = j; lv.prop = name; found = true; break;
+              lv.kind    = LValue::ARG;
+              lv.var_idx = j;
+              lv.prop    = name;
+              found      = true;
+              break;
             }
           }
         }
         if (!found) {
           int upval = cur_func->resolve_upval(name);
-          if (upval >= 0) { lv.kind = LValue::UPVAL; lv.upval_idx = upval; lv.prop = name; found = true; }
+          if (upval >= 0) {
+            lv.kind      = LValue::UPVAL;
+            lv.upval_idx = upval;
+            lv.prop      = name;
+            found        = true;
+          }
         }
-        if (!found) { lv.kind = LValue::GLOBAL; lv.prop = name; }
+        if (!found) {
+          lv.kind = LValue::GLOBAL;
+          lv.prop = name;
+        }
 
         AssignTarget t{lv, false, 0, 0};
         if (lexer.token.kind == TokenKind::EqAssign) {
           t.def_start = lexer.buf_pos();
-          int depth = 0;
+          int depth   = 0;
           for (;;) {
             TokenKind k = lexer.token.kind;
-            if (k == TokenKind::LParen || k == TokenKind::LBracket || k == TokenKind::LBrace) depth++;
+            if (k == TokenKind::LParen || k == TokenKind::LBracket || k == TokenKind::LBrace)
+              depth++;
             else if (k == TokenKind::RParen || k == TokenKind::RBracket || k == TokenKind::RBrace) {
-              if (depth == 0) break; depth--;
-            } else if (depth == 0 && (k == TokenKind::Comma || k == TokenKind::RBracket)) break;
-            if (k == TokenKind::Eof) break;
+              if (depth == 0)
+                break;
+              depth--;
+            } else if (depth == 0 && (k == TokenKind::Comma || k == TokenKind::RBracket))
+              break;
+            if (k == TokenKind::Eof)
+              break;
             next_token();
           }
-          t.def_end = lexer.buf_pos();
+          t.def_end     = lexer.buf_pos();
           t.has_default = true;
         }
         targets.push_back(t);
-        if (lexer.token.kind == TokenKind::Comma) next_token();
+        if (lexer.token.kind == TokenKind::Comma)
+          next_token();
       }
       next_token(); // ']'
 
@@ -636,7 +688,7 @@ bool RegParseState::parse_cover_property(CoverProp &out) {
     }
 
     if (lexer.token.kind == TokenKind::LParen) {
-      out.kind = CoverProp::KeyValue;
+      out.kind        = CoverProp::KeyValue;
       FunctionDef *fd = parse_function_decl(kAtomNull, true, FunctionKind::normal);
       if (fd) {
         int r = alloc_temp();
@@ -821,7 +873,8 @@ LValue RegParseState::parse_postfix_lvalue() {
       tok = lexer.token.kind;
       if (tok == TokenKind::Dot) {
         next_token();
-        if (lexer.token.kind != TokenKind::Identifier) break;
+        if (lexer.token.kind != TokenKind::Identifier)
+          break;
         Atom prop = lexer.token.ident_atom;
         next_token();
         int obj_reg = alloc_temp();
@@ -850,7 +903,8 @@ LValue RegParseState::parse_postfix_lvalue() {
     tok = lexer.token.kind;
     if (tok == TokenKind::Dot) {
       next_token();
-      if (lexer.token.kind != TokenKind::Identifier) break;
+      if (lexer.token.kind != TokenKind::Identifier)
+        break;
       Atom prop = lexer.token.ident_atom;
       next_token();
       lv.kind = LValue::FIELD;

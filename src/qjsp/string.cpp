@@ -3,20 +3,20 @@
 
 namespace qjsp {
 
-String *String::allocate_raw(std::string_view src) {
-  auto *s = static_cast<String *>(operator new(sizeof(String) + src.size() + 1));
+StrPrim *StrPrim::allocate_raw(std::string_view src) {
+  auto *s = static_cast<StrPrim *>(operator new(sizeof(StrPrim) + src.size() + 1));
   auto *p = reinterpret_cast<char *>(s + 1);
   std::copy(src.begin(), src.end(), p);
   p[src.size()] = 0;
 
-  new (s) String();
+  new (s) StrPrim();
   s->ref_count = 1;
   s->meta      = static_cast<uint32_t>(src.size()) & 0x7FFFFFFFu;
   s->data      = p;
   return s;
 }
 
-int String::compare(const String *a, const String *b) {
+int StrPrim::compare(const StrPrim *a, const StrPrim *b) {
   if (a == b)
     return 0;
   auto min_len = std::min(a->len(), b->len());

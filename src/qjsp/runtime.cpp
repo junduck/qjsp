@@ -10,8 +10,8 @@
 
 namespace qjsp {
 
-static String *alloc_string(std::string_view sv) {
-  auto *s = String::allocate_raw(sv);
+static StrPrim *alloc_string(std::string_view sv) {
+  auto *s = StrPrim::allocate_raw(sv);
   if (s)
     s->set_interned();
   return s;
@@ -32,7 +32,7 @@ Runtime::~Runtime() {
 }
 
 bool Runtime::init_atoms() {
-  atom_table.push_back(nullptr);      // index 0 = kAtomNull
+  atom_table.push_back(nullptr); // index 0 = kAtomNull
   atom_is_symbol_.push_back(false);
 
   auto add = [&](std::string_view sv, Atom &slot, bool is_symbol = false) {
@@ -91,7 +91,7 @@ Atom Runtime::intern(std::string_view sv) {
   auto it = atom_map.find(sv);
   if (it != atom_map.end())
     return it->second;
-  auto *s = alloc_string(sv);
+  auto *s  = alloc_string(sv);
   auto idx = static_cast<Atom>(atom_table.size());
   atom_table.push_back(s);
   atom_is_symbol_.push_back(false);
@@ -99,7 +99,7 @@ Atom Runtime::intern(std::string_view sv) {
   return idx;
 }
 
-Atom Runtime::intern_copy(String *s) {
+Atom Runtime::intern_copy(StrPrim *s) {
   if (!s)
     return kAtomNull;
   auto it = atom_map.find(s->view());
@@ -151,8 +151,8 @@ Shape *Runtime::add_shape(Shape *from, Atom atom, int flags) {
   if (it != shape_cache.end())
     return it->second;
 
-  auto *s  = new Shape();
-  auto cnt = from ? from->prop_count : uint32_t{0};
+  auto *s       = new Shape();
+  auto cnt      = from ? from->prop_count : uint32_t{0};
   s->prop_count = cnt + 1;
   s->entries    = std::make_unique<ShapeProperty[]>(s->prop_count);
   if (from && cnt > 0)

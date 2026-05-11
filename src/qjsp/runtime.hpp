@@ -6,9 +6,9 @@
 #include "value.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string_view>
 #include <unordered_map>
-#include <memory>
 #include <vector>
 
 namespace qjsp {
@@ -18,7 +18,7 @@ struct Shape;
 struct Class;
 struct ModuleDef;
 struct JobEntry;
-struct String;
+struct StrPrim;
 struct Object;
 
 struct MallocState {
@@ -63,30 +63,30 @@ struct Runtime {
   MallocState malloc_state{};
   const char *rt_info = nullptr;
 
-  std::vector<String *> atom_table;
+  std::vector<StrPrim *> atom_table;
   std::vector<bool> atom_is_symbol_;
   std::unordered_map<std::string_view, Atom, StringHash, std::equal_to<>> atom_map;
 
   /// Eagerly-interned atoms the engine references by index.
   /// Populated during init_atoms() and stable thereafter.
   struct WellKnownAtoms {
-    Atom empty_string          = 0;
-    Atom prototype             = 0;
-    Atom constructor           = 0;
-    Atom length                = 0;
-    Atom name                  = 0;
-    Atom toString              = 0;
-    Atom valueOf               = 0;
-    Atom eval                  = 0;
-    Atom undefined             = 0;
-    Atom of                    = 0;
-    Atom __proto__             = 0;
-    Atom symbol_iterator       = 0;
-    Atom symbol_asyncIterator  = 0;
-    Atom symbol_toPrimitive    = 0;
-    Atom symbol_toStringTag    = 0;
-    Atom symbol_hasInstance    = 0;
-    Atom symbol_species        = 0;
+    Atom empty_string         = 0;
+    Atom prototype            = 0;
+    Atom constructor          = 0;
+    Atom length               = 0;
+    Atom name                 = 0;
+    Atom toString             = 0;
+    Atom valueOf              = 0;
+    Atom eval                 = 0;
+    Atom undefined            = 0;
+    Atom of                   = 0;
+    Atom __proto__            = 0;
+    Atom symbol_iterator      = 0;
+    Atom symbol_asyncIterator = 0;
+    Atom symbol_toPrimitive   = 0;
+    Atom symbol_toStringTag   = 0;
+    Atom symbol_hasInstance   = 0;
+    Atom symbol_species       = 0;
   } well_known;
 
   std::unique_ptr<Class[]> classes;
@@ -166,7 +166,7 @@ struct Runtime {
   void maybe_trigger_gc(size_t size_hint = 0);
 
   Atom intern(std::string_view sv);
-  Atom intern_copy(String *s);
+  Atom intern_copy(StrPrim *s);
   Value atom_to_value(Atom a) const;
   std::string_view atom_view(Atom a) const {
     if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))
@@ -175,9 +175,7 @@ struct Runtime {
     return s ? s->view() : std::string_view{};
   }
   Atom create_symbol(std::string_view desc = {});
-  bool atom_is_symbol(Atom a) const {
-    return a < static_cast<Atom>(atom_is_symbol_.size()) && atom_is_symbol_[a];
-  }
+  bool atom_is_symbol(Atom a) const { return a < static_cast<Atom>(atom_is_symbol_.size()) && atom_is_symbol_[a]; }
 };
 
 } // namespace qjsp

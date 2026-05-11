@@ -47,7 +47,7 @@ static bool is_truthy(Value v) {
 
 static Atom cpool_to_atom(Runtime *rt, Value field_val) {
   if (field_val.is_string())
-    return rt->intern(field_val.as<String>()->view());
+    return rt->intern(field_val.as<StrPrim>()->view());
   if (field_val.is_symbol())
     return field_val.as_symbol();
   return kAtomNull;
@@ -407,7 +407,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       }
       Atom atom = kAtomNull;
       if (key.is_string())
-        atom = rt()->intern(key.as<String>()->view());
+        atom = rt()->intern(key.as<StrPrim>()->view());
       else if (key.is_int32()) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
@@ -423,7 +423,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value &key = regs[i.b()];
       Atom atom  = kAtomNull;
       if (key.is_string()) {
-        atom = rt()->intern(key.as<String>()->view());
+        atom = rt()->intern(key.as<StrPrim>()->view());
       } else if (key.is_int32()) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
@@ -439,7 +439,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value &key = regs[i.b()];
       Atom atom  = kAtomNull;
       if (key.is_string()) {
-        atom = rt()->intern(key.as<String>()->view());
+        atom = rt()->intern(key.as<StrPrim>()->view());
       } else if (key.is_int32()) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
@@ -487,7 +487,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         typestr = "boolean";
       else if (v.is_undefined())
         typestr = "undefined";
-      regs[i.a()] = String::create(typestr);
+      regs[i.a()] = StrPrim::create(typestr);
       break;
     }
 

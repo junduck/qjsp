@@ -8,8 +8,8 @@
 namespace qjsp {
 
 struct RegExp {
-  String *pattern;
-  String *bytecode; // also contains the flags
+  StrPrim *pattern;
+  StrPrim *bytecode; // also contains the flags
 };
 
 } // namespace qjsp

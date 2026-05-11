@@ -1,5 +1,5 @@
-#include "qjsp/context.hpp"
 #include "qjsp/runtime.hpp"
+#include "qjsp/context.hpp"
 #include "qjsp/string.hpp"
 #include "qjsp/value.hpp"
 #include <cstring>
@@ -13,10 +13,10 @@ TEST(RuntimeContext, CreateAndDestroy) {
   auto ctx = std::make_unique<Context>(rt.get());
 }
 
-TEST(StringOps, CreateAndCmp) {
-  auto *a = String::allocate_raw("abc");
-  auto *b = String::allocate_raw("abd");
-  EXPECT_LT(String::compare(a, b), 0);
+TEST(StrPrimOps, CreateAndCmp) {
+  auto *a = StrPrim::allocate_raw("abc");
+  auto *b = StrPrim::allocate_raw("abd");
+  EXPECT_LT(StrPrim::compare(a, b), 0);
   EXPECT_EQ(a->view(), "abc");
   a->unref();
   b->unref();
@@ -29,7 +29,7 @@ TEST(AtomIntern, Predefined) {
 
 TEST(AtomIntern, Dynamic) {
   auto rt = std::make_unique<Runtime>();
-  Atom a = rt->intern("myKey");
+  Atom a  = rt->intern("myKey");
   EXPECT_NE(a, kAtomNull);
   EXPECT_EQ(rt->atom_view(a), "myKey");
 }

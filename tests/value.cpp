@@ -1,6 +1,6 @@
 #include "qjsp/value.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/atom.hpp"
+#include "qjsp/runtime.hpp"
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -21,8 +21,8 @@ TEST(ValueBasics, BoolRoundTrip) {
 TEST(ValueBasics, Float64RoundTrip) { EXPECT_DOUBLE_EQ(Value::float64(3.14).as_double(), 3.14); }
 
 TEST(ValueBasics, Float64Inf) {
-  double inf  = std::numeric_limits<double>::infinity();
-  Value  v    = Value::float64(inf);
+  double inf = std::numeric_limits<double>::infinity();
+  Value v    = Value::float64(inf);
   EXPECT_TRUE(v.is_double());
   EXPECT_DOUBLE_EQ(v.as_double(), inf);
 }
@@ -35,9 +35,9 @@ TEST(ValueSymbol, RoundTrip) {
   EXPECT_EQ(v.as_symbol(), static_cast<Atom>(42));
 }
 
-TEST(ValueSymbol, DistinctFromString) {
-  Value sym  = Value::symbol_from_atom(1);
-  Value str  = Value::string(nullptr);
+TEST(ValueSymbol, DistinctFromStrPrim) {
+  Value sym = Value::symbol_from_atom(1);
+  Value str = Value::string(nullptr);
   EXPECT_FALSE(sym.is_string());
   EXPECT_TRUE(sym.is_symbol());
   EXPECT_FALSE(str.is_symbol());

@@ -127,7 +127,8 @@ bool Lexer::lre_is_space(uint32_t c) {
 
 int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
   const uint8_t *p = *pp;
-  if (p >= buf_end) return -1;
+  if (p >= buf_end)
+    return -1;
   uint32_t c = *p++;
 
   switch (c) {
@@ -150,7 +151,8 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
     c = '\v';
     break;
   case 'x': {
-    if (p + 1 >= buf_end) return -1;
+    if (p + 1 >= buf_end)
+      return -1;
     int h0 = from_hex(*p++), h1 = from_hex(*p++);
     if (h0 < 0 || h1 < 0)
       return -1;
@@ -162,7 +164,8 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       p++;
       c = 0;
       for (;;) {
-        if (p >= buf_end) return -1;
+        if (p >= buf_end)
+          return -1;
         int h = from_hex(*p++);
         if (h < 0)
           return -1;
@@ -174,7 +177,8 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       }
       p++;
     } else {
-      if (p + 3 >= buf_end) return -1; // need 4 hex chars
+      if (p + 3 >= buf_end)
+        return -1; // need 4 hex chars
       c = 0;
       for (int i = 0; i < 4; i++) {
         int h = from_hex(*p++);
@@ -211,7 +215,8 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       if (c != 0 || is_digit(*p))
         return -1;
     } else {
-      if (p >= buf_end) break;
+      if (p >= buf_end)
+        break;
       unsigned v = static_cast<unsigned>(*p - '0');
       if (v > 7)
         break;
@@ -219,7 +224,8 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       p++;
       if (c >= 32)
         break;
-      if (p >= buf_end) break;
+      if (p >= buf_end)
+        break;
       v = static_cast<unsigned>(*p - '0');
       if (v > 7)
         break;
@@ -252,7 +258,7 @@ void Lexer::reset(const uint8_t *source, size_t source_len) {
   buf_end   = source + source_len;
   last_ptr  = source;
   got_lf    = false;
-  token = Token{};
+  token     = Token{};
 }
 
 // ─── next_token() — the main dispatcher ─────────────────────────────────────
@@ -702,7 +708,7 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
 
   buf_ptr = p;
 
-  auto *str = String::allocate_raw(ident_buf);
+  auto *str = StrPrim::allocate_raw(ident_buf);
   if (!str)
     return false;
   Atom atom               = rt->intern_copy(str);
@@ -759,7 +765,7 @@ bool Lexer::parse_private_name() {
   }
 
   buf_ptr   = p;
-  auto *str = String::allocate_raw(ident_buf);
+  auto *str = StrPrim::allocate_raw(ident_buf);
   if (!str)
     return false;
   Atom atom               = rt->intern_copy(str);
@@ -1075,7 +1081,7 @@ bool Lexer::parse_number(const uint8_t *p) {
         }
         if (*p < '0' || *p > '7')
           break;
-        val = val * 8 + static_cast<unsigned long long>(*p - '0');
+        val       = val * 8 + static_cast<unsigned long long>(*p - '0');
         has_digit = true;
         p++;
       }
@@ -1095,7 +1101,7 @@ bool Lexer::parse_number(const uint8_t *p) {
           p++;
           continue;
         }
-        val = val * 2 + static_cast<unsigned long long>(*p - '0');
+        val       = val * 2 + static_cast<unsigned long long>(*p - '0');
         has_digit = true;
         p++;
       }

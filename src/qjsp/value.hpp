@@ -12,7 +12,7 @@
 //!   ─────── pointer boundary ─────── RC (RefCounted only, no vtable)
 //! | `VarRef`          | `7FF9:PPPP:PPPP:PPPP`    | |
 //! | `Bytecode`        | `7FFA:PPPP:PPPP:PPPP`    | |
-//! | `String`          | `7FFB:PPPP:PPPP:PPPP`    | |
+//! | `StrPrim`         | `7FFB:PPPP:PPPP:PPPP`    | |
 //! | `BigInt`          | `7FFC:PPPP:PPPP:PPPP`    | |
 //!   ─────── pointer boundary ─────── GC (GCObjectHeader subclasses)
 //! | `Object`          | `7FFD:PPPP:PPPP:PPPP`    | |
@@ -58,7 +58,7 @@ constexpr uint64_t kTagSymbol = 0x7FF8ull;
 // ─── Pointer tags ─── RC (0x7FF9–0x7FFC): RefCounted only, no vtable ──────
 constexpr uint64_t kTagVarRef   = 0x7FF9ull; // VarRef (internal)
 constexpr uint64_t kTagBytecode = 0x7FFAull; // FunctionBytecode
-constexpr uint64_t kTagString   = 0x7FFBull;
+constexpr uint64_t kTagStrPrim  = 0x7FFBull;
 constexpr uint64_t kTagBigInt   = 0x7FFCull;
 
 // ─── Pointer tags ─── GC (0x7FFD): GCObjectHeader subclasses ─────────────
@@ -160,7 +160,7 @@ struct Value {
   static Value string(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
-    return Value{(kTagString << kTagShift) | p};
+    return Value{(kTagStrPrim << kTagShift) | p};
   }
 
   static Value bigint_ptr(void *ptr) {
@@ -210,7 +210,7 @@ struct Value {
 
   // pointer types
   bool is_object() const { return tag_prefix() == kTagObject; }
-  bool is_string() const { return tag_prefix() == kTagString && !is_null_ptr(); }
+  bool is_string() const { return tag_prefix() == kTagStrPrim && !is_null_ptr(); }
   bool is_symbol() const { return tag_prefix() == kTagSymbol; }
   bool is_bigint_ptr() const { return tag_prefix() == kTagBigInt; }
   bool is_var_ref() const { return tag_prefix() == kTagVarRef; }
@@ -256,7 +256,7 @@ struct Value {
     // GC-objects (0x7FFD): Object — GCObjectHeader subclass with vtable.
     if (tag_prefix() >= kTagObject)
       return static_cast<RefCounted *>(reinterpret_cast<GCObjectHeader *>(raw));
-    // RC-only (0x7FF9–0x7FFC): VarRef, Bytecode, String, BigInt — no vtable.
+    // RC-only (0x7FF9–0x7FFC): VarRef, Bytecode, StrPrim, BigInt — no vtable.
     return reinterpret_cast<RefCounted *>(raw);
   }
 

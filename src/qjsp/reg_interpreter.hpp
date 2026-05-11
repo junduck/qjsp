@@ -9,7 +9,7 @@ namespace qjsp {
 struct Context;
 struct Runtime;
 struct Object;
-struct String;
+struct StrPrim;
 struct VarRef;
 struct ArrayObject;
 

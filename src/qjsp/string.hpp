@@ -10,13 +10,13 @@ namespace qjsp {
 
 constexpr uint32_t kStringLenMax = (1u << 31) - 1;
 
-struct String : RefCounted {
+struct StrPrim : RefCounted {
   uint32_t meta    = 0;
   char const *data = nullptr; // points to trailing allocation
 
-  static String *allocate_raw(std::string_view src);
+  static StrPrim *allocate_raw(std::string_view src);
   static Value create(std::string_view src) { return Value::string(allocate_raw(src)); }
-  static int compare(const String *a, const String *b);
+  static int compare(const StrPrim *a, const StrPrim *b);
 
   uint32_t len() const { return meta & 0x7FFFFFFFu; }
   bool is_interned() const { return meta >> 31; }

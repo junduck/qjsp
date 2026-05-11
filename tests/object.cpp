@@ -1,6 +1,6 @@
+#include "qjsp/object.hpp"
 #include "qjsp/array.hpp"
 #include "qjsp/context.hpp"
-#include "qjsp/object.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 #include "qjsp/value.hpp"
@@ -22,16 +22,16 @@ TEST_F(ObjFixture, CreateEmpty) {
 }
 
 TEST_F(ObjFixture, SetAndGet) {
-  Value obj   = Object::create(rt.get(), Value::undefined_(), ClassID::object);
-  auto *o     = obj.as<Object>();
+  Value obj = Object::create(rt.get(), Value::undefined_(), ClassID::object);
+  auto *o   = obj.as<Object>();
   o->set_own(rt.get(), atom("x"), Value::int32(100));
   EXPECT_EQ(o->get_own(atom("x")).as_int32(), 100);
 }
 
 TEST_F(ObjFixture, PrototypeChain) {
-  Value proto  = Object::create(rt.get(), Value::undefined_(), ClassID::object);
+  Value proto = Object::create(rt.get(), Value::undefined_(), ClassID::object);
   proto.as<Object>()->set_own(rt.get(), atom("a"), Value::int32(999));
-  Value child  = Object::create(rt.get(), proto, ClassID::object);
+  Value child = Object::create(rt.get(), proto, ClassID::object);
   EXPECT_EQ(child.as<Object>()->get(atom("a")).as_int32(), 999);
 }
 
@@ -69,18 +69,18 @@ TEST_F(ObjFixture, MakeCFunc) {
 }
 
 TEST_F(ObjFixture, CallCFunc) {
-  Value fn          = CFunctionObj::create(ctx.get(), test_add, "add", 2);
+  Value fn           = CFunctionObj::create(ctx.get(), test_add, "add", 2);
   const Value args[] = {Value::int32(3), Value::int32(4)};
   EXPECT_EQ(call(ctx.get(), fn, Value::undefined_(), 2, args).as_int32(), 7);
 }
 
 TEST_F(ObjFixture, CallIdentity) {
-  Value fn          = CFunctionObj::create(ctx.get(), test_identity, "id", 1);
-  Value s           = String::create("hello");
+  Value fn           = CFunctionObj::create(ctx.get(), test_identity, "id", 1);
+  Value s            = StrPrim::create("hello");
   const Value args[] = {s};
-  Value result      = call(ctx.get(), fn, Value::undefined_(), 1, args);
+  Value result       = call(ctx.get(), fn, Value::undefined_(), 1, args);
   EXPECT_TRUE(result.is_string());
-  EXPECT_EQ(result.as<String>()->view(), "hello");
+  EXPECT_EQ(result.as<StrPrim>()->view(), "hello");
 }
 
 TEST_F(ObjFixture, GlobalObjectExists) {
@@ -137,12 +137,12 @@ TEST_F(ObjFixture, ArrayIteratorManual) {
   EXPECT_TRUE(iter_val.is_object());
 
   // Call iterator.next() → {value: 10, done: false}
-  auto *iter = iter_val.as<Object>();
+  auto *iter    = iter_val.as<Object>();
   Value next_fn = iter->get(rt->intern("next"));
   EXPECT_TRUE(next_fn.is_object());
 
   auto *next_callable = static_cast<Callable *>(next_fn.as<Object>());
-  Value r1 = next_callable->call(ctx.get(), iter_val, 0, nullptr);
+  Value r1            = next_callable->call(ctx.get(), iter_val, 0, nullptr);
   EXPECT_TRUE(r1.is_object());
   EXPECT_EQ(r1.as<Object>()->get_own(rt->intern("value")).as_int32(), 10);
   EXPECT_FALSE(r1.as<Object>()->get_own(rt->intern("done")).as_bool());
