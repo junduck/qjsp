@@ -576,6 +576,13 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       regs[i.a()] = Value::undefined_();
       break;
 
+    case RegOp::REGEXP: {
+      // Stub: load pattern+flags from cpool, create RegExpObj
+      // TODO: compile the RE2 and create a proper RegExpObj
+      regs[i.a()] = Value::undefined_();
+      break;
+    }
+
     case RegOp::FCLOSURE: {
       // Load bytecode from cpool
       auto ci = i.bx();

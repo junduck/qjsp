@@ -55,6 +55,8 @@ struct Lexer {
 
   bool next_token();
   TokenKind peek_token(bool no_line_terminator);
+  bool parse_regexp();
+  bool reparse_as_regexp();
 
   static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end);
 
@@ -63,7 +65,6 @@ private:
   bool parse_private_name();
   bool parse_template_part(const uint8_t *p);
   bool parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, const uint8_t **pp);
-  bool parse_regexp();
   bool parse_number(const uint8_t *p);
 
   static int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp);

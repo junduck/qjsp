@@ -52,3 +52,8 @@ TEST_F(RegParserFixture, NestedBlocks) { EXPECT_TRUE(compile("{ var x = 1; { var
 TEST_F(RegParserFixture, ThrowStatement) { EXPECT_TRUE(compile("throw 42;")); }
 
 TEST_F(RegParserFixture, ForOf) { EXPECT_TRUE(compile("for (var x of arr) { }")); }
+
+TEST_F(RegParserFixture, RegExpLiteral) { EXPECT_TRUE(compile("/abc/")); }
+TEST_F(RegParserFixture, RegExpWithFlags) { EXPECT_TRUE(compile("/abc/g")); }
+TEST_F(RegParserFixture, RegExpInAssign) { EXPECT_TRUE(compile("var x = /abc/;")); }
+TEST_F(RegParserFixture, RegExpInBinary) { EXPECT_TRUE(compile("var x = /abc/.test('abc');")); }

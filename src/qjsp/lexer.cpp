@@ -1054,6 +1054,13 @@ bool Lexer::parse_regexp() {
   return true;
 }
 
+// Called by the parser when a '/' token might actually be a regexp literal.
+// Rewinds to the start of the '/' and tries to parse as a regexp.
+bool Lexer::reparse_as_regexp() {
+  buf_ptr = last_ptr; // rewind to start of '/'
+  return parse_regexp();
+}
+
 // ─── Number parsing ─────────────────────────────────────────────────────────
 
 bool Lexer::parse_number(const uint8_t *p) {

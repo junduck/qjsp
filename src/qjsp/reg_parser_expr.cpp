@@ -53,6 +53,16 @@ static RegSlot parse_string_literal(RegParseState *ps) {
   return {r};
 }
 
+static RegSlot parse_regexp_literal(RegParseState *ps) {
+  // Store pattern + flags in sequential cpool slots; REGEXP reads both from idx, idx+1
+  int ci = ps->cpool_add(StrPrim::create(std::string_view{ps->lexer.token.regexp_body.c_str(), ps->lexer.token.regexp_body_len}));
+  ps->cpool_add(StrPrim::create(std::string_view{ps->lexer.token.regexp_flags.c_str(), ps->lexer.token.regexp_flags_len}));
+  int r = ps->alloc_temp();
+  ps->emit_iABx(RegOp::REGEXP, static_cast<uint8_t>(r), static_cast<uint16_t>(ci));
+  ps->next_token();
+  return {r};
+}
+
 static RegSlot parse_ident(RegParseState *ps) {
   Atom atom = ps->lexer.token.ident_atom;
   ps->next_token();
@@ -210,6 +220,13 @@ RegSlot RegParseState::parse_prefix() {
     return parse_array_literal();
   case TokenKind::KwFunction:
     return parse_function_expr(this);
+  case TokenKind::RegexpLit:
+    return parse_regexp_literal(this);
+  case TokenKind::Slash:
+    // Might be a regexp literal — try to re-lex
+    if (lexer.reparse_as_regexp())
+      return parse_regexp_literal(this);
+    return {alloc_temp()}; // fallback: division (shouldn't happen in prefix context)
   case TokenKind::Plus:
   case TokenKind::Minus:
   case TokenKind::Bang:
