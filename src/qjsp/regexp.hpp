@@ -1,15 +1,23 @@
 #pragma once
 
-#include "gc.hpp"
+#include "object.hpp"
 #include "string.hpp"
-#include "value.hpp"
-#include <cstdint>
+#include <memory>
+
+namespace re2 {
+class RE2;
+}
 
 namespace qjsp {
 
-struct RegExp {
-  StrPrim *pattern;
-  StrPrim *bytecode; // also contains the flags
+struct RegExpObj : Object {
+  std::unique_ptr<re2::RE2> regex;
+  uint8_t flags  = 0; // g,i,m,s,u,y
+  int last_index = 0;
+
+  static Value create(Context *ctx, StrPrim *pattern, StrPrim *flags_str);
 };
+
+void init_regexp_prototype(Context *ctx);
 
 } // namespace qjsp

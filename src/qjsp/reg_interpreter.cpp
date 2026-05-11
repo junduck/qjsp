@@ -5,6 +5,7 @@
 #include "qjsp/reg_opcode.hpp"
 #include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/reg_parser.hpp"
+#include "qjsp/regexp.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/shape.hpp"
 #include "qjsp/string.hpp"
@@ -577,9 +578,17 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       break;
 
     case RegOp::REGEXP: {
-      // Stub: load pattern+flags from cpool, create RegExpObj
-      // TODO: compile the RE2 and create a proper RegExpObj
-      regs[i.a()] = Value::undefined_();
+      auto ci = i.bx();
+      if (ci + 1 < static_cast<unsigned>(b->cpool_count)) {
+        auto *pattern = b->cpool[ci].as<StrPrim>();
+        auto *flags_str = b->cpool[ci + 1].as<StrPrim>();
+        if (pattern && flags_str)
+          regs[i.a()] = RegExpObj::create(ctx_, pattern, flags_str);
+        else
+          regs[i.a()] = Value::undefined_();
+      } else {
+        regs[i.a()] = Value::undefined_();
+      }
       break;
     }
 

@@ -77,12 +77,22 @@ static Value array_values(Context *ctx, Value this_val, int, const Value *) {
   return iter;
 }
 
+static Value array_push(Context *ctx, Value this_val, int argc, const Value *argv) {
+  auto *arr = this_val.as<ArrayObject>();
+  if (!arr) return Value::undefined_();
+  for (int i = 0; i < argc; i++)
+    arr->elements.push_back(argv[i]);
+  return Value::int32(static_cast<int32_t>(arr->elements.size()));
+}
+
 void init_array_prototype(Context *ctx) {
   auto *rt         = ctx->rt;
   ctx->array_proto = Object::create(rt, Value::undefined_(), ClassID::object);
   auto *proto      = ctx->array_proto.as<Object>();
   auto si_fn       = CFunctionObj::create(ctx, array_values, "[Symbol.iterator]", 0);
   proto->set_own(rt, rt->well_known.symbol_iterator, si_fn);
+  auto push_fn     = CFunctionObj::create(ctx, array_push, "push", 1);
+  proto->set_own(rt, rt->intern("push"), push_fn);
 }
 
 } // namespace qjsp

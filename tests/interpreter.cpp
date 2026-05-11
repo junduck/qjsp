@@ -126,6 +126,64 @@ TEST_F(RegInterpFixture, ForOfDestructureObject) {
   EXPECT_EQ(v.as_int32(), 1);
 }
 
+TEST_F(RegInterpFixture, RegExpLiteral) {
+  Value v = eval("/abc/; 42;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(RegInterpFixture, ArrayPush) {
+  Value v = eval("var a=[]; a.push(1); a[0];");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(RegInterpFixture, PrimeFactors) {
+  Value v = eval(
+    "function getPrimeFactors(integer) {"
+    "  var primeArray = [];"
+    "  for (var i = 2; i <= integer; i++) {"
+    "    if (integer % i !== 0) continue;"
+    "    var isPrime = true;"
+    "    for (var j = 2; j <= i / 2; j++) {"
+    "      if (i % j === 0) isPrime = false;"
+    "    }"
+    "    if (!isPrime) continue;"
+    "    integer = integer / i;"
+    "    primeArray.push(i);"
+    "    i = 1;"
+    "  }"
+    "  return primeArray;"
+    "}"
+    "var factors = getPrimeFactors(90);"
+    "factors[0];");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2); // first prime factor of 90
+}
+
+TEST_F(RegInterpFixture, PrimeFactorsFull) {
+  Value v = eval(
+    "function getPrimeFactors(integer) {"
+    "  var primeArray = [];"
+    "  for (var i = 2; i <= integer; i++) {"
+    "    if (integer % i !== 0) continue;"
+    "    var isPrime = true;"
+    "    for (var j = 2; j <= i / 2; j++) {"
+    "      if (i % j === 0) isPrime = false;"
+    "    }"
+    "    if (!isPrime) continue;"
+    "    integer = integer / i;"
+    "    primeArray.push(i);"
+    "    i = 1;"
+    "  }"
+    "  return primeArray;"
+    "}"
+    "var factors = getPrimeFactors(84);"
+    "factors[0] + factors[1] + factors[2];"); // 2+2+3 = 7? 84=2*2*3*7
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 7); // 2+2+3=7 (factors: 2,2,3,7, skip 4th)
+}
+
 // ─── Destructuring ───────────────────────────────────────────────────────
 
 TEST_F(RegInterpFixture, DestructureArray) {

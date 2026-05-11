@@ -58,6 +58,7 @@ add_library(qjsp
   src/qjsp/reg_parser_stmt.cpp
   src/qjsp/reg_parser_lower.cpp
   src/qjsp/reg_interpreter.cpp
+  src/qjsp/regexp.cpp
 )
 target_link_libraries(qjsp PUBLIC qjsp::headers re2::re2)
 add_library(qjsp::qjsp ALIAS qjsp)

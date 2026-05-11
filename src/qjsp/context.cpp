@@ -2,6 +2,7 @@
 #include "qjsp/array.hpp"
 #include "qjsp/class.hpp"
 #include "qjsp/object.hpp"
+#include "qjsp/regexp.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/shape.hpp"
 
@@ -31,6 +32,7 @@ Context::Context(Runtime *rt) : rt(rt) {
   global_obj  = global;
   setup_global(this, global.as<Object>());
   init_array_prototype(this);
+  init_regexp_prototype(this);
 }
 
 Context::~Context() {
