@@ -193,32 +193,29 @@ TEST_F(RegInterpFixture, TryCatchCaught) {
 // ─── Multi-frame Exception Propagation ─────────────────────────────────
 
 TEST_F(RegInterpFixture, TryCatchAcrossFunction) {
-  Value v = eval(
-      "function inner() { throw 42; }"
-      "var a = 0;"
-      "try { inner(); } catch(e) { a = e; }"
-      "a;");
+  Value v = eval("function inner() { throw 42; }"
+                 "var a = 0;"
+                 "try { inner(); } catch(e) { a = e; }"
+                 "a;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 42);
 }
 
 TEST_F(RegInterpFixture, TryCatchDeepUnwind) {
-  Value v = eval(
-      "function a() { throw 7; }"
-      "function b() { a(); }"
-      "var c = 0;"
-      "try { b(); } catch(e) { c = e; }"
-      "c;");
+  Value v = eval("function a() { throw 7; }"
+                 "function b() { a(); }"
+                 "var c = 0;"
+                 "try { b(); } catch(e) { c = e; }"
+                 "c;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 7);
 }
 
 TEST_F(RegInterpFixture, TryCatchNotEnteredOnNormal) {
-  Value v = eval(
-      "function ok() { return 99; }"
-      "var a = 0;"
-      "try { a = ok(); } catch(e) { a = -1; }"
-      "a;");
+  Value v = eval("function ok() { return 99; }"
+                 "var a = 0;"
+                 "try { a = ok(); } catch(e) { a = -1; }"
+                 "a;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 99);
 }
@@ -279,69 +276,63 @@ TEST_F(RegInterpFixture, FinallyOnReturn) {
 }
 
 TEST_F(RegInterpFixture, FinallyOnReturnMutates) {
-  Value v = eval(
-      "var a = 0;"
-      "function f() { try { return 5; } finally { a = 1; } }"
-      "var r = f(); a + r;");
+  Value v = eval("var a = 0;"
+                 "function f() { try { return 5; } finally { a = 1; } }"
+                 "var r = f(); a + r;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 6);
 }
 
 TEST_F(RegInterpFixture, FinallyOnBreakInFor) {
-  Value v = eval(
-      "var a = 0;"
-      "for (var i = 0; i < 10; i = i + 1) {"
-      "  try { a = i; break; } finally { a = a + 1; }"
-      "}"
-      "a;");
+  Value v = eval("var a = 0;"
+                 "for (var i = 0; i < 10; i = i + 1) {"
+                 "  try { a = i; break; } finally { a = a + 1; }"
+                 "}"
+                 "a;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 1);
 }
 
 TEST_F(RegInterpFixture, FinallyOnContinueInFor) {
-  Value v = eval(
-      "var a = 0;"
-      "for (var i = 0; i < 5; i = i + 1) {"
-      "  try { if (i == 2) continue; a = i; } finally { a = a + 10; }"
-      "}"
-      "a;");
+  Value v = eval("var a = 0;"
+                 "for (var i = 0; i < 5; i = i + 1) {"
+                 "  try { if (i == 2) continue; a = i; } finally { a = a + 10; }"
+                 "}"
+                 "a;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 14);
 }
 
 TEST_F(RegInterpFixture, FinallyNoCatchRethrow) {
-  Value v = eval(
-      "var a = 0;"
-      "try { try { throw 7; } finally { a = 1; } } catch(e) { a = e; }"
-      "a;");
+  Value v = eval("var a = 0;"
+                 "try { try { throw 7; } finally { a = 1; } } catch(e) { a = e; }"
+                 "a;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 7);
 }
 
 TEST_F(RegInterpFixture, NestedTryFinally) {
-  Value v = eval(
-      "var a = 0;"
-      "try {"
-      "  try { a = 1; } finally { a = a * 10; }"
-      "} finally {"
-      "  a = a + 1;"
-      "}"
-      "a;");
+  Value v = eval("var a = 0;"
+                 "try {"
+                 "  try { a = 1; } finally { a = a * 10; }"
+                 "} finally {"
+                 "  a = a + 1;"
+                 "}"
+                 "a;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 11);
 }
 
 TEST_F(RegInterpFixture, FinallyOnReturnNested) {
-  Value v = eval(
-      "var a = 0;"
-      "function f() {"
-      "  try {"
-      "    try { return 1; } finally { a = a + 10; }"
-      "  } finally {"
-      "    a = a + 100;"
-      "  }"
-      "}"
-      "var r = f(); a + r;");
+  Value v = eval("var a = 0;"
+                 "function f() {"
+                 "  try {"
+                 "    try { return 1; } finally { a = a + 10; }"
+                 "  } finally {"
+                 "    a = a + 100;"
+                 "  }"
+                 "}"
+                 "var r = f(); a + r;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 111);
 }
@@ -423,4 +414,28 @@ TEST_F(RegInterpFixture, ForInCount) {
   Value v = eval("var obj = {x: 10, y: 20, z: 30}; var count = 0; for (var k in obj) { count = count + 1; } count;");
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(RegInterpFixture, CallWithComplexArgs) {
+  Value v = eval("function add(a, b) { return a + b; } add(1 + 2, 3 + 4);");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+TEST_F(RegInterpFixture, CallWithCallArg) {
+  Value v = eval("function add(a, b) { return a + b; }"
+                 "function inc(x) { return x + 1; }"
+                 "add(inc(2), inc(3));");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 7);
+}
+TEST_F(RegInterpFixture, ChainedCall) {
+  Value v = eval("function makeAdder(x) { return function(y) { return x + y; }; }"
+                 "makeAdder(10)(5);");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 15);
+}
+TEST_F(RegInterpFixture, CallInBinary) {
+  Value v = eval("function f() { return 3; } f() + f();");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 6);
 }

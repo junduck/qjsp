@@ -214,11 +214,9 @@ RegSlot RegParseState::parse_prefix() {
 static RegSlot parse_call_infix(RegParseState *ps, RegSlot func) {
   ps->next_token(); // skip '('
   int argc = 0;
-  std::vector<int> arg_regs;
   if (ps->lexer.token.kind != TokenKind::RParen) {
     for (;;) {
-      RegSlot arg = ps->parse_assign_expr();
-      arg_regs.push_back(arg.reg);
+      ps->parse_assign_expr(); // leaves 1 temp on stack
       argc++;
       if (ps->lexer.token.kind == TokenKind::RParen)
         break;
@@ -227,15 +225,14 @@ static RegSlot parse_call_infix(RegParseState *ps, RegSlot func) {
     }
   }
   int func_reg = func.reg;
-  for (int i = 0; i < argc; i++) {
-    int tmp = ps->alloc_temp();
-    ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(tmp), static_cast<uint8_t>(arg_regs[static_cast<size_t>(i)]), 0);
-    arg_regs[static_cast<size_t>(i)] = tmp;
-  }
-  int ret_reg = ps->alloc_temp();
-  ps->emit_iABC(RegOp::CALL, static_cast<uint8_t>(ret_reg), static_cast<uint8_t>(func_reg), static_cast<uint8_t>(argc));
-  for (int i = 0; i <= argc; i++)
+  // Args are already at func_reg+1 … func_reg+argc (consecutive, from parse_assign_expr).
+  // Free arg temps and func temp from the stack.
+  for (int i = 0; i < argc; i++)
     ps->free_temp();
+  ps->free_temp(); // func
+  // Reuse the func slot as the return register.
+  int ret_reg = ps->alloc_temp(); // = func_reg
+  ps->emit_iABC(RegOp::CALL, static_cast<uint8_t>(ret_reg), static_cast<uint8_t>(func_reg), static_cast<uint8_t>(argc));
   ps->next_token();
   return RegSlot{ret_reg};
 }
@@ -246,22 +243,18 @@ static RegSlot parse_dot_infix(RegParseState *ps, RegSlot obj) {
     return obj;
   Atom prop = ps->lexer.token.ident_atom;
   ps->next_token();
-  int ci  = ps->cpool_add(ps->rt->atom_to_value(prop));
-  int dst = ps->alloc_temp();
-  ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(dst), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(ci));
-  ps->free_temp();
-  return RegSlot{dst};
+  int ci = ps->cpool_add(ps->rt->atom_to_value(prop));
+  ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(ci));
+  return obj;
 }
 
 static RegSlot parse_bracket_infix(RegParseState *ps, RegSlot obj) {
   ps->next_token(); // skip '['
   RegSlot prop = ps->parse_expr();
   ps->expect(TokenKind::RBracket);
-  int dst = ps->alloc_temp();
-  ps->emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(dst), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(prop.reg));
+  ps->emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(prop.reg));
   ps->free_temp();
-  ps->free_temp();
-  return RegSlot{dst};
+  return obj;
 }
 
 static RegSlot parse_postfix_incdec(RegParseState *ps, RegSlot base, TokenKind tok) {
@@ -314,13 +307,11 @@ static RegSlot parse_binary_infix(RegParseState *ps, RegSlot left, TokenKind tok
 
   ps->next_token();
   RegSlot right = ps->parse_expr(next_min);
-  int r = ps->alloc_temp();
   RegOp op = binop_to_reg(tok);
   if (op != RegOp::NOP)
-    ps->emit_iABC(op, static_cast<uint8_t>(r), static_cast<uint8_t>(left.reg), static_cast<uint8_t>(right.reg));
+    ps->emit_iABC(op, static_cast<uint8_t>(left.reg), static_cast<uint8_t>(left.reg), static_cast<uint8_t>(right.reg));
   ps->free_temp(); // right
-  ps->free_temp(); // left
-  return RegSlot{r};
+  return left;
 }
 
 static RegSlot parse_ternary_infix(RegParseState *ps, RegSlot cond) {
