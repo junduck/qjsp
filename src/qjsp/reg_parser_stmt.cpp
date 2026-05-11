@@ -611,8 +611,7 @@ void RegParseState::parse_for_statement() {
     (void)upd;
     free_temp();
 
-    if (label_test != label_body)
-      emit_jump(RegOp::JMP, label_test, 0);
+    emit_jump(RegOp::JMP, label_test, 0);
   }
 
   expect(TokenKind::RParen);

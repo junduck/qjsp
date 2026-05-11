@@ -355,6 +355,25 @@ TEST_F(RegInterpFixture, LabeledForContinue) {
   EXPECT_EQ(v.as_int32(), 2);
 }
 
+TEST_F(RegInterpFixture, ForLoopNoTest) {
+  // no test condition + update → update relocation must emit JMP back to body
+  Value v = eval("var sum=0; for(var i=0;;i++){if(i>=3)break;sum+=i;} sum;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(RegInterpFixture, ForLoopNoTestWithContinue) {
+  Value v = eval("var sum=0; for(var i=0;;i++){if(i>=3)break;if(i==1)continue;sum+=i;} sum;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
+TEST_F(RegInterpFixture, ForLoopNoInitNoTest) {
+  Value v = eval("var sum=0; var i=0; for(;;i++){if(i>=3)break;sum+=i;} sum;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
 // ─── For-In Loop ─────────────────────────────────────────────────────────
 
 TEST_F(RegInterpFixture, ForInBasic) {

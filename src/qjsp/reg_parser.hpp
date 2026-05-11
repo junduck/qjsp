@@ -286,6 +286,11 @@ struct RegParseState {
   void emit_lvalue_store(LValue lv, RegSlot val);
   int cpool_atom(Atom a); // add atom-string to cpool, return index
 
+  // Track the lvalue from the most recent parse_ident (in value context)
+  // so that postfix/prefix INC/DEC can write back to the actual variable.
+  LValue last_prefix_lvalue_;
+  bool has_prefix_lvalue_ = false;
+
   // ── object / array ────────────────────────────────────────────────────
 
   RegSlot parse_object_literal();

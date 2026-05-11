@@ -60,6 +60,8 @@ static RegSlot parse_ident(RegParseState *ps) {
   // Check locals
   for (int i = 0; i < ps->cur_func->var_count; i++) {
     if (ps->cur_func->vars[static_cast<size_t>(i)].var_name == atom) {
+      ps->has_prefix_lvalue_ = true;
+      ps->last_prefix_lvalue_ = {LValue::LOCAL, -1, atom, -1, i, -1};
       // Copy var to a temp so parse_binary_infix can safely free left
       int r = ps->alloc_temp();
       ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->vars[static_cast<size_t>(i)].reg_index), 0);
@@ -68,18 +70,25 @@ static RegSlot parse_ident(RegParseState *ps) {
   }
   for (int i = 0; i < ps->cur_func->arg_count; i++) {
     if (ps->cur_func->args[static_cast<size_t>(i)].var_name == atom) {
+      ps->has_prefix_lvalue_ = true;
+      ps->last_prefix_lvalue_ = {LValue::ARG, -1, atom, -1, i, -1};
       int r = ps->alloc_temp();
       ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->args[static_cast<size_t>(i)].reg_index), 0);
       return {r};
     }
   }
   int upval = ps->cur_func->resolve_upval(atom);
-  if (upval >= 0)
+  if (upval >= 0) {
+    ps->has_prefix_lvalue_ = true;
+    ps->last_prefix_lvalue_ = {LValue::UPVAL, -1, atom, -1, -1, upval};
     return ps->emit_upval_read(upval);
+  }
 
   int r  = ps->alloc_temp();
   int ci = ps->cpool_add(ps->rt->atom_to_value(atom));
   ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
+  ps->has_prefix_lvalue_ = true;
+  ps->last_prefix_lvalue_ = {LValue::GLOBAL, -1, atom};
   return {r};
 }
 
@@ -152,7 +161,12 @@ static RegSlot parse_unary_prefix(RegParseState *ps, TokenKind op) {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
     int r = ps->alloc_temp();
     ps->emit_iABC(RegOp::INC, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
-    ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(opnd.reg), static_cast<uint8_t>(r), 0);
+    if (ps->has_prefix_lvalue_) {
+      ps->has_prefix_lvalue_ = false;
+      ps->emit_lvalue_store(ps->last_prefix_lvalue_, {r});
+    } else {
+      ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(opnd.reg), static_cast<uint8_t>(r), 0);
+    }
     ps->free_temp();
     return {r};
   }
@@ -160,7 +174,12 @@ static RegSlot parse_unary_prefix(RegParseState *ps, TokenKind op) {
     RegSlot opnd = ps->parse_expr(PREC_UNARY);
     int r = ps->alloc_temp();
     ps->emit_iABC(RegOp::DEC, static_cast<uint8_t>(r), static_cast<uint8_t>(opnd.reg), 0);
-    ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(opnd.reg), static_cast<uint8_t>(r), 0);
+    if (ps->has_prefix_lvalue_) {
+      ps->has_prefix_lvalue_ = false;
+      ps->emit_lvalue_store(ps->last_prefix_lvalue_, {r});
+    } else {
+      ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(opnd.reg), static_cast<uint8_t>(r), 0);
+    }
     ps->free_temp();
     return {r};
   }
@@ -248,8 +267,27 @@ static RegSlot parse_bracket_infix(RegParseState *ps, RegSlot obj) {
 
 static RegSlot parse_postfix_incdec(RegParseState *ps, RegSlot base, TokenKind tok) {
   ps->next_token();
-  int tmp = ps->alloc_temp();
+
   RegOp op = (tok == TokenKind::Inc) ? RegOp::INC : RegOp::DEC;
+
+  if (ps->has_prefix_lvalue_) {
+    ps->has_prefix_lvalue_ = false;
+    LValue lv = ps->last_prefix_lvalue_;
+
+    // base is a temp holding the current value (loaded by parse_ident)
+    int old_r = base.reg;
+
+    int new_r = ps->alloc_temp();
+    ps->emit_iABC(op, static_cast<uint8_t>(new_r), static_cast<uint8_t>(old_r), 0);
+    // Store new value back to the actual variable
+    ps->emit_lvalue_store(lv, {new_r});
+    ps->free_temp(); // new_r
+    return {old_r};   // postfix returns old value
+  }
+
+  // Fallback for non-identifier operands (e.g. 3++ which is invalid JS,
+  // or cases where the lvalue wasn't captured)
+  int tmp = ps->alloc_temp();
   ps->emit_iABC(op, static_cast<uint8_t>(tmp), static_cast<uint8_t>(base.reg), 0);
   return RegSlot{tmp};
 }
@@ -312,10 +350,14 @@ static bool is_logic_assign_op(TokenKind tok) {
 }
 
 RegSlot RegParseState::parse_infix(RegSlot left, TokenKind tok) {
+  if (tok == TokenKind::Inc || tok == TokenKind::Dec) return parse_postfix_incdec(this, left, tok);
+
+  // Any infix operator other than INC/DEC invalidates the lvalue tracking
+  has_prefix_lvalue_ = false;
+
   if (tok == TokenKind::LParen) return parse_call_infix(this, left);
   if (tok == TokenKind::Dot)    return parse_dot_infix(this, left);
   if (tok == TokenKind::LBracket) return parse_bracket_infix(this, left);
-  if (tok == TokenKind::Inc || tok == TokenKind::Dec) return parse_postfix_incdec(this, left, tok);
   if (tok == TokenKind::Question) return parse_ternary_infix(this, left);
 
   // Binary / logical operators
@@ -361,9 +403,12 @@ RegSlot RegParseState::parse_assign_expr() {
 
   if (tok == TokenKind::Identifier || tok == TokenKind::LParen) {
     LValue lv   = parse_postfix_lvalue();
+    has_prefix_lvalue_ = true;
+    last_prefix_lvalue_ = lv;
     TokenKind assign_tok = lexer.token.kind;
 
     if (assign_tok == TokenKind::EqAssign) {
+      has_prefix_lvalue_ = false;
       next_token();
       RegSlot rhs = parse_expr(PREC_ASSIGN);
       emit_lvalue_store(lv, rhs);
@@ -371,6 +416,7 @@ RegSlot RegParseState::parse_assign_expr() {
     }
 
     if (is_arith_assign(assign_tok)) {
+      has_prefix_lvalue_ = false;
       next_token();
       RegSlot rhs   = parse_expr(PREC_ASSIGN);
       int lhs_val   = alloc_temp();
@@ -387,6 +433,7 @@ RegSlot RegParseState::parse_assign_expr() {
     }
 
     if (is_logic_assign_op(assign_tok)) {
+      has_prefix_lvalue_ = false;
       next_token();
       int lhs_val = alloc_temp();
       emit_lvalue_load(lv, {lhs_val});

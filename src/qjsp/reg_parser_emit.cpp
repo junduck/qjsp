@@ -85,12 +85,12 @@ VarDef *FunctionDef::find_scope_var(Atom name, int scope) {
 }
 
 int FunctionDef::add_var(Atom name) {
-  int idx = var_count++;
+  auto idx = var_count++;
   vars.emplace_back();
-  vars[static_cast<size_t>(idx)].var_name  = name;
-  vars[static_cast<size_t>(idx)].reg_index = 1 + arg_count + idx;
-  alloc.var_count_                         = var_count;
-  int min_temp                             = 1 + alloc.arg_count_ + alloc.var_count_;
+  vars[idx].var_name  = name;
+  vars[idx].reg_index = 1 + arg_count + idx;
+  alloc.var_count_    = var_count;
+  auto min_temp       = 1 + alloc.arg_count_ + alloc.var_count_;
   if (alloc.next_temp_ < min_temp)
     alloc.next_temp_ = min_temp;
   if (alloc.max_temp_ < min_temp)
@@ -99,12 +99,12 @@ int FunctionDef::add_var(Atom name) {
 }
 
 int FunctionDef::add_arg(Atom name) {
-  int idx = arg_count++;
+  auto idx = arg_count++;
   args.emplace_back();
   args[static_cast<size_t>(idx)].var_name  = name;
   args[static_cast<size_t>(idx)].reg_index = 1 + idx;
   alloc.arg_count_                         = arg_count;
-  int min_temp                             = 1 + alloc.arg_count_ + alloc.var_count_;
+  auto min_temp                            = 1 + alloc.arg_count_ + alloc.var_count_;
   if (alloc.next_temp_ < min_temp)
     alloc.next_temp_ = min_temp;
   if (alloc.max_temp_ < min_temp)
