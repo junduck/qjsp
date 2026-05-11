@@ -34,6 +34,8 @@ if(BUILD_TESTS)
   add_subdirectory(tests)
 endif()
 
+include(RE2)
+
 add_library(qjsp_headers INTERFACE)
 target_include_directories(qjsp_headers INTERFACE
   ${CMAKE_SOURCE_DIR}/src
@@ -57,7 +59,7 @@ add_library(qjsp
   src/qjsp/reg_parser_lower.cpp
   src/qjsp/reg_interpreter.cpp
 )
-target_link_libraries(qjsp PUBLIC qjsp::headers)
+target_link_libraries(qjsp PUBLIC qjsp::headers re2::re2)
 add_library(qjsp::qjsp ALIAS qjsp)
 
 add_executable(_clangd_tu src/_clangd_tu.cpp)
