@@ -114,6 +114,18 @@ TEST_F(RegInterpFixture, ForOfSimple) {
   EXPECT_EQ(v.as_int32(), 6);
 }
 
+TEST_F(RegInterpFixture, ForOfDestructureArray) {
+  Value v = eval("var arr = [[1,2],[3,4]]; var sum = 0; for (var [a, b] of arr) { sum = sum + a + b; } sum;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+
+TEST_F(RegInterpFixture, ForOfDestructureObject) {
+  Value v = eval("var arr = [{x:1}]; var sum = 0; for (var {x} of arr) { sum = sum + x; } sum;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
 // ─── Destructuring ───────────────────────────────────────────────────────
 
 TEST_F(RegInterpFixture, DestructureArray) {

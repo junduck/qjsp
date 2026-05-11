@@ -242,6 +242,18 @@ struct RegParseState {
   };
   std::vector<TryInfo> try_stack_;
 
+  // For-of destructuring tracking from the for-init
+  struct ForPatternBind {
+    Atom prop;
+    int reg;
+  }; // prop=var_name for arrays, property key for objects
+  struct ForPattern {
+    bool is_array  = false;
+    bool is_object = false;
+    std::vector<ForPatternBind> binds;
+  };
+  ForPattern for_pattern_;
+
   RegParseState(Runtime *rt_, Context *ctx_) : rt(rt_), ctx(ctx_) {}
 
   // ── init ──────────────────────────────────────────────────────────────
@@ -272,10 +284,10 @@ struct RegParseState {
 
   // ── Pratt expression parser ────────────────────────────────────────────
 
-  RegSlot parse_expr(int min_prec = 1);     // main Pratt loop
-  RegSlot parse_assign_expr();              // lvalue-based assignment entry
-  RegSlot parse_prefix();                   // dispatch on token kind
-  RegSlot parse_infix(RegSlot left, TokenKind tok);  // dispatch on operator
+  RegSlot parse_expr(int min_prec = 1);             // main Pratt loop
+  RegSlot parse_assign_expr();                      // lvalue-based assignment entry
+  RegSlot parse_prefix();                           // dispatch on token kind
+  RegSlot parse_infix(RegSlot left, TokenKind tok); // dispatch on operator
 
   // ── lvalue (for LHS of assignments) ───────────────────────────────────
 
@@ -332,15 +344,15 @@ struct RegParseState {
 
   struct CoverProp {
     enum Kind : uint8_t {
-      Shorthand,   // {x} or [x] — key is the var name
-      KeyValue,    // x: expr  — separate key and value
-      Computed,    // [expr]: val
-      Spread,      // ...expr
-      Elision,     // [,] in array patterns
+      Shorthand, // {x} or [x] — key is the var name
+      KeyValue,  // x: expr  — separate key and value
+      Computed,  // [expr]: val
+      Spread,    // ...expr
+      Elision,   // [,] in array patterns
     };
-    Kind kind     = Shorthand;
-    Atom key      = kAtomNull;
-    RegSlot value;           // expression result (for KeyValue, Computed, Spread)
+    Kind kind = Shorthand;
+    Atom key  = kAtomNull;
+    RegSlot value; // expression result (for KeyValue, Computed, Spread)
   };
 
   bool parse_cover_property(CoverProp &out);
@@ -434,41 +446,44 @@ constexpr auto kCompoundTable = []() constexpr {
 
 // ─── Pratt infix table — precedence + associativity ────────────────────────
 
-struct InfixEntry { uint8_t prec; bool right_assoc; };
+struct InfixEntry {
+  uint8_t prec;
+  bool right_assoc;
+};
 
 constexpr auto kInfixTable = []() constexpr {
   std::array<InfixEntry, kTokenTableSize> tab{};
   // Binary operators
-  tab[static_cast<uint16_t>(TokenKind::Star)]       = {PREC_MULT, false};
-  tab[static_cast<uint16_t>(TokenKind::SlashChar)]  = {PREC_MULT, false};
-  tab[static_cast<uint16_t>(TokenKind::Percent)]    = {PREC_MULT, false};
-  tab[static_cast<uint16_t>(TokenKind::Plus)]       = {PREC_ADD, false};
-  tab[static_cast<uint16_t>(TokenKind::Minus)]      = {PREC_ADD, false};
-  tab[static_cast<uint16_t>(TokenKind::Shl)]        = {PREC_SHIFT, false};
-  tab[static_cast<uint16_t>(TokenKind::Sar)]        = {PREC_SHIFT, false};
-  tab[static_cast<uint16_t>(TokenKind::Shr)]        = {PREC_SHIFT, false};
-  tab[static_cast<uint16_t>(TokenKind::Less)]       = {PREC_COMPARE, false};
-  tab[static_cast<uint16_t>(TokenKind::Greater)]    = {PREC_COMPARE, false};
-  tab[static_cast<uint16_t>(TokenKind::Lte)]        = {PREC_COMPARE, false};
-  tab[static_cast<uint16_t>(TokenKind::Gte)]        = {PREC_COMPARE, false};
-  tab[static_cast<uint16_t>(TokenKind::Eq)]         = {PREC_EQ, false};
-  tab[static_cast<uint16_t>(TokenKind::StrictEq)]   = {PREC_EQ, false};
-  tab[static_cast<uint16_t>(TokenKind::Neq)]        = {PREC_EQ, false};
-  tab[static_cast<uint16_t>(TokenKind::StrictNeq)]  = {PREC_EQ, false};
-  tab[static_cast<uint16_t>(TokenKind::Amp)]        = {PREC_BIT_AND, false};
-  tab[static_cast<uint16_t>(TokenKind::Caret)]      = {PREC_BIT_XOR, false};
-  tab[static_cast<uint16_t>(TokenKind::Pipe)]       = {PREC_BIT_OR, false};
-  tab[static_cast<uint16_t>(TokenKind::Pow)]        = {PREC_POW, true};
+  tab[static_cast<uint16_t>(TokenKind::Star)]      = {PREC_MULT, false};
+  tab[static_cast<uint16_t>(TokenKind::SlashChar)] = {PREC_MULT, false};
+  tab[static_cast<uint16_t>(TokenKind::Percent)]   = {PREC_MULT, false};
+  tab[static_cast<uint16_t>(TokenKind::Plus)]      = {PREC_ADD, false};
+  tab[static_cast<uint16_t>(TokenKind::Minus)]     = {PREC_ADD, false};
+  tab[static_cast<uint16_t>(TokenKind::Shl)]       = {PREC_SHIFT, false};
+  tab[static_cast<uint16_t>(TokenKind::Sar)]       = {PREC_SHIFT, false};
+  tab[static_cast<uint16_t>(TokenKind::Shr)]       = {PREC_SHIFT, false};
+  tab[static_cast<uint16_t>(TokenKind::Less)]      = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Greater)]   = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Lte)]       = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Gte)]       = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Eq)]        = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::StrictEq)]  = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::Neq)]       = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::StrictNeq)] = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::Amp)]       = {PREC_BIT_AND, false};
+  tab[static_cast<uint16_t>(TokenKind::Caret)]     = {PREC_BIT_XOR, false};
+  tab[static_cast<uint16_t>(TokenKind::Pipe)]      = {PREC_BIT_OR, false};
+  tab[static_cast<uint16_t>(TokenKind::Pow)]       = {PREC_POW, true};
   // Logical operators
   tab[static_cast<uint16_t>(TokenKind::Land)]               = {PREC_LOGICAL_AND, false};
   tab[static_cast<uint16_t>(TokenKind::Lor)]                = {PREC_LOGICAL_OR, false};
   tab[static_cast<uint16_t>(TokenKind::DoubleQuestionMark)] = {PREC_LOGICAL_OR, false};
   // Postfix / call / member
-  tab[static_cast<uint16_t>(TokenKind::Inc)]     = {PREC_POSTFIX, false};
-  tab[static_cast<uint16_t>(TokenKind::Dec)]     = {PREC_POSTFIX, false};
-  tab[static_cast<uint16_t>(TokenKind::LParen)]  = {PREC_CALL, false};
-  tab[static_cast<uint16_t>(TokenKind::Dot)]     = {PREC_CALL, false};
-  tab[static_cast<uint16_t>(TokenKind::LBracket)]= {PREC_CALL, false};
+  tab[static_cast<uint16_t>(TokenKind::Inc)]      = {PREC_POSTFIX, false};
+  tab[static_cast<uint16_t>(TokenKind::Dec)]      = {PREC_POSTFIX, false};
+  tab[static_cast<uint16_t>(TokenKind::LParen)]   = {PREC_CALL, false};
+  tab[static_cast<uint16_t>(TokenKind::Dot)]      = {PREC_CALL, false};
+  tab[static_cast<uint16_t>(TokenKind::LBracket)] = {PREC_CALL, false};
   // Ternary
   tab[static_cast<uint16_t>(TokenKind::Question)] = {PREC_COND, true};
   return tab;
