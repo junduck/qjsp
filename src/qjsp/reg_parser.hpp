@@ -5,6 +5,7 @@
 #include "qjsp/lexer.hpp"
 #include "qjsp/reg_opcode.hpp"
 #include "qjsp/value.hpp"
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -183,7 +184,10 @@ struct FunctionDef {
   std::string source;
 
   FunctionDef(Runtime *r) : rt(r) {}
-  ~FunctionDef() { for (auto *c : children) delete c; }
+  ~FunctionDef() {
+    for (auto *c : children)
+      delete c;
+  }
 
   // ── emitter ───────────────────────────────────────────────────────────
 
@@ -357,126 +361,77 @@ enum Precedence : int {
 
 FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx);
 
-// ─── Inline helpers ─────────────────────────────────────────────────────────
+// ─── Operator metadata tables and accessors ─────────────────────────────────
 
-inline int binary_precedence(TokenKind tok) {
-  switch (tok) {
-  case TokenKind::Star:
-  case TokenKind::SlashChar:
-  case TokenKind::Percent:
-    return PREC_MULT;
-  case TokenKind::Plus:
-  case TokenKind::Minus:
-    return PREC_ADD;
-  case TokenKind::Shl:
-  case TokenKind::Sar:
-  case TokenKind::Shr:
-    return PREC_SHIFT;
-  case TokenKind::Less:
-  case TokenKind::Greater:
-  case TokenKind::Lte:
-  case TokenKind::Gte:
-    return PREC_COMPARE;
-  case TokenKind::Eq:
-  case TokenKind::StrictEq:
-  case TokenKind::Neq:
-  case TokenKind::StrictNeq:
-    return PREC_EQ;
-  case TokenKind::Amp:
-    return PREC_BIT_AND;
-  case TokenKind::Caret:
-    return PREC_BIT_XOR;
-  case TokenKind::Pipe:
-    return PREC_BIT_OR;
-  case TokenKind::Land:
-    return PREC_LOGICAL_AND;
-  case TokenKind::Lor:
-    return PREC_LOGICAL_OR;
-  case TokenKind::Pow:
-    return PREC_POW;
-  case TokenKind::DoubleQuestionMark:
-    return PREC_LOGICAL_OR;
-  default:
-    return 0;
-  }
+struct BinOpInfo {
+  uint8_t prec;
+  RegOp opcode;
+  bool right_assoc;
+};
+
+constexpr size_t kTokenTableSize = 512;
+
+constexpr inline auto kBinOpTable = []() constexpr {
+  std::array<BinOpInfo, kTokenTableSize> tab{};
+  tab[static_cast<uint16_t>(TokenKind::Star)]      = {PREC_MULT, RegOp::MUL, false};
+  tab[static_cast<uint16_t>(TokenKind::SlashChar)] = {PREC_MULT, RegOp::DIV, false};
+  tab[static_cast<uint16_t>(TokenKind::Percent)]   = {PREC_MULT, RegOp::MOD, false};
+  tab[static_cast<uint16_t>(TokenKind::Plus)]      = {PREC_ADD, RegOp::ADD, false};
+  tab[static_cast<uint16_t>(TokenKind::Minus)]     = {PREC_ADD, RegOp::SUB, false};
+  tab[static_cast<uint16_t>(TokenKind::Shl)]       = {PREC_SHIFT, RegOp::SHL, false};
+  tab[static_cast<uint16_t>(TokenKind::Sar)]       = {PREC_SHIFT, RegOp::SAR, false};
+  tab[static_cast<uint16_t>(TokenKind::Shr)]       = {PREC_SHIFT, RegOp::SHR, false};
+  tab[static_cast<uint16_t>(TokenKind::Less)]      = {PREC_COMPARE, RegOp::LT, false};
+  tab[static_cast<uint16_t>(TokenKind::Greater)]   = {PREC_COMPARE, RegOp::GT, false};
+  tab[static_cast<uint16_t>(TokenKind::Lte)]       = {PREC_COMPARE, RegOp::LTE, false};
+  tab[static_cast<uint16_t>(TokenKind::Gte)]       = {PREC_COMPARE, RegOp::GTE, false};
+  tab[static_cast<uint16_t>(TokenKind::Eq)]        = {PREC_EQ, RegOp::EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::StrictEq)]  = {PREC_EQ, RegOp::SEQ, false};
+  tab[static_cast<uint16_t>(TokenKind::Neq)]       = {PREC_EQ, RegOp::NEQ, false};
+  tab[static_cast<uint16_t>(TokenKind::StrictNeq)] = {PREC_EQ, RegOp::SNEQ, false};
+  tab[static_cast<uint16_t>(TokenKind::Amp)]       = {PREC_BIT_AND, RegOp::AND, false};
+  tab[static_cast<uint16_t>(TokenKind::Caret)]     = {PREC_BIT_XOR, RegOp::XOR, false};
+  tab[static_cast<uint16_t>(TokenKind::Pipe)]      = {PREC_BIT_OR, RegOp::OR, false};
+  tab[static_cast<uint16_t>(TokenKind::Pow)]       = {PREC_POW, RegOp::POW, true};
+  return tab;
+}();
+
+constexpr inline auto kLogicalPrec = []() constexpr {
+  std::array<uint8_t, kTokenTableSize> tab{};
+  tab[static_cast<uint16_t>(TokenKind::Land)]               = PREC_LOGICAL_AND;
+  tab[static_cast<uint16_t>(TokenKind::Lor)]                = PREC_LOGICAL_OR;
+  tab[static_cast<uint16_t>(TokenKind::DoubleQuestionMark)] = PREC_LOGICAL_OR;
+  return tab;
+}();
+
+constexpr auto kCompoundTable = []() constexpr {
+  std::array<RegOp, kTokenTableSize> tab{};
+  tab[static_cast<uint16_t>(TokenKind::MulAssign)]   = RegOp::MUL;
+  tab[static_cast<uint16_t>(TokenKind::DivAssign)]   = RegOp::DIV;
+  tab[static_cast<uint16_t>(TokenKind::ModAssign)]   = RegOp::MOD;
+  tab[static_cast<uint16_t>(TokenKind::PlusAssign)]  = RegOp::ADD;
+  tab[static_cast<uint16_t>(TokenKind::MinusAssign)] = RegOp::SUB;
+  tab[static_cast<uint16_t>(TokenKind::PowAssign)]   = RegOp::POW;
+  tab[static_cast<uint16_t>(TokenKind::ShlAssign)]   = RegOp::SHL;
+  tab[static_cast<uint16_t>(TokenKind::SarAssign)]   = RegOp::SAR;
+  tab[static_cast<uint16_t>(TokenKind::ShrAssign)]   = RegOp::SHR;
+  tab[static_cast<uint16_t>(TokenKind::AndAssign)]   = RegOp::AND;
+  tab[static_cast<uint16_t>(TokenKind::XorAssign)]   = RegOp::XOR;
+  tab[static_cast<uint16_t>(TokenKind::OrAssign)]    = RegOp::OR;
+  return tab;
+}();
+
+inline constexpr int binary_precedence(TokenKind tok) {
+  auto i = static_cast<uint16_t>(tok);
+  if (kBinOpTable[i].prec != 0)
+    return kBinOpTable[i].prec;
+  return kLogicalPrec[i];
 }
 
-inline RegOp binop_to_reg(TokenKind tok) {
-  switch (tok) {
-  case TokenKind::Star:
-    return RegOp::MUL;
-  case TokenKind::SlashChar:
-    return RegOp::DIV;
-  case TokenKind::Percent:
-    return RegOp::MOD;
-  case TokenKind::Plus:
-    return RegOp::ADD;
-  case TokenKind::Minus:
-    return RegOp::SUB;
-  case TokenKind::Shl:
-    return RegOp::SHL;
-  case TokenKind::Sar:
-    return RegOp::SAR;
-  case TokenKind::Shr:
-    return RegOp::SHR;
-  case TokenKind::Less:
-    return RegOp::LT;
-  case TokenKind::Greater:
-    return RegOp::GT;
-  case TokenKind::Lte:
-    return RegOp::LTE;
-  case TokenKind::Gte:
-    return RegOp::GTE;
-  case TokenKind::Eq:
-    return RegOp::EQ;
-  case TokenKind::Neq:
-    return RegOp::NEQ;
-  case TokenKind::StrictEq:
-    return RegOp::SEQ;
-  case TokenKind::StrictNeq:
-    return RegOp::SNEQ;
-  case TokenKind::Amp:
-    return RegOp::AND;
-  case TokenKind::Caret:
-    return RegOp::XOR;
-  case TokenKind::Pipe:
-    return RegOp::OR;
-  case TokenKind::Pow:
-    return RegOp::POW;
-  default:
-    return RegOp::NOP;
-  }
-}
+inline constexpr RegOp binop_to_reg(TokenKind tok) { return kBinOpTable[static_cast<uint16_t>(tok)].opcode; }
 
-inline RegOp compound_to_binop(TokenKind tok) {
-  switch (tok) {
-  case TokenKind::MulAssign:
-    return RegOp::MUL;
-  case TokenKind::DivAssign:
-    return RegOp::DIV;
-  case TokenKind::ModAssign:
-    return RegOp::MOD;
-  case TokenKind::PlusAssign:
-    return RegOp::ADD;
-  case TokenKind::MinusAssign:
-    return RegOp::SUB;
-  case TokenKind::ShlAssign:
-    return RegOp::SHL;
-  case TokenKind::SarAssign:
-    return RegOp::SAR;
-  case TokenKind::ShrAssign:
-    return RegOp::SHR;
-  case TokenKind::AndAssign:
-    return RegOp::AND;
-  case TokenKind::OrAssign:
-    return RegOp::OR;
-  case TokenKind::XorAssign:
-    return RegOp::XOR;
-  case TokenKind::PowAssign:
-    return RegOp::POW;
-  default:
-    return RegOp::NOP;
-  }
-}
+inline constexpr RegOp compound_to_binop(TokenKind tok) { return kCompoundTable[static_cast<uint16_t>(tok)]; }
+
+inline constexpr bool is_right_assoc(TokenKind tok) { return kBinOpTable[static_cast<uint16_t>(tok)].right_assoc; }
 
 } // namespace qjsp

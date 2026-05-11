@@ -436,7 +436,7 @@ RegSlot RegParseState::parse_binary(int min_prec) {
     if (prec < min_prec)
       break;
 
-    int next_min = (tok == TokenKind::Pow) ? prec : prec + 1;
+    int next_min = is_right_assoc(tok) ? prec : prec + 1;
 
     if (tok == TokenKind::Land || tok == TokenKind::Lor) {
       next_token();
@@ -638,7 +638,7 @@ RegSlot RegParseState::parse_binary_from(RegSlot left, int min_prec) {
     if (prec < min_prec)
       break;
 
-    int next_min = (tok == TokenKind::Pow) ? prec : prec + 1;
+    int next_min = is_right_assoc(tok) ? prec : prec + 1;
 
     if (tok == TokenKind::Land || tok == TokenKind::Lor) {
       next_token();
