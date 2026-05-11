@@ -147,7 +147,7 @@ enum class TokenKind : uint16_t {
 };
 
 /// True if `k` is any keyword token.
-inline constexpr bool isKeyword(TokenKind k) { return k >= TokenKind::KwNull && k <= TokenKind::KwAwait; }
+inline constexpr bool isKeyword(TokenKind k) { return k >= TokenKind::KwNull && k <= TokenKind::KwOf; }
 
 /// True if `k` is an identifier or a keyword (i.e. a word token).
 inline constexpr bool isIdentifier(TokenKind k) { return k == TokenKind::Identifier || isKeyword(k); }
