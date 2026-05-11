@@ -1,6 +1,7 @@
 #include "qjsp/lexer.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
+#include "qjsp/unicode_id.hpp"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -118,26 +119,6 @@ bool Lexer::lre_is_space(uint32_t c) {
   if (c < 256)
     return c == 0x09 || c == 0x0A || c == 0x0B || c == 0x0C || c == 0x0D || c == 0x20 || c == 0xA0 || c == 0xFEFF;
   return (c >= 0x2000 && c <= 0x200A) || c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F || c == 0x3000;
-}
-
-bool Lexer::lre_js_is_ident_first(uint32_t c) {
-  if (c < 128)
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$';
-  if (lre_is_space(c))
-    return false;
-  if (c >= '0' && c <= '9')
-    return false;
-  return true;
-}
-
-bool Lexer::lre_js_is_ident_next(uint32_t c) {
-  if (c < 128)
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$' || (c >= '0' && c <= '9');
-  if (c >= 0x200C && c <= 0x200D)
-    return true;
-  if (lre_is_space(c))
-    return false;
-  return true;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -383,7 +364,7 @@ redo:
     if (p[1] == 'u') {
       const uint8_t *p1 = p + 1;
       int c1            = parse_escape(&p1, true);
-      if (c1 >= 0 && lre_js_is_ident_first(static_cast<uint32_t>(c1))) {
+      if (c1 >= 0 && unicode_is_id_start(static_cast<uint32_t>(c1))) {
         c                = c1;
         p                = p1;
         buf_ptr          = p;
@@ -676,7 +657,7 @@ redo:
         if (lre_is_space(static_cast<uint32_t>(c))) {
           p = p_next;
           goto redo;
-        } else if (lre_js_is_ident_first(static_cast<uint32_t>(c))) {
+        } else if (unicode_is_id_start(static_cast<uint32_t>(c))) {
           p                = p_next;
           buf_ptr          = p;
           ident_has_escape = false;
@@ -714,7 +695,7 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
     } else if (c >= 128) {
       c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
     }
-    if (!lre_js_is_ident_next(static_cast<uint32_t>(c)))
+    if (!unicode_is_id_continue(static_cast<uint32_t>(c)))
       break;
     p = p1;
   }
@@ -755,7 +736,7 @@ bool Lexer::parse_private_name() {
   } else if (c >= 128) {
     c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
   }
-  if (!lre_js_is_ident_first(static_cast<uint32_t>(c)))
+  if (!unicode_is_id_start(static_cast<uint32_t>(c)))
     return false;
 
   p = p1;
@@ -771,7 +752,7 @@ bool Lexer::parse_private_name() {
     } else if (c >= 128) {
       c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
     }
-    if (!lre_js_is_ident_next(static_cast<uint32_t>(c)))
+    if (!unicode_is_id_continue(static_cast<uint32_t>(c)))
       break;
     p = p1;
     append_utf8(ident_buf, static_cast<unsigned>(c));
@@ -1054,7 +1035,7 @@ bool Lexer::parse_regexp() {
         return false;
       }
     }
-    if (!lre_js_is_ident_next(c))
+    if (!unicode_is_id_continue(c))
       break;
     flags.push_back(static_cast<char>(c));
     p = p_next;
@@ -1134,7 +1115,7 @@ bool Lexer::parse_number(const uint8_t *p) {
   auto *next = reinterpret_cast<const uint8_t *>(end);
   const uint8_t *p_next;
   uint32_t nc = static_cast<uint32_t>(unicode_from_utf8(next, UTF8_CHAR_LEN_MAX, &p_next));
-  if (val != val || lre_js_is_ident_next(nc))
+  if (val != val || unicode_is_id_continue(nc))
     return false;
 
   token.num_val = val;
@@ -1188,28 +1169,28 @@ TokenKind Lexer::peek_token(bool no_line_terminator) {
         return TokenKind::Arrow;
       return static_cast<TokenKind>(c);
     case 'i':
-      if (p[0] == 'n' && !lre_js_is_ident_next(static_cast<uint32_t>(p[1])))
+      if (p[0] == 'n' && !unicode_is_id_continue(static_cast<uint32_t>(p[1])))
         return TokenKind::KwIn;
-      if (p[0] == 'm' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !lre_js_is_ident_next(static_cast<uint32_t>(p[5])))
+      if (p[0] == 'm' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !unicode_is_id_continue(static_cast<uint32_t>(p[5])))
         return TokenKind::KwImport;
       return TokenKind::Identifier;
     case 'o':
-      if (p[0] == 'f' && !lre_js_is_ident_next(static_cast<uint32_t>(p[1])))
+      if (p[0] == 'f' && !unicode_is_id_continue(static_cast<uint32_t>(p[1])))
         return TokenKind::KwOf;
       return TokenKind::Identifier;
     case 'e':
-      if (p[0] == 'x' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !lre_js_is_ident_next(static_cast<uint32_t>(p[5])))
+      if (p[0] == 'x' && p[1] == 'p' && p[2] == 'o' && p[3] == 'r' && p[4] == 't' && !unicode_is_id_continue(static_cast<uint32_t>(p[5])))
         return TokenKind::KwExport;
       return TokenKind::Identifier;
     case 'f':
       if (p[0] == 'u' && p[1] == 'n' && p[2] == 'c' && p[3] == 't' && p[4] == 'i' && p[5] == 'o' && p[6] == 'n' &&
-          !lre_js_is_ident_next(static_cast<uint32_t>(p[7])))
+          !unicode_is_id_continue(static_cast<uint32_t>(p[7])))
         return TokenKind::KwFunction;
       return TokenKind::Identifier;
     case '\\':
       if (*p == 'u') {
         const uint8_t *p1 = p + 1;
-        if (lre_js_is_ident_first(static_cast<uint32_t>(parse_escape(&p1, true))))
+        if (unicode_is_id_start(static_cast<uint32_t>(parse_escape(&p1, true))))
           return TokenKind::Identifier;
       }
       return static_cast<TokenKind>(c);
@@ -1223,7 +1204,7 @@ TokenKind Lexer::peek_token(bool no_line_terminator) {
       }
       if (lre_is_space(static_cast<uint32_t>(c)))
         continue;
-      if (lre_js_is_ident_first(static_cast<uint32_t>(c)))
+      if (unicode_is_id_start(static_cast<uint32_t>(c)))
         return TokenKind::Identifier;
       return static_cast<TokenKind>(c);
     }

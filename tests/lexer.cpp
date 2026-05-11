@@ -226,6 +226,23 @@ TEST_F(LexerFixture, StringUnicodeEscape) {
   EXPECT_STREQ(lexer.token.str_val.c_str(), "A");
 }
 
+TEST_F(LexerFixture, UnicodeIdent) {
+  // Valid Unicode identifier (Greek letter) should be accepted
+  init_lexer("\u03b1"); // Greek alpha
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::Identifier);
+}
+
+TEST_F(LexerFixture, UnicodeIdentInvalid) {
+  // © is not ID_Start — should be rejected or produce error
+  init_lexer("\u00a9"); // copyright sign
+  // Not a valid identifier start; the lexer should not produce Identifier
+  bool ok = lexer.next_token();
+  if (ok) {
+    EXPECT_NE(lexer.token.kind, TokenKind::Identifier);
+  }
+}
+
 TEST_F(LexerFixture, CommentSkip) {
   init_lexer("a /* block */ b // line\na c");
   EXPECT_TRUE(lexer.next_token());

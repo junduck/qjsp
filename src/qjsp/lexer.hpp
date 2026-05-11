@@ -69,8 +69,6 @@ private:
   static int unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp);
   static void append_utf8(std::string &buf, unsigned int c);
   static bool lre_is_space(uint32_t c);
-  static bool lre_js_is_ident_first(uint32_t c);
-  static bool lre_js_is_ident_next(uint32_t c);
   int parse_escape(const uint8_t **pp, bool allow_utf16);
   static bool is_digit(int c) { return c >= '0' && c <= '9'; }
   static int from_hex(int c);
