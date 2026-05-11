@@ -101,6 +101,95 @@ RegSlot RegParseState::parse_primary() {
   }
 }
 
+// ─── Unified cover property parser ──────────────────────────────────────────
+
+// Parses one { key: ... } or { key } entry. The caller decides how to
+// handle shorthand vs key-value vs computed vs spread.
+bool RegParseState::parse_cover_property(CoverProp &out) {
+  TokenKind tok = lexer.token.kind;
+
+  // Spread: ...expr
+  if (tok == TokenKind::Ellipsis) {
+    next_token();
+    out.kind  = CoverProp::Spread;
+    out.value = parse_assign_expr();
+    return true;
+  }
+
+  // Identifier or keyword: {x}, {x: y}, or {x() {}}
+  if (tok == TokenKind::Identifier || isKeyword(tok)) {
+    out.key = lexer.token.ident_atom;
+    next_token();
+
+    // Shorthand: {x} — no colon, no paren
+    if (lexer.token.kind != TokenKind::Colon && lexer.token.kind != TokenKind::LParen) {
+      out.kind = CoverProp::Shorthand;
+      return true;
+    }
+
+    // Method shorthand: {x() {}} — consume as KeyValue with FCLOSURE
+    if (lexer.token.kind == TokenKind::LParen) {
+      out.kind = CoverProp::KeyValue;
+      FunctionDef *fd = parse_function_decl(kAtomNull, true, FunctionKind::normal);
+      if (fd) {
+        int r = alloc_temp();
+        emit_iABx(RegOp::FCLOSURE, static_cast<uint8_t>(r), static_cast<uint16_t>(fd->parent_cpool_idx));
+        out.value = {r};
+      } else {
+        out.value = {alloc_temp()};
+        emit_iABx(RegOp::LOADUNDEF, static_cast<uint8_t>(out.value.reg), 0);
+      }
+      return true;
+    }
+
+    // Key-value: {x: expr}
+    next_token(); // skip ':'
+    out.kind  = CoverProp::KeyValue;
+    out.value = parse_assign_expr();
+    return true;
+  }
+
+  // String key: {"x": expr}
+  if (tok == TokenKind::StringLit) {
+    auto sv  = std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len};
+    out.key  = rt->intern(sv);
+    next_token();
+    if (lexer.token.kind != TokenKind::Colon) {
+      out.kind = CoverProp::Shorthand; // { "x" } without colon — treat as shorthand
+      return true;
+    }
+    next_token(); // skip ':'
+    out.kind  = CoverProp::KeyValue;
+    out.value = parse_assign_expr();
+    return true;
+  }
+
+  // Number key: {42: expr}
+  if (tok == TokenKind::Number) {
+    double d = lexer.token.num_val;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.15g", d);
+    out.key  = rt->intern(buf);
+    next_token();
+    if (!expect(TokenKind::Colon))
+      return false;
+    out.kind  = CoverProp::KeyValue;
+    out.value = parse_assign_expr();
+    return true;
+  }
+
+  // Computed key: {[expr]: val}
+  if (tok == TokenKind::LBracket) {
+    next_token();
+    out.kind  = CoverProp::Computed;
+    out.value = parse_assign_expr(); // the key expression
+    expect(TokenKind::RBracket);
+    return true;
+  }
+
+  return false;
+}
+
 // ─── Object literal ─────────────────────────────────────────────────────
 
 RegSlot RegParseState::parse_object_literal() {
@@ -110,92 +199,59 @@ RegSlot RegParseState::parse_object_literal() {
   emit_iABx(RegOp::NEWOBJ, static_cast<uint8_t>(obj_reg), 0);
 
   while (lexer.token.kind != TokenKind::RBrace) {
-    Atom name     = kAtomNull;
-    bool computed = false;
+    CoverProp prop;
+    if (!parse_cover_property(prop))
+      break;
 
-    if (lexer.token.kind == TokenKind::Ellipsis) {
-      next_token();
-      RegSlot src = parse_assign_expr();
-      emit_iABC(RegOp::SPREAD_OBJ, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(src.reg), 0);
-      free_temp();
-      goto obj_next;
-    }
-
-    if (lexer.token.kind == TokenKind::Identifier || isKeyword(lexer.token.kind)) {
-      name = lexer.token.ident_atom;
-      next_token();
-      if (lexer.token.kind != TokenKind::Colon && lexer.token.kind != TokenKind::LParen) {
-        int val_reg = alloc_temp();
-        bool found  = false;
-        for (int i = 0; i < cur_func->var_count; i++) {
-          if (cur_func->vars[static_cast<size_t>(i)].var_name == name && cur_func->vars[static_cast<size_t>(i)].scope_level == 0) {
-            emit_iABC(RegOp::MOVE, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(cur_func->vars[static_cast<size_t>(i)].reg_index), 0);
-            found = true;
-            break;
-          }
+    switch (prop.kind) {
+    case CoverProp::Shorthand: {
+      // {x} — load variable x, define as property x
+      int val_reg = alloc_temp();
+      bool found  = false;
+      for (int i = 0; i < cur_func->var_count; i++) {
+        if (cur_func->vars[static_cast<size_t>(i)].var_name == prop.key && cur_func->vars[static_cast<size_t>(i)].scope_level == 0) {
+          emit_iABC(RegOp::MOVE, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(cur_func->vars[static_cast<size_t>(i)].reg_index), 0);
+          found = true;
+          break;
         }
-        if (!found) {
-          int ci = cpool_add(rt->atom_to_value(name));
-          emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
-        }
-        int ci = cpool_add(rt->atom_to_value(name));
-        emit_iABC(RegOp::DEFINE_FIELD, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(val_reg));
-        free_temp();
-        free_temp();
-        goto obj_next;
       }
-      if (lexer.token.kind == TokenKind::LParen) {
-        FunctionDef *fd = parse_function_decl(kAtomNull, true, FunctionKind::normal);
-        if (fd) {
-          int r = alloc_temp();
-          emit_iABx(RegOp::FCLOSURE, static_cast<uint8_t>(r), static_cast<uint16_t>(fd->parent_cpool_idx));
-          int ci = cpool_add(rt->atom_to_value(name));
-          emit_iABC(RegOp::DEFINE_FIELD, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(r));
-          free_temp();
-        }
-        goto obj_next;
+      if (!found) {
+        int ci = cpool_add(rt->atom_to_value(prop.key));
+        emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
       }
-    } else if (lexer.token.kind == TokenKind::StringLit) {
-      auto sv = std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len};
-      name    = rt->intern(sv);
-      next_token();
-    } else if (lexer.token.kind == TokenKind::Number) {
-      double d = lexer.token.num_val;
-      char buf[32];
-      snprintf(buf, sizeof(buf), "%.15g", d);
-      name = rt->intern(buf);
-      next_token();
-    } else if (lexer.token.kind == TokenKind::LBracket) {
-      computed = true;
-      next_token();
-      RegSlot key = parse_assign_expr();
-      expect(TokenKind::RBracket);
-      name = kAtomNull;
-      if (!expect(TokenKind::Colon))
-        return {obj_reg};
-      RegSlot val = parse_assign_expr();
-      emit_iABC(RegOp::DEFINE_ELEM, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(key.reg), static_cast<uint8_t>(val.reg));
+      int ci = cpool_add(rt->atom_to_value(prop.key));
+      emit_iABC(RegOp::DEFINE_FIELD, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(val_reg));
       free_temp();
       free_temp();
-      goto obj_next;
-    } else {
-      goto obj_next;
+      break;
     }
-
-    if (!computed && name != kAtomNull) {
-      if (!expect(TokenKind::Colon))
-        return {obj_reg};
-      RegSlot val = parse_assign_expr();
-      if (name == rt->intern("__proto__")) {
-        emit_iABC(RegOp::SETPROTO, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(val.reg), 0);
+    case CoverProp::KeyValue: {
+      if (prop.key == rt->intern("__proto__")) {
+        emit_iABC(RegOp::SETPROTO, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(prop.value.reg), 0);
       } else {
-        int ci = cpool_add(rt->atom_to_value(name));
-        emit_iABC(RegOp::DEFINE_FIELD, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(val.reg));
+        int ci = cpool_add(rt->atom_to_value(prop.key));
+        emit_iABC(RegOp::DEFINE_FIELD, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(prop.value.reg));
       }
-      free_temp();
+      free_temp(); // value
+      break;
+    }
+    case CoverProp::Computed: {
+      if (!expect(TokenKind::Colon))
+        return {obj_reg};
+      RegSlot val = parse_assign_expr();
+      emit_iABC(RegOp::DEFINE_ELEM, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(prop.value.reg), static_cast<uint8_t>(val.reg));
+      free_temp(); // val
+      free_temp(); // key (prop.value)
+      break;
+    }
+    case CoverProp::Spread:
+      emit_iABC(RegOp::SPREAD_OBJ, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(prop.value.reg), 0);
+      free_temp(); // value
+      break;
+    default:
+      break;
     }
 
-  obj_next:
     if (lexer.token.kind != TokenKind::Comma)
       break;
     next_token();

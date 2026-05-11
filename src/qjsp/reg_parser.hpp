@@ -328,6 +328,23 @@ struct RegParseState {
   bool js_define_var(Atom name, TokenKind tok);
   void push_enter_scope() { cur_func->push_scope(); }
   void pop_leave_scope() { cur_func->pop_scope(); }
+
+  // ── unified cover parsing for literals + destructuring ────────────────
+
+  struct CoverProp {
+    enum Kind : uint8_t {
+      Shorthand,   // {x} or [x] — key is the var name
+      KeyValue,    // x: expr  — separate key and value
+      Computed,    // [expr]: val
+      Spread,      // ...expr
+      Elision,     // [,] in array patterns
+    };
+    Kind kind     = Shorthand;
+    Atom key      = kAtomNull;
+    RegSlot value;           // expression result (for KeyValue, Computed, Spread)
+  };
+
+  bool parse_cover_property(CoverProp &out);
 };
 
 // ─── Expression parse flags ─────────────────────────────────────────────────
