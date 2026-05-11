@@ -246,27 +246,37 @@ RegSlot RegParseState::parse_prefix() {
 
 static RegSlot parse_call_infix(RegParseState *ps, RegSlot func) {
   ps->next_token(); // skip '('
+  bool is_method = ps->has_obj_reg_;
+  ps->has_obj_reg_ = false;
+
+  if (is_method) {
+    // Allocate and emit this = obj at func_reg+1, so args start at func_reg+2
+    int this_reg = ps->alloc_temp();
+    ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(this_reg), static_cast<uint8_t>(ps->last_obj_reg_), 0);
+  }
+
   int argc = 0;
   if (ps->lexer.token.kind != TokenKind::RParen) {
     for (;;) {
-      ps->parse_assign_expr(); // leaves 1 temp on stack
+      ps->parse_assign_expr();
       argc++;
-      if (ps->lexer.token.kind == TokenKind::RParen)
-        break;
-      if (ps->lexer.token.kind != TokenKind::Comma) { /* error */
-      }
+      if (ps->lexer.token.kind == TokenKind::RParen) break;
+      if (ps->lexer.token.kind != TokenKind::Comma) { /* error */ }
       ps->next_token();
     }
   }
+
   int func_reg = func.reg;
-  // Args are already at func_reg+1 … func_reg+argc (consecutive, from parse_assign_expr).
-  // Free arg temps and func temp from the stack.
-  for (int i = 0; i < argc; i++)
+  // Free: argc args + func + (if method) this
+  int free_count = argc + 1 + (is_method ? 1 : 0);
+  for (int i = 0; i < free_count; i++)
     ps->free_temp();
-  ps->free_temp(); // func
-  // Reuse the func slot as the return register.
-  int ret_reg = ps->alloc_temp(); // = func_reg
-  ps->emit_iABC(RegOp::CALL, static_cast<uint8_t>(ret_reg), static_cast<uint8_t>(func_reg), static_cast<uint8_t>(argc));
+  int ret_reg = ps->alloc_temp();
+
+  if (is_method)
+    ps->emit_iABC(RegOp::CALL_M, static_cast<uint8_t>(ret_reg), static_cast<uint8_t>(func_reg), static_cast<uint8_t>(argc));
+  else
+    ps->emit_iABC(RegOp::CALL, static_cast<uint8_t>(ret_reg), static_cast<uint8_t>(func_reg), static_cast<uint8_t>(argc));
   ps->next_token();
   return RegSlot{ret_reg};
 }
@@ -278,17 +288,23 @@ static RegSlot parse_dot_infix(RegParseState *ps, RegSlot obj) {
   Atom prop = ps->lexer.token.ident_atom;
   ps->next_token();
   int ci = ps->cpool_add(ps->rt->atom_to_value(prop));
-  ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(ci));
-  return obj;
+  int dst = ps->alloc_temp();
+  ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(dst), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(ci));
+  ps->has_obj_reg_ = true;
+  ps->last_obj_reg_ = obj.reg;
+  return RegSlot{dst};
 }
 
 static RegSlot parse_bracket_infix(RegParseState *ps, RegSlot obj) {
   ps->next_token(); // skip '['
   RegSlot prop = ps->parse_expr();
   ps->expect(TokenKind::RBracket);
-  ps->emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(prop.reg));
+  int dst = ps->alloc_temp();
+  ps->emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(dst), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(prop.reg));
   ps->free_temp();
-  return obj;
+  ps->has_obj_reg_ = true;
+  ps->last_obj_reg_ = obj.reg;
+  return RegSlot{dst};
 }
 
 static RegSlot parse_postfix_incdec(RegParseState *ps, RegSlot base, TokenKind tok) {
@@ -890,13 +906,14 @@ LValue RegParseState::parse_postfix_lvalue() {
       tok = lexer.token.kind;
       if (tok == TokenKind::Dot) {
         next_token();
-        if (lexer.token.kind != TokenKind::Identifier)
-          break;
+        if (lexer.token.kind != TokenKind::Identifier) break;
         Atom prop = lexer.token.ident_atom;
         next_token();
         int obj_reg = alloc_temp();
         emit_lvalue_load(lv, {obj_reg});
         lv = {LValue::FIELD, obj_reg, prop};
+        has_obj_reg_ = true;
+        last_obj_reg_ = obj_reg;
         continue;
       }
       if (tok == TokenKind::LBracket) {
@@ -906,6 +923,8 @@ LValue RegParseState::parse_postfix_lvalue() {
         int obj_reg = alloc_temp();
         emit_lvalue_load(lv, {obj_reg});
         lv = {LValue::ELEM, obj_reg, kAtomNull, key.reg};
+        has_obj_reg_ = true;
+        last_obj_reg_ = obj_reg;
         continue;
       }
       break;

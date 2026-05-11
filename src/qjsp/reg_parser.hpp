@@ -303,6 +303,10 @@ struct RegParseState {
   LValue last_prefix_lvalue_;
   bool has_prefix_lvalue_ = false;
 
+  // Track the object register for method calls (obj.method())
+  int last_obj_reg_ = -1;
+  bool has_obj_reg_  = false;
+
   // ── object / array ────────────────────────────────────────────────────
 
   RegSlot parse_object_literal();
