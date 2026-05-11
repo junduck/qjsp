@@ -27,8 +27,7 @@ Value CFunctionObj::create(Context *ctx, CFunction *fn, std::string_view name, i
   obj->ref_count   = 1;
   obj->gc_obj_type = GCObjType::js_object;
   obj->class_id    = ClassID::c_function;
-  obj->fn          = fn;
-  obj->fn_length   = static_cast<uint8_t>(length);
+  obj->fn = fn;
   ctx->rt->add_gc_object(obj);
   obj->set_own(ctx->rt, ctx->rt->intern("length"), Value::int32(length));
   obj->set_own(ctx->rt, ctx->rt->intern("name"), String::create(name));

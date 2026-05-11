@@ -58,8 +58,7 @@ struct Callable : Object {
 // ── CFunction ──────────────────────────────────────────────────────────
 
 struct CFunctionObj : Callable {
-  CFunction *fn     = nullptr;
-  uint8_t fn_length = 0;
+  CFunction *fn = nullptr;
 
   static Value create(Context *ctx, CFunction *fn, std::string_view name, int length);
 

@@ -141,7 +141,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       break;
 
     case RegOp::LOADK:
-      if (i.bx() < static_cast<uint32_t>(b->cpool_count))
+      if (i.bx() < b->cpool_count)
         regs[i.a()] = b->cpool[i.bx()];
       else
         regs[i.a()] = Value::undefined_();
@@ -397,7 +397,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
         auto *o = obj.as<Object>();
         if (o && o->class_id == ClassID::array) {
           auto *arr = static_cast<ArrayObject *>(o);
-          int idx = key.as_int32();
+          int idx   = key.as_int32();
           if (idx >= 0 && static_cast<size_t>(idx) < arr->elements.size())
             regs[i.a()] = arr->elements[static_cast<size_t>(idx)];
           else
@@ -748,7 +748,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 // ─── Call bytecode ──────────────────────────────────────────────────────────
 
 Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals) {
-  uint32_t total_regs = b->reg_count > 0 ? static_cast<uint32_t>(b->reg_count) : uint32_t{256};
+  uint32_t total_regs = b->reg_count > 0 ? b->reg_count : 256;
   auto regs           = std::make_unique<Value[]>(total_regs);
 
   // R[0] = this
