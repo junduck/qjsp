@@ -911,17 +911,65 @@ bool Lexer::parse_template_part(const uint8_t *p) {
       break;
     }
     if (c == '\\') {
-      buf.push_back('\\');
       if (p >= buf_end)
         return false;
-      c = *p++;
-    }
-    if (c == '\r') {
+      c = *p;
+      switch (c) {
+      case '\0':
+        if (p >= buf_end)
+          return false;
+        p++;
+        c = '\0';
+        break;
+      case '\'':
+      case '\"':
+      case '\\':
+        p++;
+        break;
+      case '\r':
+        if (p[1] == '\n')
+          p++;
+        // fall through
+      case '\n':
+        p++;
+        c = '\n';
+        append_utf8(buf, c);
+        continue;
+      default:
+        if (c >= '0' && c <= '9') {
+          if (c == '0' && !(p[1] >= '0' && p[1] <= '9')) {
+            p++;
+            c = '\0';
+          } else {
+            return false;
+          }
+        } else if (c >= 0x80) {
+          const uint8_t *p_next;
+          c = static_cast<uint32_t>(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next));
+          if (c > 0x10FFFF)
+            return false;
+          p = p_next;
+          if (c == CP_LS || c == CP_PS) {
+            c = '\n';
+            append_utf8(buf, c);
+            continue;
+          }
+        } else {
+          int ret = parse_escape(&p, true);
+          if (ret == -1)
+            return false;
+          else if (ret < 0)
+            p++;
+          else
+            c = static_cast<uint32_t>(ret);
+        }
+        break;
+      }
+    } else if (c == '\r') {
       if (*p == '\n')
         p++;
       c = '\n';
-    }
-    if (c >= 0x80) {
+    } else if (c >= 0x80) {
       const uint8_t *p_next;
       c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
       if (c > 0x10FFFF)

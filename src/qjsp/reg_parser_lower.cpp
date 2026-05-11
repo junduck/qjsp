@@ -86,7 +86,7 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
   b->var_count   = static_cast<uint16_t>(total_defs);
   if (total_defs > 0) {
     b->vardefs = std::make_unique<BytecodeVarDef[]>(static_cast<size_t>(total_defs));
-    for (int i = 0; i < fd->arg_count; i++) {
+    for (auto i = 0u; i < fd->arg_count; i++) {
       auto &vd                 = fd->args[static_cast<size_t>(i)];
       b->vardefs[i].var_name   = vd.var_name;
       b->vardefs[i].scope_next = vd.scope_next;
@@ -94,8 +94,8 @@ FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
       b->vardefs[i].set_is_captured(vd.is_captured);
       b->vardefs[i].var_ref_idx = static_cast<uint16_t>(vd.upval_idx >= 0 ? vd.upval_idx : 0);
     }
-    int base = fd->arg_count;
-    for (int i = 0; i < fd->var_count; i++) {
+    auto base = fd->arg_count;
+    for (auto i = 0u; i < fd->var_count; i++) {
       auto &vd                        = fd->vars[static_cast<size_t>(i)];
       b->vardefs[base + i].var_name   = vd.var_name;
       b->vardefs[base + i].scope_next = vd.scope_next;
