@@ -158,6 +158,24 @@ TEST_F(RegInterpFixture, DestructureArrayDeepNested) {
   EXPECT_EQ(v.as_int32(), 6);
 }
 
+TEST_F(RegInterpFixture, AssignDestructureArray) {
+  Value v = eval("var a, b; [a, b] = [10, 20]; a + b;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 30);
+}
+
+TEST_F(RegInterpFixture, AssignDestructureArraySwap) {
+  Value v = eval("var a = 1, b = 2; [a, b] = [b, a]; a + b;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(RegInterpFixture, AssignDestructureArrayDefault) {
+  Value v = eval("var a; [a = 9] = []; a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 9);
+}
+
 TEST_F(RegInterpFixture, DestructureArrayDefault) {
   Value v = eval("var arr = [1]; var [a = 9, b = 9] = arr; a + b;");
   EXPECT_TRUE(v.is_int32());

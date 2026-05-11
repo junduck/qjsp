@@ -144,6 +144,9 @@ enum class TokenKind : uint16_t {
   KwYield,
   KwAwait,
   KwOf,
+
+  // ── Size Sentinel ────────────────────────────────────────────────────────────
+  KwSize,
 };
 
 /// True if `k` is any keyword token.
@@ -153,6 +156,7 @@ inline constexpr bool isKeyword(TokenKind k) { return k >= TokenKind::KwNull && 
 inline constexpr bool isIdentifier(TokenKind k) { return k == TokenKind::Identifier || isKeyword(k); }
 
 /// Keyword lookup table — maps source text to TokenKind.
+/// Non-constexpr, let's just wait for P3372 to land
 inline const std::unordered_map<std::string_view, TokenKind> kKeywordTable = {
     {"null", TokenKind::KwNull},
     {"false", TokenKind::KwFalse},

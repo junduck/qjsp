@@ -449,7 +449,98 @@ RegSlot RegParseState::parse_assign_expr() {
     return parse_expr_from(this, val, PREC_ASSIGN + 1);  // stop before any assignment
   }
 
+  // Assignment destructuring: [a, b] = expr
+  if (tok == TokenKind::LBracket) {
+    TokenKind next = peek_token(false);
+    if (next == TokenKind::Comma || next == TokenKind::Identifier) {
+      next_token(); // skip '['
+      struct AssignTarget { LValue lv; bool has_default; size_t def_start; size_t def_end; };
+      std::vector<AssignTarget> targets;
+
+      while (lexer.token.kind != TokenKind::RBracket) {
+        if (lexer.token.kind == TokenKind::Comma) { next_token(); continue; }
+        if (lexer.token.kind != TokenKind::Identifier) goto parse_as_value;
+        Atom name = lexer.token.ident_atom;
+        next_token();
+
+        LValue lv;
+        bool found = false;
+        for (int j = cur_func->var_count; j-- > 0;) {
+          if (cur_func->vars[static_cast<size_t>(j)].var_name == name) {
+            lv.kind = LValue::LOCAL; lv.var_idx = j; lv.prop = name; found = true; break;
+          }
+        }
+        if (!found) {
+          for (int j = cur_func->arg_count; j-- > 0;) {
+            if (cur_func->args[static_cast<size_t>(j)].var_name == name) {
+              lv.kind = LValue::ARG; lv.var_idx = j; lv.prop = name; found = true; break;
+            }
+          }
+        }
+        if (!found) {
+          int upval = cur_func->resolve_upval(name);
+          if (upval >= 0) { lv.kind = LValue::UPVAL; lv.upval_idx = upval; lv.prop = name; found = true; }
+        }
+        if (!found) { lv.kind = LValue::GLOBAL; lv.prop = name; }
+
+        AssignTarget t{lv, false, 0, 0};
+        if (lexer.token.kind == TokenKind::EqAssign) {
+          t.def_start = lexer.buf_pos();
+          int depth = 0;
+          for (;;) {
+            TokenKind k = lexer.token.kind;
+            if (k == TokenKind::LParen || k == TokenKind::LBracket || k == TokenKind::LBrace) depth++;
+            else if (k == TokenKind::RParen || k == TokenKind::RBracket || k == TokenKind::RBrace) {
+              if (depth == 0) break; depth--;
+            } else if (depth == 0 && (k == TokenKind::Comma || k == TokenKind::RBracket)) break;
+            if (k == TokenKind::Eof) break;
+            next_token();
+          }
+          t.def_end = lexer.buf_pos();
+          t.has_default = true;
+        }
+        targets.push_back(t);
+        if (lexer.token.kind == TokenKind::Comma) next_token();
+      }
+      next_token(); // ']'
+
+      if (lexer.token.kind == TokenKind::EqAssign) {
+        next_token(); // '='
+        RegSlot rhs = parse_expr(PREC_ASSIGN);
+        for (size_t i = 0; i < targets.size(); i++) {
+          int idx_reg = alloc_temp();
+          emit_iAsBx(RegOp::LOADINT, static_cast<uint8_t>(idx_reg), static_cast<int16_t>(i));
+          int elem_reg = alloc_temp();
+          emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(idx_reg));
+          free_temp();
+
+          if (targets[i].has_default) {
+            int skip_lab = new_label(), def_lab = new_label();
+            emit_jump(RegOp::IS_UNDEF, def_lab, {elem_reg});
+            emit_jump(RegOp::JMP, skip_lab, 0);
+            emit_label(def_lab);
+            Lexer saved = lexer;
+            lexer.reset(lexer.buf_start + targets[i].def_start, targets[i].def_end - targets[i].def_start);
+            lexer.next_token();
+            RegSlot def = parse_assign_expr();
+            emit_iABC(RegOp::MOVE, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(def.reg), 0);
+            free_temp();
+            lexer = saved;
+            emit_label(skip_lab);
+          }
+
+          emit_lvalue_store(targets[i].lv, {elem_reg});
+          free_temp();
+        }
+        free_temp(); // rhs
+        return rhs;
+      }
+      // No '=' after ']' — not destructuring; fall through to parse_as_value
+    }
+  }
+
   // Not an lvalue — use pure Pratt parser
+parse_as_value:
   RegSlot left = parse_prefix();
   return parse_expr_from(this, left, 1);
 }
