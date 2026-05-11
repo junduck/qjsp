@@ -57,18 +57,17 @@ static RegSlot parse_ident(RegParseState *ps) {
   Atom atom = ps->lexer.token.ident_atom;
   ps->next_token();
 
-  // Check locals
-  for (int i = 0; i < ps->cur_func->var_count; i++) {
+  // Check locals (backward to find innermost match first)
+  for (int i = ps->cur_func->var_count; i-- > 0;) {
     if (ps->cur_func->vars[static_cast<size_t>(i)].var_name == atom) {
       ps->has_prefix_lvalue_ = true;
       ps->last_prefix_lvalue_ = {LValue::LOCAL, -1, atom, -1, i, -1};
-      // Copy var to a temp so parse_binary_infix can safely free left
       int r = ps->alloc_temp();
       ps->emit_iABC(RegOp::MOVE, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->vars[static_cast<size_t>(i)].reg_index), 0);
       return {r};
     }
   }
-  for (int i = 0; i < ps->cur_func->arg_count; i++) {
+  for (int i = ps->cur_func->arg_count; i-- > 0;) {
     if (ps->cur_func->args[static_cast<size_t>(i)].var_name == atom) {
       ps->has_prefix_lvalue_ = true;
       ps->last_prefix_lvalue_ = {LValue::ARG, -1, atom, -1, i, -1};
@@ -481,8 +480,8 @@ RegSlot RegParseState::parse_object_literal() {
     case CoverProp::Shorthand: {
       int val_reg = alloc_temp();
       bool found  = false;
-      for (int i = 0; i < cur_func->var_count; i++) {
-        if (cur_func->vars[static_cast<size_t>(i)].var_name == prop.key && cur_func->vars[static_cast<size_t>(i)].scope_level == 0) {
+      for (int i = cur_func->var_count; i-- > 0;) {
+        if (cur_func->vars[static_cast<size_t>(i)].var_name == prop.key) {
           emit_iABC(RegOp::MOVE, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(cur_func->vars[static_cast<size_t>(i)].reg_index), 0);
           found = true;
           break;
@@ -669,8 +668,8 @@ LValue RegParseState::parse_lvalue() {
     Atom atom = lexer.token.ident_atom;
     next_token();
 
-    for (int i = 0; i < cur_func->var_count; i++) {
-      if (cur_func->vars[static_cast<size_t>(i)].var_name == atom && cur_func->vars[static_cast<size_t>(i)].scope_level == 0) {
+    for (int i = cur_func->var_count; i-- > 0;) {
+      if (cur_func->vars[static_cast<size_t>(i)].var_name == atom) {
         lv.kind    = LValue::LOCAL;
         lv.var_idx = i;
         lv.prop    = atom;
@@ -702,7 +701,7 @@ LValue RegParseState::parse_ident_lvalue() {
   Atom atom = lexer.token.ident_atom;
   next_token();
 
-  for (int i = 0; i < cur_func->var_count; i++) {
+  for (int i = cur_func->var_count; i-- > 0;) {
     if (cur_func->vars[static_cast<size_t>(i)].var_name == atom) {
       lv.kind    = LValue::LOCAL;
       lv.var_idx = i;
@@ -710,7 +709,7 @@ LValue RegParseState::parse_ident_lvalue() {
       return lv;
     }
   }
-  for (int i = 0; i < cur_func->arg_count; i++) {
+  for (int i = cur_func->arg_count; i-- > 0;) {
     if (cur_func->args[static_cast<size_t>(i)].var_name == atom) {
       lv.kind    = LValue::ARG;
       lv.var_idx = i;
