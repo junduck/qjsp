@@ -146,6 +146,19 @@ TEST_F(RegInterpFixture, DestructureEmpty) {
   EXPECT_EQ(v.as_int32(), 1);
 }
 
+TEST_F(RegInterpFixture, DestructureArrayNested) {
+  Value v = eval("var arr = [1, [2, 3]]; var [a, [b, c]] = arr; a + b + c;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 6);
+}
+
+TEST_F(RegInterpFixture, DestructureArrayDeepNested) {
+  Value v = eval("var arr = [[1, 2], 3]; var [[a, b], c] = arr; a + b + c;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 6);
+}
+
+// ─── Try / Catch ────────────────────────────────────────────────────────
 
 TEST_F(RegInterpFixture, TryCatchCaught) {
   Value v = eval("var a = 0; try { throw 99; } catch(e) { a = e; } a;");

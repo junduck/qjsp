@@ -701,19 +701,50 @@ done:
     next_token();
 }
 
+// ─── Variable declarations ────────────────────────────────────────────────────
+
 void RegParseState::parse_var_decls(TokenKind decl_tok) {
   for (;;) {
     // ── Array destructuring: var/let/const [a, b] = expr ───────────────
     if (lexer.token.kind == TokenKind::LBracket) {
       next_token(); // skip '['
 
-      struct ArrBind { Atom name; int reg = -1; };
+      struct ArrBind {
+        Atom name = kAtomNull;
+        int reg = -1;
+        bool is_nested_arr = false;
+        bool is_nested_obj = false;
+        int nested_start = -1;
+      };
       std::vector<ArrBind> binds;
 
       while (lexer.token.kind != TokenKind::RBracket) {
         if (lexer.token.kind == TokenKind::Comma) {
           binds.push_back({kAtomNull, -1}); // elision
           next_token();
+          continue;
+        }
+        // Nested array: [a, [b, c]]
+        if (lexer.token.kind == TokenKind::LBracket) {
+          next_token();
+          // Count how many binds in the nested pattern
+          ArrBind nb; nb.is_nested_arr = true; nb.nested_start = (int)binds.size();
+          binds.push_back(nb);
+          int nested_count = 0;
+          while (lexer.token.kind != TokenKind::RBracket) {
+            if (lexer.token.kind == TokenKind::Comma) { next_token(); continue; }
+            if (lexer.token.kind != TokenKind::Identifier) return;
+            Atom name = lexer.token.ident_atom; next_token();
+            if (!js_define_var(name, decl_tok)) return;
+            int idx = cur_func->find_var(name);
+            binds.push_back({name, cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx))});
+            nested_count++;
+            if (lexer.token.kind == TokenKind::Comma) next_token();
+          }
+          next_token(); // skip ']'
+          // Store the nested count so we know how many binds belong to this nest
+          binds[static_cast<size_t>(nb.nested_start)].reg = nested_count;
+          if (lexer.token.kind == TokenKind::Comma) next_token();
           continue;
         }
         if (lexer.token.kind != TokenKind::Identifier)
@@ -723,7 +754,10 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         if (!js_define_var(name, decl_tok))
           return;
         int idx = cur_func->find_var(name);
-        binds.push_back({name, cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx))});
+        ArrBind bind;
+        bind.name = name;
+        bind.reg = cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx));
+        binds.push_back(bind);
 
         if (lexer.token.kind != TokenKind::RBracket && lexer.token.kind != TokenKind::Comma)
           return;
@@ -737,12 +771,46 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
       } else {
         next_token();
         RegSlot rhs = parse_assign_expr();
+        int arr_pos = 0; // track actual array index
         for (size_t i = 0; i < binds.size(); ++i) {
-          if (binds[i].name == kAtomNull) continue; // elision
+          auto &b = binds[i];
+
+          // Nested array: extract element, then recurse for inner binds
+          if (b.is_nested_arr) {
+            int nested_count = b.reg;
+            int elem_reg = alloc_temp(); // before idx_reg so free_temp frees idx_reg
+            int idx_reg = alloc_temp();
+            emit_iAsBx(RegOp::LOADINT, static_cast<uint8_t>(idx_reg), static_cast<int16_t>(arr_pos));
+            emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(idx_reg));
+            free_temp(); // idx_reg
+            for (int j = 0; j < nested_count; j++) {
+              i++;
+              auto &inner = binds[i];
+              if (inner.name == kAtomNull) continue;
+              int inner_idx = alloc_temp();
+              emit_iAsBx(RegOp::LOADINT, static_cast<uint8_t>(inner_idx), static_cast<int16_t>(j));
+              int inner_elem = alloc_temp();
+              emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(inner_elem), static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(inner_idx));
+              free_temp(); // inner_idx
+              emit_iABC(RegOp::MOVE, static_cast<uint8_t>(inner.reg), static_cast<uint8_t>(inner_elem), 0);
+              free_temp(); // inner_elem
+            }
+            free_temp(); // elem_reg
+            arr_pos++;
+            continue;
+          }
+
+          if (b.name == kAtomNull) { arr_pos++; continue; } // elision
+
+          // Regular binding
           int idx_reg = alloc_temp();
-          emit_iAsBx(RegOp::LOADINT, static_cast<uint8_t>(idx_reg), static_cast<int16_t>(i));
-          emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(binds[i].reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(idx_reg));
+          emit_iAsBx(RegOp::LOADINT, static_cast<uint8_t>(idx_reg), static_cast<int16_t>(arr_pos));
+          int elem_reg = alloc_temp();
+          emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(idx_reg));
           free_temp(); // idx_reg
+          emit_iABC(RegOp::MOVE, static_cast<uint8_t>(b.reg), static_cast<uint8_t>(elem_reg), 0);
+          free_temp(); // elem_reg
+          arr_pos++;
         }
         free_temp(); // rhs
       }
@@ -757,7 +825,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
     if (lexer.token.kind == TokenKind::LBrace) {
       next_token(); // skip '{'
 
-      struct ObjBind { Atom prop; int reg = -1; };
+      struct ObjBind { Atom prop; Atom var_name; int reg = -1; };
       std::vector<ObjBind> binds;
 
       while (lexer.token.kind != TokenKind::RBrace) {
@@ -777,7 +845,11 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         if (!js_define_var(var_name, decl_tok))
           return;
         int idx = cur_func->find_var(var_name);
-        binds.push_back({prop, cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx))});
+        ObjBind bind;
+        bind.prop = prop;
+        bind.var_name = var_name;
+        bind.reg = cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx));
+        binds.push_back(bind);
 
         if (lexer.token.kind != TokenKind::RBrace && lexer.token.kind != TokenKind::Comma)
           return;
@@ -793,7 +865,10 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         RegSlot rhs = parse_assign_expr();
         for (auto &b : binds) {
           int ci = cpool_add(rt->atom_to_value(b.prop));
-          emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(b.reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(ci));
+          int elem_reg = alloc_temp();
+          emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(ci));
+          emit_iABC(RegOp::MOVE, static_cast<uint8_t>(b.reg), static_cast<uint8_t>(elem_reg), 0);
+          free_temp(); // elem_reg
         }
         free_temp();
       }
