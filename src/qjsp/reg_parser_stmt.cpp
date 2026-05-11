@@ -463,7 +463,7 @@ void RegParseState::parse_for_statement() {
         cur_func->close_scopes(cur_func->scope_level, block_scope_level);
       }
     } else {
-      (void)parse_assign_expr2(0);
+      (void)parse_assign_expr();
       free_temp();
 
       if (lexer.token.kind == TokenKind::KwIn) {
@@ -737,7 +737,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         if (decl_tok == TokenKind::KwConst) return;
       } else {
         next_token();
-        RegSlot rhs = parse_assign_expr2(PF_IN_ACCEPTED);
+        RegSlot rhs = parse_assign_expr();
         for (size_t i = 0; i < binds.size(); ++i) {
           if (binds[i].name == kAtomNull) continue; // elision
           int idx_reg = alloc_temp();
@@ -791,7 +791,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         if (decl_tok == TokenKind::KwConst) return;
       } else {
         next_token();
-        RegSlot rhs = parse_assign_expr2(PF_IN_ACCEPTED);
+        RegSlot rhs = parse_assign_expr();
         for (auto &b : binds) {
           int ci = cpool_add(rt->atom_to_value(b.prop));
           emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(b.reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(ci));
@@ -846,7 +846,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
           found   = true;
         }
       }
-      RegSlot rhs = parse_assign_expr2(PF_IN_ACCEPTED);
+      RegSlot rhs = parse_assign_expr();
       if (found)
         emit_lvalue_store(lv, rhs);
       free_temp();

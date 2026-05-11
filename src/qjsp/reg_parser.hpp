@@ -270,18 +270,12 @@ struct RegParseState {
 
   Atom pending_label = kAtomNull; // set before loop parsing for named labels
 
-  // ── expression parsers ────────────────────────────────────────────────
+  // ── Pratt expression parser ────────────────────────────────────────────
 
-  RegSlot parse_expr();
-  RegSlot parse_assign_expr();
-  RegSlot parse_assign_expr2(int flags);
-  RegSlot parse_cond_expr(int flags);
-  RegSlot parse_binary(int min_prec);
-  RegSlot parse_binary_from(RegSlot left, int min_prec);
-  RegSlot parse_unary(int flags);
-  RegSlot parse_postfix(int flags);
-  RegSlot parse_postfix_continue(RegSlot base, int flags);
-  RegSlot parse_primary();
+  RegSlot parse_expr(int min_prec = 1);     // main Pratt loop
+  RegSlot parse_assign_expr();              // lvalue-based assignment entry
+  RegSlot parse_prefix();                   // dispatch on token kind
+  RegSlot parse_infix(RegSlot left, TokenKind tok);  // dispatch on operator
 
   // ── lvalue (for LHS of assignments) ───────────────────────────────────
 
@@ -346,11 +340,6 @@ struct RegParseState {
 
   bool parse_cover_property(CoverProp &out);
 };
-
-// ─── Expression parse flags ─────────────────────────────────────────────────
-
-constexpr int PF_IN_ACCEPTED  = (1 << 0);
-constexpr int PF_POSTFIX_CALL = (1 << 1);
 
 // ─── Operator precedence ────────────────────────────────────────────────────
 
@@ -438,17 +427,54 @@ constexpr auto kCompoundTable = []() constexpr {
   return tab;
 }();
 
-inline constexpr int binary_precedence(TokenKind tok) {
-  auto i = static_cast<uint16_t>(tok);
-  if (kBinOpTable[i].prec != 0)
-    return kBinOpTable[i].prec;
-  return kLogicalPrec[i];
-}
+// ─── Pratt infix table — precedence + associativity ────────────────────────
+
+struct InfixEntry { uint8_t prec; bool right_assoc; };
+
+constexpr auto kInfixTable = []() constexpr {
+  std::array<InfixEntry, kTokenTableSize> tab{};
+  // Binary operators
+  tab[static_cast<uint16_t>(TokenKind::Star)]       = {PREC_MULT, false};
+  tab[static_cast<uint16_t>(TokenKind::SlashChar)]  = {PREC_MULT, false};
+  tab[static_cast<uint16_t>(TokenKind::Percent)]    = {PREC_MULT, false};
+  tab[static_cast<uint16_t>(TokenKind::Plus)]       = {PREC_ADD, false};
+  tab[static_cast<uint16_t>(TokenKind::Minus)]      = {PREC_ADD, false};
+  tab[static_cast<uint16_t>(TokenKind::Shl)]        = {PREC_SHIFT, false};
+  tab[static_cast<uint16_t>(TokenKind::Sar)]        = {PREC_SHIFT, false};
+  tab[static_cast<uint16_t>(TokenKind::Shr)]        = {PREC_SHIFT, false};
+  tab[static_cast<uint16_t>(TokenKind::Less)]       = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Greater)]    = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Lte)]        = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Gte)]        = {PREC_COMPARE, false};
+  tab[static_cast<uint16_t>(TokenKind::Eq)]         = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::StrictEq)]   = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::Neq)]        = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::StrictNeq)]  = {PREC_EQ, false};
+  tab[static_cast<uint16_t>(TokenKind::Amp)]        = {PREC_BIT_AND, false};
+  tab[static_cast<uint16_t>(TokenKind::Caret)]      = {PREC_BIT_XOR, false};
+  tab[static_cast<uint16_t>(TokenKind::Pipe)]       = {PREC_BIT_OR, false};
+  tab[static_cast<uint16_t>(TokenKind::Pow)]        = {PREC_POW, true};
+  // Logical operators
+  tab[static_cast<uint16_t>(TokenKind::Land)]               = {PREC_LOGICAL_AND, false};
+  tab[static_cast<uint16_t>(TokenKind::Lor)]                = {PREC_LOGICAL_OR, false};
+  tab[static_cast<uint16_t>(TokenKind::DoubleQuestionMark)] = {PREC_LOGICAL_OR, false};
+  // Postfix / call / member
+  tab[static_cast<uint16_t>(TokenKind::Inc)]     = {PREC_POSTFIX, false};
+  tab[static_cast<uint16_t>(TokenKind::Dec)]     = {PREC_POSTFIX, false};
+  tab[static_cast<uint16_t>(TokenKind::LParen)]  = {PREC_CALL, false};
+  tab[static_cast<uint16_t>(TokenKind::Dot)]     = {PREC_CALL, false};
+  tab[static_cast<uint16_t>(TokenKind::LBracket)]= {PREC_CALL, false};
+  // Ternary
+  tab[static_cast<uint16_t>(TokenKind::Question)] = {PREC_COND, true};
+  return tab;
+}();
+
+// ─── Operator table accessors (preserved for bytecode emission) ─────────────
 
 inline constexpr RegOp binop_to_reg(TokenKind tok) { return kBinOpTable[static_cast<uint16_t>(tok)].opcode; }
 
 inline constexpr RegOp compound_to_binop(TokenKind tok) { return kCompoundTable[static_cast<uint16_t>(tok)]; }
 
-inline constexpr bool is_right_assoc(TokenKind tok) { return kBinOpTable[static_cast<uint16_t>(tok)].right_assoc; }
+inline constexpr bool is_right_assoc(TokenKind tok) { return kInfixTable[static_cast<uint16_t>(tok)].right_assoc; }
 
 } // namespace qjsp
