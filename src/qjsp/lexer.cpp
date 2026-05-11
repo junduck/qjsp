@@ -146,7 +146,8 @@ bool Lexer::lre_js_is_ident_next(uint32_t c) {
 
 int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
   const uint8_t *p = *pp;
-  uint32_t c       = *p++;
+  if (p >= buf_end) return -1;
+  uint32_t c = *p++;
 
   switch (c) {
   case 'b':
@@ -168,6 +169,7 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
     c = '\v';
     break;
   case 'x': {
+    if (p + 1 >= buf_end) return -1;
     int h0 = from_hex(*p++), h1 = from_hex(*p++);
     if (h0 < 0 || h1 < 0)
       return -1;
@@ -179,6 +181,7 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       p++;
       c = 0;
       for (;;) {
+        if (p >= buf_end) return -1;
         int h = from_hex(*p++);
         if (h < 0)
           return -1;
@@ -190,6 +193,7 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       }
       p++;
     } else {
+      if (p + 3 >= buf_end) return -1; // need 4 hex chars
       c = 0;
       for (int i = 0; i < 4; i++) {
         int h = from_hex(*p++);
@@ -197,7 +201,7 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
           return -1;
         c = (c << 4) | static_cast<unsigned>(h);
       }
-      if (is_hi_surrogate(c) && allow_utf16 && p[0] == '\\' && p[1] == 'u') {
+      if (is_hi_surrogate(c) && allow_utf16 && p + 5 < buf_end && p[0] == '\\' && p[1] == 'u') {
         uint32_t c1 = 0;
         for (int i = 0; i < 4; i++) {
           int h = from_hex(p[2 + i]);
@@ -226,6 +230,7 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       if (c != 0 || is_digit(*p))
         return -1;
     } else {
+      if (p >= buf_end) break;
       unsigned v = static_cast<unsigned>(*p - '0');
       if (v > 7)
         break;
@@ -233,6 +238,7 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
       p++;
       if (c >= 32)
         break;
+      if (p >= buf_end) break;
       v = static_cast<unsigned>(*p - '0');
       if (v > 7)
         break;
@@ -1080,6 +1086,7 @@ bool Lexer::parse_number(const uint8_t *p) {
     if (p[1] == 'o' || p[1] == 'O') {
       unsigned long long val = 0;
       p += 2;
+      bool has_digit = false;
       while (is_digit(*p) || *p == '_') {
         if (*p == '_') {
           p++;
@@ -1088,8 +1095,11 @@ bool Lexer::parse_number(const uint8_t *p) {
         if (*p < '0' || *p > '7')
           break;
         val = val * 8 + static_cast<unsigned long long>(*p - '0');
+        has_digit = true;
         p++;
       }
+      if (!has_digit)
+        return false;
       token.num_val = static_cast<double>(val);
       token.kind    = TokenKind::Number;
       buf_ptr       = p;
@@ -1098,14 +1108,18 @@ bool Lexer::parse_number(const uint8_t *p) {
     if (p[1] == 'b' || p[1] == 'B') {
       unsigned long long val = 0;
       p += 2;
+      bool has_digit = false;
       while ((*p >= '0' && *p <= '1') || *p == '_') {
         if (*p == '_') {
           p++;
           continue;
         }
         val = val * 2 + static_cast<unsigned long long>(*p - '0');
+        has_digit = true;
         p++;
       }
+      if (!has_digit)
+        return false;
       token.num_val = static_cast<double>(val);
       token.kind    = TokenKind::Number;
       buf_ptr       = p;

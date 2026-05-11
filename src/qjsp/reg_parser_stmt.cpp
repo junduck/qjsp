@@ -254,8 +254,11 @@ void RegParseState::parse_switch_statement() {
 
       CaseInfo ci;
       if (!is_default) {
-        double val   = lexer.token.num_val;
-        ci.cpool_idx = cpool_add(Value::float64(val));
+        if (lexer.token.kind == TokenKind::Number) {
+          ci.cpool_idx = cpool_add(Value::float64(lexer.token.num_val));
+        } else if (lexer.token.kind == TokenKind::StringLit) {
+          ci.cpool_idx = cpool_add(rt->atom_to_value(rt->intern(lexer.token.str_val)));
+        }
         next_token();
       }
       expect(TokenKind::Colon);
@@ -694,6 +697,15 @@ void RegParseState::parse_break_continue(bool is_cont) {
       goto done;
     }
     top = top->prev;
+  }
+
+  // No matching loop found — emit a runtime SyntaxError
+  {
+    int err_reg = alloc_temp();
+    int ci      = cpool_add(rt->atom_to_value(rt->intern("SyntaxError: illegal break/continue")));
+    emit_iABx(RegOp::LOADK, static_cast<uint8_t>(err_reg), static_cast<uint16_t>(ci));
+    emit_iABC(RegOp::THROW, 0, static_cast<uint8_t>(err_reg), 0);
+    free_temp();
   }
 
 done:

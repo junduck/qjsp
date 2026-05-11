@@ -204,6 +204,28 @@ TEST_F(LexerFixture, TemplateLiteral) {
   EXPECT_EQ(lexer.token.str_sep, '`');
 }
 
+TEST_F(LexerFixture, TemplateLiteralEscapes) {
+  // \n should be a newline, not literal \ + n
+  init_lexer("`a\\nb`");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::TemplateLit);
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "a\nb");
+}
+
+TEST_F(LexerFixture, StringHexEscape) {
+  init_lexer("\"\\x41\"");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "A");
+}
+
+TEST_F(LexerFixture, StringUnicodeEscape) {
+  init_lexer("\"\\u0041\"");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "A");
+}
+
 TEST_F(LexerFixture, CommentSkip) {
   init_lexer("a /* block */ b // line\na c");
   EXPECT_TRUE(lexer.next_token());

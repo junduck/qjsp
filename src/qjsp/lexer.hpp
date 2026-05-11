@@ -71,7 +71,7 @@ private:
   static bool lre_is_space(uint32_t c);
   static bool lre_js_is_ident_first(uint32_t c);
   static bool lre_js_is_ident_next(uint32_t c);
-  static int parse_escape(const uint8_t **pp, bool allow_utf16);
+  int parse_escape(const uint8_t **pp, bool allow_utf16);
   static bool is_digit(int c) { return c >= '0' && c <= '9'; }
   static int from_hex(int c);
   static bool is_surrogate(uint32_t c);
