@@ -1,13 +1,17 @@
 #pragma once
 
 #include "atom.hpp"
-#include "value.hpp"
 #include <cstdint>
 
 namespace qjsp {
 
-struct Object;
-struct Runtime;
+enum class Builtin : uint16_t {
+  object = 0,
+  array,
+
+  // Sentinel
+  BuiltinCount
+};
 
 enum class ClassID : uint16_t {
   object = 1,

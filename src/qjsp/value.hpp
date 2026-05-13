@@ -10,12 +10,12 @@
 //! | `NAN` (quiet)     | `7FF8:0000:0000:0000`    | |
 //! | `Symbol`          | `7FF8:IIII:IIII:IIII`    | Non-zero uint payload |
 //!   ─────── pointer boundary ─────── RC (RefCounted only, no vtable)
-//! | `VarRef`          | `7FF9:PPPP:PPPP:PPPP`    | |
-//! | `Bytecode`        | `7FFA:PPPP:PPPP:PPPP`    | |
-//! | `StrPrim`         | `7FFB:PPPP:PPPP:PPPP`    | |
-//! | `BigInt`          | `7FFC:PPPP:PPPP:PPPP`    | |
+//! | `RC`              | `7FF9:PPPP:PPPP:PPPP`    | 8bit alignment pointer, lower 3 bits type descrimination |
+//! | `RESERVED`        | `7FFA:PPPP:PPPP:PPPP`    | not used |
+//! | `RESERVED`        | `7FFB:PPPP:PPPP:PPPP`    | not used |
 //!   ─────── pointer boundary ─────── GC (GCObjectHeader subclasses)
-//! | `Object`          | `7FFD:PPPP:PPPP:PPPP`    | |
+//! | `Object`          | `7FFC:PPPP:PPPP:PPPP`    | |
+//! | `RESERVED`        | `7FFD:PPPP:PPPP:PPPP`    | |
 //! | `RESERVED`        | `7FFE:0000:0000:0000`    | not used |
 //!   ─────── scalar boundary ─────── 7FFF - [type] - [payload]
 //! | `ShortBigInt`     | `7FFF:0000:IIII:IIII`        | int32_t |
@@ -26,14 +26,20 @@
 //! | `Float64`         | Any other values.        | |
 //!
 //! Pointer checks:      t in [kPtrStart, kPtrEnd] (0x7FF9–0x7FFC)
-//! Double checks:       t < kTagSymbol || (t > kPtrEnd && t < kTagObject) || t > kTaggedMax ||
+//! Double checks:       t < kTagSymbol || (t > kPtrEnd && t < kTagScalar) || t > kTaggedMax ||
 //!                      data == kCanonicalNaN
-//! RC-only (no vtable): tag_prefix() < kTagObject   (0x7FF9–0x7FFC)
-//! GC-object (vtable):  tag_prefix() >= kTagObject  (0x7FFD)
+//! RC-only (no vtable): tag_prefix() == kTagRC (0x7FF9), sub-type in lower 3 bits
+//! GC-object (vtable):  tag_prefix() == kTagObject  (0x7FFC)
 //!
 //! Symbol: scalar tag 0x7FF8, lower 48 bits = Atom index (non-zero).
 //! kAtomNull (0) is never used as a symbol, so 0x7FF8_0000_0000_0000
 //! unambiguously means double quiet NaN.
+
+//! RC sub types:
+//! 0 StrPrim
+//! 1 VarRef
+//! 2 Bytecode
+//! 3 BigInt
 
 #pragma once
 
@@ -55,14 +61,25 @@ constexpr uint64_t kPayloadMask = (1ull << kTagShift) - 1;
 // ─── Scalar tag (0x7FF8): payload = Atom index (non-zero) ──────────────
 constexpr uint64_t kTagSymbol = 0x7FF8ull;
 
-// ─── Pointer tags ─── RC (0x7FF9–0x7FFC): RefCounted only, no vtable ──────
-constexpr uint64_t kTagVarRef   = 0x7FF9ull; // VarRef (internal)
-constexpr uint64_t kTagBytecode = 0x7FFAull; // FunctionBytecode
-constexpr uint64_t kTagStrPrim  = 0x7FFBull;
-constexpr uint64_t kTagBigInt   = 0x7FFCull;
+// ─── Pointer tags ─── RC (0x7FF9): RefCounted only, no vtable ──────
+// Sub-types stored in lower 3 bits of 8-byte-aligned pointer payload:
+//   0 = StrPrim, 1 = VarRef, 2 = Bytecode, 3 = BigInt
+constexpr uint64_t kTagRC = 0x7FF9ull;
 
-// ─── Pointer tags ─── GC (0x7FFD): GCObjectHeader subclasses ─────────────
-constexpr uint64_t kTagObject = 0x7FFDull;
+// ─── Pointer tags ─── GC (0x7FFC): GCObjectHeader subclasses ─────────────
+constexpr uint64_t kTagObject = 0x7FFCull;
+
+// ─── Pointer sub-type (stored in lower 3 bits of 8-byte-aligned pointer) ──
+constexpr uintptr_t kPtrSubMask = 0x7ull;
+enum class RCType : uintptr_t {
+  StrPrim  = 0,
+  VarRef   = 1,
+  Bytecode = 2,
+  BigInt   = 3,
+};
+enum class ObjType : uintptr_t {
+  Object = 0,
+};
 
 // ─── Canonical quiet NaN ───────────────────────────────────────────────────
 constexpr uint64_t kCanonicalNaN = kTagSymbol << kTagShift; // payload = 0
@@ -76,8 +93,8 @@ constexpr uint32_t kScalarException   = 0x0003;
 // Uninitialized uses subtype 0xFFFF with payload 0xFFFFFFFF
 
 // ─── Derived boundaries ────────────────────────────────────────────────────
-constexpr uint64_t kPtrStart  = kTagVarRef; // first pointer tag (0x7FF9)
-constexpr uint64_t kPtrEnd    = kTagBigInt; // last pointer tag (0x7FFC)
+constexpr uint64_t kPtrStart  = kTagRC;     // first pointer tag (0x7FF9)
+constexpr uint64_t kPtrEnd    = kTagObject; // last pointer tag (0x7FFC)
 constexpr uint64_t kTaggedMin = kTagSymbol; // smallest tag in NaN-box range (0x7FF8)
 constexpr uint64_t kTaggedMax = kTagScalar; // largest tag overall (0x7FFF)
 
@@ -92,7 +109,7 @@ struct Value {
   // ── RAII ─────────────────────────────────────────────────────────────
 
   Value(Value const &other) noexcept : data(other.data) {
-    if (is_pointer() && !is_null_ptr())
+    if (is_pointer() && !is_nullptr())
       get_ref_counted()->ref();
   }
 
@@ -110,13 +127,6 @@ struct Value {
 
   ~Value();
 
-  Value ref() noexcept {
-    assert(is_pointer());
-    if (!is_null_ptr())
-      get_ref_counted()->ref();
-    return *this;
-  }
-
   // ── scalar helpers ───────────────────────────────────────────────────
 
   uint32_t scalar_type() const { return static_cast<uint32_t>((data >> 32) & 0xFFFF); }
@@ -126,8 +136,6 @@ struct Value {
   static constexpr Value int32(int32_t v) {
     return Value{(kTagScalar << kTagShift) | (static_cast<uint64_t>(kScalarShortBigInt) << 32) | (static_cast<uint64_t>(static_cast<uint32_t>(v)))};
   }
-
-  static constexpr Value short_big_int(int32_t v) { return int32(v); }
 
   static constexpr Value bool_(bool v) { return Value{(kTagScalar << kTagShift) | (static_cast<uint64_t>(kScalarBool) << 32) | (v ? 1ull : 0ull)}; }
 
@@ -148,31 +156,36 @@ struct Value {
   static Value object(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
-    return Value{(kTagObject << kTagShift) | p};
+    assert((p & kPtrSubMask) == 0);
+    return Value{(kTagObject << kTagShift) | p | static_cast<uintptr_t>(ObjType::Object)};
   }
 
   static Value var_ref(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
-    return Value{(kTagVarRef << kTagShift) | p};
+    assert((p & kPtrSubMask) == 0);
+    return Value{(kTagRC << kTagShift) | p | static_cast<uintptr_t>(RCType::VarRef)};
   }
 
   static Value string(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
-    return Value{(kTagStrPrim << kTagShift) | p};
+    assert((p & kPtrSubMask) == 0);
+    return Value{(kTagRC << kTagShift) | p | static_cast<uintptr_t>(RCType::StrPrim)};
   }
 
   static Value bigint_ptr(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
-    return Value{(kTagBigInt << kTagShift) | p};
+    assert((p & kPtrSubMask) == 0);
+    return Value{(kTagRC << kTagShift) | p | static_cast<uintptr_t>(RCType::BigInt)};
   }
 
   static Value bytecode(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
-    return Value{(kTagBytecode << kTagShift) | p};
+    assert((p & kPtrSubMask) == 0);
+    return Value{(kTagRC << kTagShift) | p | static_cast<uintptr_t>(RCType::Bytecode)};
   }
 
   // ── legacy alias ─────────────────────────────────────────────────────
@@ -202,29 +215,27 @@ struct Value {
   bool is_uninitialized() const { return data == uninitialized().data; }
   bool is_exception() const { return tag_prefix() == kTagScalar && scalar_type() == kScalarException; }
   bool is_int32() const { return tag_prefix() == kTagScalar && scalar_type() == kScalarShortBigInt; }
-  bool is_short_big_int() const { return is_int32(); }
   bool is_bool() const { return tag_prefix() == kTagScalar && scalar_type() == kScalarBool; }
   bool is_null() const { return tag_prefix() == kTagScalar && scalar_type() == kScalarNullUndef && (data & 1) == 0; }
   bool is_undefined() const { return tag_prefix() == kTagScalar && scalar_type() == kScalarNullUndef && (data & 1) == 1; }
   bool is_null_or_undef() const { return tag_prefix() == kTagScalar && scalar_type() == kScalarNullUndef; }
 
   // pointer types
-  bool is_object() const { return tag_prefix() == kTagObject; }
-  bool is_string() const { return tag_prefix() == kTagStrPrim && !is_null_ptr(); }
-  bool is_symbol() const { return tag_prefix() == kTagSymbol; }
-  bool is_bigint_ptr() const { return tag_prefix() == kTagBigInt; }
-  bool is_var_ref() const { return tag_prefix() == kTagVarRef; }
-  bool is_bytecode() const { return tag_prefix() == kTagBytecode; }
+  bool is_rc() const { return tag_prefix() == kTagRC; }
+  bool is_object() const { return tag_prefix() == kTagObject && obj_type() == ObjType::Object; }
+  bool is_string() const { return is_rc() && rc_type() == RCType::StrPrim && !is_nullptr(); }
+  bool is_bigint_ptr() const { return is_rc() && rc_type() == RCType::BigInt; }
+  bool is_var_ref() const { return is_rc() && rc_type() == RCType::VarRef; }
+  bool is_bytecode() const { return is_rc() && rc_type() == RCType::Bytecode; }
 
-  // legacy
-  bool is_func_bytecode() const { return is_bytecode(); }
+  bool is_symbol() const { return tag_prefix() == kTagSymbol && (data & kPayloadMask) != 0; }
 
   bool is_pointer() const {
     uint16_t t = tag_prefix();
     return t >= kPtrStart && t <= kPtrEnd;
   }
 
-  bool is_null_ptr() const { return (data & kPayloadMask) == 0; }
+  bool is_nullptr() const { return (data & kPayloadMask & ~kPtrSubMask) == 0; }
 
   bool is_double() const {
     // QNaN (0x7FF8000000000000) is the only double with tag in our range.
@@ -236,27 +247,29 @@ struct Value {
   }
 
   bool is_number() const { return is_double() || is_int32(); }
-  bool is_bigint() const { return is_short_big_int() || is_bigint_ptr(); }
-
-  bool has_ref_count() const { return is_pointer(); }
+  bool is_bigint() const { return is_int32() || is_bigint_ptr(); }
 
   // ── extractors ───────────────────────────────────────────────────────
+
+  RCType rc_type() const { return static_cast<RCType>(data & kPtrSubMask); }
+  ObjType obj_type() const { return static_cast<ObjType>(data & kPtrSubMask); }
 
   int32_t as_int32() const { return static_cast<int32_t>(data & 0xFFFFFFFFu); }
   Atom as_symbol() const { return static_cast<Atom>(data & 0xFFFFFFFFu); }
   bool as_bool() const { return (data & 1) != 0; }
-  int32_t as_short_big_int() const { return as_int32(); }
 
-  void *as_pointer() const { return reinterpret_cast<void *>(data & kPayloadMask); }
+  uintptr_t raw_ptr() const { return static_cast<uintptr_t>(data & kPayloadMask) & ~kPtrSubMask; }
+
+  void *as_pointer() const { return reinterpret_cast<void *>(raw_ptr()); }
 
   RefCounted *get_ref_counted() const {
-    uintptr_t raw = static_cast<uintptr_t>(data & kPayloadMask);
+    uintptr_t raw = raw_ptr();
     if (raw == 0)
       return nullptr;
-    // GC-objects (0x7FFD): Object — GCObjectHeader subclass with vtable.
-    if (tag_prefix() >= kTagObject)
+    // GC-objects (0x7FFC): Object — GCObjectHeader subclass with vtable.
+    if (tag_prefix() == kTagObject)
       return static_cast<RefCounted *>(reinterpret_cast<GCObjectHeader *>(raw));
-    // RC-only (0x7FF9–0x7FFC): VarRef, Bytecode, StrPrim, BigInt — no vtable.
+    // RC-only (0x7FF9): VarRef, Bytecode, StrPrim, BigInt — no vtable.
     return reinterpret_cast<RefCounted *>(raw);
   }
 

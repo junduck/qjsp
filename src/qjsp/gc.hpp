@@ -11,7 +11,6 @@ enum class GCObjType : uint8_t {
   js_object,
   shape,
   async_function,
-  js_context,
   module,
 };
 

@@ -6,8 +6,6 @@
 
 namespace qjsp {
 
-struct Runtime;
-
 constexpr int kPropConfigurable = (1 << 0);
 constexpr int kPropWritable     = (1 << 1);
 constexpr int kPropEnumerable   = (1 << 2);

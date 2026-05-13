@@ -4,7 +4,6 @@
 #include "gc.hpp"
 #include "shape.hpp"
 #include "value.hpp"
-#include <cstdint>
 #include <string_view>
 #include <vector>
 
@@ -13,8 +12,9 @@ namespace qjsp {
 struct Runtime;
 struct Context;
 struct FunctionBytecode;
+struct Engine;
 
-using CFunction = Value(Context *ctx, Value this_val, int argc, const Value *argv);
+using CFunction = Value(Engine *e, Value this_val, int argc, const Value *argv);
 
 struct Property {
   Value value = Value::undefined_();
@@ -25,19 +25,19 @@ struct Object : GCObjectHeader {
   Shape *shape = nullptr;
   std::vector<Property> properties;
 
-  ClassID class_id = ClassID::object;
-  bool extensible  = true;
+  Builtin clsid   = Builtin::object;
+  bool extensible = true;
 
-  static Value create(Runtime *rt, Value proto, ClassID class_id);
+  // ── resources ──────────────────────────────────────────────────
+  static Value create(Engine *e, Value proto, Builtin clsid);
+  void destroy(Engine *e);
 
   // ── property access ──────────────────────────────────────────────────
   Value get_own(Atom atom) const;
-  bool set_own(Runtime *rt, Atom atom, Value value, int flags = kPropCWE);
-  bool define_own(Runtime *rt, Atom atom, Value value, int flags);
+  bool set_own(Engine *e, Atom atom, Value value, int flags = kPropCWE);
+  bool define_own(Engine *e, Atom atom, Value value, int flags);
   bool has_own(Atom atom) const { return shape && shape->find(atom) < shape->size(); }
   Value get(Atom atom) const;
-
-  void destroy(Runtime *rt);
 
   // ── calling ──────────────────────────────────────────────────────────
   virtual bool is_callable() const { return false; }
@@ -52,7 +52,7 @@ struct Object : GCObjectHeader {
 struct Callable : Object {
   bool is_callable() const final { return true; }
   virtual bool is_bytecode() const { return false; }
-  virtual Value call(Context *ctx, Value this_val, int argc, const Value *argv) = 0;
+  virtual Value call(Engine *e, Value this_val, int argc, const Value *argv) = 0;
 };
 
 // ── CFunction ──────────────────────────────────────────────────────────
@@ -60,9 +60,9 @@ struct Callable : Object {
 struct CFunctionObj : Callable {
   CFunction *fn = nullptr;
 
-  static Value create(Context *ctx, CFunction *fn, std::string_view name, int length);
+  static Value create(Engine *e, CFunction *fn, std::string_view name, int length);
 
-  Value call(Context *ctx, Value this_val, int argc, const Value *argv) override { return fn(ctx, this_val, argc, argv); }
+  Value call(Engine *e, Value this_val, int argc, const Value *argv) override { return fn(e, this_val, argc, argv); }
 };
 
 // ── BytecodeFunction ───────────────────────────────────────────────────
@@ -73,19 +73,15 @@ struct BytecodeFunction : Callable {
 
   bool is_bytecode() const final { return true; }
 
-  static Value create(Runtime *rt, FunctionBytecode *bc);
+  static Value create(Engine *e, FunctionBytecode *bc);
 
-  Value call(Context *ctx, Value this_val, int argc, const Value *argv) override;
+  Value call(Engine *e, Value this_val, int argc, const Value *argv) override;
 
   void gc_mark(std::vector<GCObjectHeader *> &worklist) override;
 };
 
 // ── calling ───────────────────────────────────────────────────────────
 
-Value call(Context *ctx, Value func, Value this_val, int argc, const Value *argv);
-
-// ── global ─────────────────────────────────────────────────────────────
-
-void setup_global(Context *ctx, Object *global);
+Value call(Engine *e, Value func, Value this_val, int argc, const Value *argv);
 
 } // namespace qjsp

@@ -5,12 +5,22 @@
 
 namespace qjsp {
 template <std::integral T>
-constexpr bool is_valid(T i) {
+constexpr bool is_sentinel(T val) {
   if constexpr (std::unsigned_integral<T>) {
-    return i != std::numeric_limits<T>::max();
+    return val != std::numeric_limits<T>::max();
   } else {
     // signed
-    return i >= 0;
+    return val >= 0;
+  }
+}
+
+template <std::integral T>
+constexpr T sentinel(T) {
+  if constexpr (std::unsigned_integral<T>) {
+    return std::numeric_limits<T>::max();
+  } else {
+    // signed
+    return T{-1};
   }
 }
 } // namespace qjsp
