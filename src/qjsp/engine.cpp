@@ -73,52 +73,8 @@ Engine::Engine() {
     }
     g->set_own(this, intern("Symbol"), sym_val);
   }
-#if DISABLE_CODEBLOCK
-  // init_array_prototype — wires Array.prototype
-  {
-    auto array_proto = Object::create(this, Value::undefined_(), Builtin::array);
-    auto *proto      = array_proto.as<Object>();
 
-    // Symbol.iterator — TODO: wire after CFunction typedef migration
-    {
-      auto *cfo        = new CFunctionObj();
-      cfo->ref_count   = 1;
-      cfo->gc_obj_type = GCObjType::js_object;
-      cfo->class_id    = ClassID::c_function;
-      cfo->fn          = nullptr; // TODO: wire array_values
-      add_gc_object(cfo);
-      obj_set_own(this, proto, known.symbol_iterator, Value::object(cfo));
-    }
-
-    // push — TODO: wire after CFunction typedef migration
-    {
-      auto *cfo        = new CFunctionObj();
-      cfo->ref_count   = 1;
-      cfo->gc_obj_type = GCObjType::js_object;
-      cfo->class_id    = ClassID::c_function;
-      cfo->fn          = nullptr; // TODO: wire array_push
-      add_gc_object(cfo);
-      obj_set_own(this, proto, intern("push"), Value::object(cfo));
-    }
-  }
-
-  // init_regexp_prototype — wires RegExp.prototype
-  {
-    regexp_proto = obj_create(this, Value::undefined_(), ClassID::regexp);
-    auto *proto  = regexp_proto.as<Object>();
-
-    // test — TODO: wire after CFunction typedef migration
-    {
-      auto *cfo        = new CFunctionObj();
-      cfo->ref_count   = 1;
-      cfo->gc_obj_type = GCObjType::js_object;
-      cfo->class_id    = ClassID::c_function;
-      cfo->fn          = nullptr; // TODO: wire regexp_test
-      add_gc_object(cfo);
-      obj_set_own(this, proto, intern("test"), Value::object(cfo));
-    }
-  }
-#endif
+  init_array_prototype(this);
 }
 
 // ── atoms ───────────────────────────────────────────────────────────────────
@@ -212,10 +168,9 @@ Shape *Engine::add_shape(Shape *from, Atom atom, int flags) {
     std::copy(base, base + cnt, shape->entries.get());
   }
   shape->entries[cnt] = {atom, flags};
-  shapes.emplace(key, std::move(shape));
+  auto [it2, inserted] = shapes.emplace(key, std::move(shape));
+  return it2->second.get();
 }
-
-// ── resources ───────────────────────────────────────────────────────────────
 
 Value Engine::create_object(Value proto, Builtin class_id) { // TODO: remove this method
   maybe_trigger_gc();

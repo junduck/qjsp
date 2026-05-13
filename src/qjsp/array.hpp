@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine.hpp"
 #include "object.hpp"
 #include "value.hpp"
 #include <cstdint>
@@ -7,13 +8,14 @@
 
 namespace qjsp {
 
-struct Runtime;
-struct Context;
+struct Engine;
 
 struct ArrayObject : Object {
   std::vector<Value> elements;
 
-  static Value create(Runtime *rt, Value proto = Value::undefined_());
+  static bool setup(Engine *e);
+
+  static Value create(Engine *e);
 
   Value get_elem(uint32_t idx) const { return idx < elements.size() ? elements[idx] : Value::undefined_(); }
 
@@ -26,7 +28,6 @@ struct ArrayObject : Object {
   void gc_mark(std::vector<GCObjectHeader *> &worklist) override;
 };
 
-// Wire up Array.prototype[Symbol.iterator]
-void init_array_prototype(Context *ctx);
+void init_array_prototype(Engine *e);
 
 } // namespace qjsp

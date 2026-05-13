@@ -1,5 +1,5 @@
 #include "qjsp/lexer.hpp"
-#include "qjsp/runtime.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/string.hpp"
 #include "qjsp/unicode_id.hpp"
 #include <cassert>
@@ -242,8 +242,8 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
 
 // ─── Lexer initialisation ───────────────────────────────────────────────────
 
-void Lexer::init(Runtime *rt_val, const char *filename_val, const uint8_t *source, size_t source_len) {
-  rt        = rt_val;
+void Lexer::init(Engine *e_val, const char *filename_val, const uint8_t *source, size_t source_len) {
+  e_        = e_val;
   filename  = filename_val;
   buf_start = source;
   buf_ptr   = source;
@@ -711,7 +711,7 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
   auto *str = StrPrim::allocate_raw(ident_buf);
   if (!str)
     return false;
-  Atom atom               = rt->intern_copy(str);
+  Atom atom               = e_->intern_copy(str);
   token.ident_atom        = atom;
   token.ident_has_escape  = has_escape;
   token.ident_is_reserved = false;
@@ -768,7 +768,7 @@ bool Lexer::parse_private_name() {
   auto *str = StrPrim::allocate_raw(ident_buf);
   if (!str)
     return false;
-  Atom atom               = rt->intern_copy(str);
+  Atom atom               = e_->intern_copy(str);
   token.ident_atom        = atom;
   token.ident_has_escape  = false;
   token.ident_is_reserved = false;

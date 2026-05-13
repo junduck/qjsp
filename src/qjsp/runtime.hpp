@@ -21,18 +21,6 @@ struct JobEntry;
 struct StrPrim;
 struct Object;
 
-struct MallocState {
-  size_t malloc_count;
-  size_t malloc_size;
-  size_t malloc_limit;
-  void *opaque;
-};
-struct MallocFunctions {
-  void *(*js_malloc)(MallocState *s, size_t size);
-  void (*js_free)(MallocState *s, void *ptr);
-  void *(*js_realloc)(MallocState *s, void *ptr, size_t size);
-  size_t (*js_malloc_usable_size)(const void *ptr);
-};
 using ModuleNormalizeFunc                  = char *(void *ctx, const char *base_name, const char *name, void *opaque);
 using ModuleLoaderFunc                     = ModuleDef *(void *ctx, const char *module_name, void *opaque);
 using ModuleLoaderFunc2                    = ModuleDef *(void *ctx, const char *module_name, void *opaque, Value attributes);
@@ -59,8 +47,6 @@ struct StringHash {
 inline void hash_combine(size_t &seed, size_t v) { seed ^= v + 0x9e3779b9u + (seed << 6) + (seed >> 2); }
 
 struct Runtime {
-  MallocFunctions mf{};
-  MallocState malloc_state{};
   const char *rt_info = nullptr;
 
   std::vector<StrPrim *> atom_table;
@@ -87,7 +73,7 @@ struct Runtime {
     Atom symbol_toStringTag   = 0;
     Atom symbol_hasInstance   = 0;
     Atom symbol_species       = 0;
-  } well_known;
+  } known;
 
   std::unique_ptr<Class[]> classes;
   uint32_t class_count = 0;

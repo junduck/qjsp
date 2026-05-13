@@ -47,41 +47,41 @@ bool Runtime::init_atoms() {
     return true;
   };
 
-  if (!add("", well_known.empty_string))
+  if (!add("", known.empty_string))
     return false;
-  if (!add("prototype", well_known.prototype))
+  if (!add("prototype", known.prototype))
     return false;
-  if (!add("constructor", well_known.constructor))
+  if (!add("constructor", known.constructor))
     return false;
-  if (!add("length", well_known.length))
+  if (!add("length", known.length))
     return false;
-  if (!add("name", well_known.name))
+  if (!add("name", known.name))
     return false;
-  if (!add("toString", well_known.toString))
+  if (!add("toString", known.toString))
     return false;
-  if (!add("valueOf", well_known.valueOf))
+  if (!add("valueOf", known.valueOf))
     return false;
-  if (!add("eval", well_known.eval))
+  if (!add("eval", known.eval))
     return false;
-  if (!add("undefined", well_known.undefined))
+  if (!add("undefined", known.undefined))
     return false;
-  if (!add("of", well_known.of))
+  if (!add("of", known.of))
     return false;
-  if (!add("__proto__", well_known.__proto__))
+  if (!add("__proto__", known.__proto__))
     return false;
 
   // Well-known symbols
-  if (!add("Symbol.iterator", well_known.symbol_iterator, true))
+  if (!add("Symbol.iterator", known.symbol_iterator, true))
     return false;
-  if (!add("Symbol.asyncIterator", well_known.symbol_asyncIterator, true))
+  if (!add("Symbol.asyncIterator", known.symbol_asyncIterator, true))
     return false;
-  if (!add("Symbol.toPrimitive", well_known.symbol_toPrimitive, true))
+  if (!add("Symbol.toPrimitive", known.symbol_toPrimitive, true))
     return false;
-  if (!add("Symbol.toStringTag", well_known.symbol_toStringTag, true))
+  if (!add("Symbol.toStringTag", known.symbol_toStringTag, true))
     return false;
-  if (!add("Symbol.hasInstance", well_known.symbol_hasInstance, true))
+  if (!add("Symbol.hasInstance", known.symbol_hasInstance, true))
     return false;
-  if (!add("Symbol.species", well_known.symbol_species, true))
+  if (!add("Symbol.species", known.symbol_species, true))
     return false;
 
   return true;
@@ -172,7 +172,7 @@ void Runtime::run_gc() {
 
   std::vector<GCObjectHeader *> mark_worklist;
   for (auto *obj : gc_objects)
-    if (obj->gc_obj_type == GCObjType::js_context)
+    if (obj->gc_obj_type == GCObjType::js_object)
       obj->gc_mark(mark_worklist);
 
   while (!mark_worklist.empty()) {

@@ -12,8 +12,7 @@
 
 namespace qjsp {
 
-struct Runtime;
-struct Context;
+struct Engine;
 struct StrPrim;
 
 // ─── RegSlot ────────────────────────────────────────────────────────────────
@@ -116,7 +115,7 @@ struct BlockEnv {
 // ─── FunctionDef ────────────────────────────────────────────────────────────
 
 struct FunctionDef {
-  Runtime *rt         = nullptr;
+  Engine *e_          = nullptr;
   FunctionDef *parent = nullptr;
 
   // Instructions
@@ -183,7 +182,7 @@ struct FunctionDef {
   Atom filename = kAtomNull;
   std::string source;
 
-  FunctionDef(Runtime *r) : rt(r) {}
+  FunctionDef(Engine *e) : e_(e) {}
   ~FunctionDef() {
     for (auto *c : children)
       delete c;
@@ -230,8 +229,7 @@ struct FunctionDef {
 // ─── RegParseState ──────────────────────────────────────────────────────────
 
 struct RegParseState {
-  Runtime *rt;
-  Context *ctx;
+  Engine *e_;
   Lexer lexer;
   FunctionDef *cur_func = nullptr;
 
@@ -254,7 +252,7 @@ struct RegParseState {
   };
   ForPattern for_pattern_;
 
-  RegParseState(Runtime *rt_, Context *ctx_) : rt(rt_), ctx(ctx_) {}
+  RegParseState(Engine *e) : e_(e) {}
 
   // ── init ──────────────────────────────────────────────────────────────
 
@@ -386,7 +384,7 @@ enum Precedence : int {
 
 // ─── Lowering ───────────────────────────────────────────────────────────────
 
-FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx);
+FunctionBytecode *lower_reg(FunctionDef *fd, Engine *e);
 
 // ─── Operator metadata tables and accessors ─────────────────────────────────
 

@@ -1,6 +1,5 @@
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/reg_parser.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/value.hpp"
 #include <cstring>
 #include <gtest/gtest.h>
@@ -9,9 +8,8 @@
 using namespace qjsp;
 
 struct RegParserFixture : testing::Test {
-  std::unique_ptr<Runtime> rt  = std::make_unique<Runtime>();
-  std::unique_ptr<Context> ctx = std::make_unique<Context>(rt.get());
-  RegParseState ps{rt.get(), ctx.get()};
+  std::unique_ptr<Engine> e = std::make_unique<Engine>();
+  RegParseState ps{e.get()};
 
   bool compile(const char *source) {
     ps.init(source, "test.js");

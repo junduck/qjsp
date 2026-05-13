@@ -1,6 +1,6 @@
 #include "qjsp/value.hpp"
 #include "qjsp/atom.hpp"
-#include "qjsp/runtime.hpp"
+#include "qjsp/engine.hpp"
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -31,7 +31,6 @@ TEST(ValueSymbol, RoundTrip) {
   Value v = Value::symbol_from_atom(42);
   EXPECT_TRUE(v.is_symbol());
   EXPECT_FALSE(v.is_pointer());
-  EXPECT_FALSE(v.has_ref_count());
   EXPECT_EQ(v.as_symbol(), static_cast<Atom>(42));
 }
 
@@ -46,7 +45,7 @@ TEST(ValueSymbol, DistinctFromStrPrim) {
 TEST(ValueSymbol, NotPointer) {
   Value v = Value::symbol_from_atom(100);
   EXPECT_FALSE(v.is_pointer());
-  EXPECT_FALSE(v.is_null_ptr());
+  EXPECT_FALSE(v.is_nullptr());
 }
 
 TEST(ValueSymbol, DifferentAtomsAreDistinct) {
@@ -58,16 +57,16 @@ TEST(ValueSymbol, DifferentAtomsAreDistinct) {
 }
 
 TEST(ValueSymbol, CreateSymbolUnique) {
-  auto rt = std::make_unique<Runtime>();
-  Atom a  = rt->create_symbol("x");
-  Atom b  = rt->create_symbol("x");
+  auto e = std::make_unique<Engine>();
+  Atom a = e->create_symbol("x");
+  Atom b = e->create_symbol("x");
   EXPECT_NE(a, b);
-  EXPECT_TRUE(rt->atom_is_symbol(a));
-  EXPECT_TRUE(rt->atom_is_symbol(b));
+  EXPECT_TRUE(e->atom_is_symbol(a));
+  EXPECT_TRUE(e->atom_is_symbol(b));
 }
 
 TEST(ValueSymbol, PredefSymbolIsAtom) {
-  auto rt = std::make_unique<Runtime>();
-  Atom si = rt->well_known.symbol_iterator;
-  EXPECT_TRUE(rt->atom_is_symbol(si));
+  auto e = std::make_unique<Engine>();
+  Atom si = e->known[WellKnown::symbol_iterator];
+  EXPECT_TRUE(e->atom_is_symbol(si));
 }

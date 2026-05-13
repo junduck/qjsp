@@ -1,5 +1,4 @@
-#include "qjsp/runtime.hpp"
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/string.hpp"
 #include "qjsp/value.hpp"
 #include <cstring>
@@ -8,9 +7,8 @@
 
 using namespace qjsp;
 
-TEST(RuntimeContext, CreateAndDestroy) {
-  auto rt  = std::make_unique<Runtime>();
-  auto ctx = std::make_unique<Context>(rt.get());
+TEST(EngineCreate, CreateAndDestroy) {
+  auto e = std::make_unique<Engine>();
 }
 
 TEST(StrPrimOps, CreateAndCmp) {
@@ -23,13 +21,13 @@ TEST(StrPrimOps, CreateAndCmp) {
 }
 
 TEST(AtomIntern, Predefined) {
-  auto rt = std::make_unique<Runtime>();
-  EXPECT_EQ(rt->atom_view(rt->intern("prototype")), "prototype");
+  auto e = std::make_unique<Engine>();
+  EXPECT_EQ(e->atom_view(e->intern("prototype")), "prototype");
 }
 
 TEST(AtomIntern, Dynamic) {
-  auto rt = std::make_unique<Runtime>();
-  Atom a  = rt->intern("myKey");
+  auto e = std::make_unique<Engine>();
+  Atom a = e->intern("myKey");
   EXPECT_NE(a, kAtomNull);
-  EXPECT_EQ(rt->atom_view(a), "myKey");
+  EXPECT_EQ(e->atom_view(a), "myKey");
 }

@@ -88,6 +88,7 @@ struct Engine {
 
   Value global_obj     = Value::undefined_();
   Value global_var_obj = Value::undefined_();
+  Value array_proto    = Value::undefined_();
 
   // ── lifecycle ────────────────────────────────────────────────────────────
 

@@ -10,14 +10,16 @@ class RE2;
 
 namespace qjsp {
 
+struct Engine;
+
 struct RegExpObj : Object {
   std::unique_ptr<re2::RE2> regex;
-  uint8_t flags  = 0; // g,i,m,s,u,y
+  uint8_t flags  = 0;
   int last_index = 0;
 
-  static Value create(Context *ctx, StrPrim *pattern, StrPrim *flags_str);
+  static Value create(Engine *e, StrPrim *pattern, StrPrim *flags_str);
 };
 
-void init_regexp_prototype(Context *ctx);
+void init_regexp_prototype(Engine *e);
 
 } // namespace qjsp

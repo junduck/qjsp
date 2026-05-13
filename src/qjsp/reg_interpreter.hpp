@@ -6,8 +6,7 @@
 
 namespace qjsp {
 
-struct Context;
-struct Runtime;
+struct Engine;
 struct Object;
 struct StrPrim;
 struct VarRef;
@@ -15,15 +14,14 @@ struct ArrayObject;
 
 class RegInterpreter {
 public:
-  explicit RegInterpreter(Context *ctx) : ctx_(ctx) {}
+  explicit RegInterpreter(Engine *e) : e_(e) {}
 
   Value eval(FunctionBytecode *b);
   Value call_bytecode(FunctionBytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals);
   Value eval_source(const char *source, const char *filename = "<eval>");
 
 private:
-  Context *ctx_;
-  Runtime *rt() const;
+  Engine *e_;
   Object *global_obj() const;
 
   Value run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list = nullptr);

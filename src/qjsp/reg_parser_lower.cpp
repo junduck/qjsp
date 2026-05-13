@@ -1,7 +1,6 @@
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/reg_parser.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 #include <cassert>
 #include <cmath>
@@ -10,19 +9,18 @@
 namespace qjsp {
 // ─── Lowering ───────────────────────────────────────────────────────────────
 
-FunctionBytecode *lower_reg(FunctionDef *fd, Context *ctx) {
+FunctionBytecode *lower_reg(FunctionDef *fd, Engine *e) {
   auto *b      = new FunctionBytecode();
   b->ref_count = 1;
 
-  (void)ctx; // realm reference, not needed for RC-only bytecode
+  (void)e;
 
-  // Lower child functions first
   for (auto *child : fd->children) {
-    FunctionBytecode *child_b = lower_reg(child, ctx);
+    FunctionBytecode *child_b = lower_reg(child, e);
 
     // Replace the placeholder in cpool
     for (size_t i = 0; i < fd->cpool.size(); i++) {
-      if (fd->cpool[i].is_func_bytecode() && fd->cpool[i].as<FunctionBytecode>() == nullptr) {
+      if (fd->cpool[i].is_bytecode() && fd->cpool[i].as<FunctionBytecode>() == nullptr) {
         fd->cpool[i] = Value::bytecode(child_b);
         break;
       }

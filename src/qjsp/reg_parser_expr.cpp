@@ -1,5 +1,5 @@
 #include "qjsp/reg_parser.hpp"
-#include "qjsp/runtime.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/string.hpp"
 #include <cassert>
 #include <cstdio>
@@ -94,7 +94,7 @@ static RegSlot parse_ident(RegParseState *ps) {
   }
 
   int r  = ps->alloc_temp();
-  int ci = ps->cpool_add(ps->rt->atom_to_value(atom));
+  int ci = ps->cpool_add(ps->e_->atom_to_value(atom));
   ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(r), static_cast<uint8_t>(ps->cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
   ps->has_prefix_lvalue_  = true;
   ps->last_prefix_lvalue_ = {LValue::GLOBAL, -1, atom};
@@ -287,7 +287,7 @@ static RegSlot parse_dot_infix(RegParseState *ps, RegSlot obj) {
     return obj;
   Atom prop = ps->lexer.token.ident_atom;
   ps->next_token();
-  int ci = ps->cpool_add(ps->rt->atom_to_value(prop));
+  int ci = ps->cpool_add(ps->e_->atom_to_value(prop));
   int dst = ps->alloc_temp();
   ps->emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(dst), static_cast<uint8_t>(obj.reg), static_cast<uint8_t>(ci));
   ps->has_obj_reg_ = true;
@@ -655,20 +655,20 @@ RegSlot RegParseState::parse_object_literal() {
         }
       }
       if (!found) {
-        int ci = cpool_add(rt->atom_to_value(prop.key));
+        int ci = cpool_add(e_->atom_to_value(prop.key));
         emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(val_reg), static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
       }
-      int ci = cpool_add(rt->atom_to_value(prop.key));
+      int ci = cpool_add(e_->atom_to_value(prop.key));
       emit_iABC(RegOp::DEFINE_FIELD, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(val_reg));
       free_temp();
       free_temp();
       break;
     }
     case CoverProp::KeyValue: {
-      if (prop.key == rt->intern("__proto__")) {
+      if (prop.key == e_->intern("__proto__")) {
         emit_iABC(RegOp::SETPROTO, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(prop.value.reg), 0);
       } else {
-        int ci = cpool_add(rt->atom_to_value(prop.key));
+        int ci = cpool_add(e_->atom_to_value(prop.key));
         emit_iABC(RegOp::DEFINE_FIELD, static_cast<uint8_t>(obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(prop.value.reg));
       }
       free_temp();
@@ -742,7 +742,7 @@ bool RegParseState::parse_cover_property(CoverProp &out) {
 
   if (tok == TokenKind::StringLit) {
     auto sv = std::string_view{lexer.token.str_val.c_str(), lexer.token.str_len};
-    out.key = rt->intern(sv);
+    out.key = e_->intern(sv);
     next_token();
     if (lexer.token.kind != TokenKind::Colon) {
       out.kind = CoverProp::Shorthand;
@@ -758,7 +758,7 @@ bool RegParseState::parse_cover_property(CoverProp &out) {
     double d = lexer.token.num_val;
     char buf[32];
     snprintf(buf, sizeof(buf), "%.15g", d);
-    out.key = rt->intern(buf);
+    out.key = e_->intern(buf);
     next_token();
     if (!expect(TokenKind::Colon))
       return false;
@@ -970,7 +970,7 @@ void RegParseState::emit_lvalue_load(LValue lv, RegSlot dst) {
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(dst.reg), static_cast<uint8_t>(cur_func->args[static_cast<size_t>(lv.var_idx)].reg_index), 0);
     break;
   case LValue::FIELD: {
-    int ci = cpool_add(rt->atom_to_value(lv.prop));
+    int ci = cpool_add(e_->atom_to_value(lv.prop));
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(dst.reg), static_cast<uint8_t>(lv.obj_reg), static_cast<uint8_t>(ci));
     break;
   }
@@ -978,7 +978,7 @@ void RegParseState::emit_lvalue_load(LValue lv, RegSlot dst) {
     emit_iABC(RegOp::GETELEM, static_cast<uint8_t>(dst.reg), static_cast<uint8_t>(lv.obj_reg), static_cast<uint8_t>(lv.key_reg));
     break;
   case LValue::GLOBAL: {
-    int ci = cpool_add(rt->atom_to_value(lv.prop));
+    int ci = cpool_add(e_->atom_to_value(lv.prop));
     emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(dst.reg), static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci));
     break;
   }
@@ -999,7 +999,7 @@ void RegParseState::emit_lvalue_store(LValue lv, RegSlot val) {
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(cur_func->args[static_cast<size_t>(lv.var_idx)].reg_index), static_cast<uint8_t>(val.reg), 0);
     break;
   case LValue::FIELD: {
-    int ci = cpool_add(rt->atom_to_value(lv.prop));
+    int ci = cpool_add(e_->atom_to_value(lv.prop));
     emit_iABC(RegOp::SETFIELD, static_cast<uint8_t>(lv.obj_reg), static_cast<uint8_t>(ci), static_cast<uint8_t>(val.reg));
     break;
   }
@@ -1007,7 +1007,7 @@ void RegParseState::emit_lvalue_store(LValue lv, RegSlot val) {
     emit_iABC(RegOp::SETELEM, static_cast<uint8_t>(lv.obj_reg), static_cast<uint8_t>(lv.key_reg), static_cast<uint8_t>(val.reg));
     break;
   case LValue::GLOBAL: {
-    int ci = cpool_add(rt->atom_to_value(lv.prop));
+    int ci = cpool_add(e_->atom_to_value(lv.prop));
     emit_iABC(RegOp::SETFIELD, static_cast<uint8_t>(cur_func->alloc.this_reg()), static_cast<uint8_t>(ci), static_cast<uint8_t>(val.reg));
     break;
   }

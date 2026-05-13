@@ -44,6 +44,7 @@ target_link_libraries(qjsp_headers INTERFACE)
 add_library(qjsp::headers ALIAS qjsp_headers)
 
 add_library(qjsp
+  src/qjsp/engine.cpp
   src/qjsp/runtime.cpp
   src/qjsp/context.cpp
   src/qjsp/value.cpp

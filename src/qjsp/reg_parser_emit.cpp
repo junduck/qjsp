@@ -1,7 +1,6 @@
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/reg_parser.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 #include <cassert>
 #include <cmath>
@@ -160,7 +159,7 @@ void FunctionDef::pop_break() { top_break = top_break->prev; }
 // ─── RegParseState ──────────────────────────────────────────────────────────
 
 void RegParseState::init(const char *source, const char *filename) {
-  lexer.init(rt, filename, reinterpret_cast<const uint8_t *>(source), std::strlen(source));
+  lexer.init(e_, filename, reinterpret_cast<const uint8_t *>(source), std::strlen(source));
 }
 
 bool RegParseState::expect(TokenKind tok) {

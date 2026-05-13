@@ -1,7 +1,6 @@
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/reg_parser.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 #include <cassert>
 #include <cmath>
@@ -257,7 +256,7 @@ void RegParseState::parse_switch_statement() {
         if (lexer.token.kind == TokenKind::Number) {
           ci.cpool_idx = cpool_add(Value::float64(lexer.token.num_val));
         } else if (lexer.token.kind == TokenKind::StringLit) {
-          ci.cpool_idx = cpool_add(rt->atom_to_value(rt->intern(lexer.token.str_val)));
+          ci.cpool_idx = cpool_add(e_->atom_to_value(e_->intern(lexer.token.str_val)));
         }
         next_token();
       }
@@ -521,7 +520,7 @@ void RegParseState::parse_for_statement() {
     RegSlot iterable_slot = parse_expr();
     expect(TokenKind::RParen);
 
-    int si_cpool = cpool_add(rt->atom_to_value(rt->well_known.symbol_iterator));
+    int si_cpool = cpool_add(e_->atom_to_value(e_->known[WellKnown::symbol_iterator]));
 
     // Pre-allocate all temps for the entire for-of loop.
     // This avoids LIFO free-order corruption.
@@ -539,9 +538,9 @@ void RegParseState::parse_for_statement() {
     emit_iABC(RegOp::MOVE, static_cast<uint8_t>(this_reg), static_cast<uint8_t>(iterable_slot.reg), 0);
     emit_iABC(RegOp::CALL_M, static_cast<uint8_t>(iterator_reg), static_cast<uint8_t>(call_base), 0);
 
-    int next_cpool  = cpool_add(rt->atom_to_value(rt->intern("next")));
-    int done_cpool  = cpool_add(rt->atom_to_value(rt->intern("done")));
-    int value_cpool = cpool_add(rt->atom_to_value(rt->intern("value")));
+    int next_cpool  = cpool_add(e_->atom_to_value(e_->intern("next")));
+    int done_cpool  = cpool_add(e_->atom_to_value(e_->intern("done")));
+    int value_cpool = cpool_add(e_->atom_to_value(e_->intern("value")));
 
     int loop_label = new_label();
     int end_label  = new_label();
@@ -576,7 +575,7 @@ void RegParseState::parse_for_statement() {
       }
     } else if (for_pattern_.is_object && !for_pattern_.binds.empty()) {
       for (auto &b : for_pattern_.binds) {
-        int ci = cpool_add(rt->atom_to_value(b.prop));
+        int ci = cpool_add(e_->atom_to_value(b.prop));
         emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(b.reg), static_cast<uint8_t>(value_reg), static_cast<uint8_t>(ci));
       }
     } else {
@@ -719,7 +718,7 @@ void RegParseState::parse_break_continue(bool is_cont) {
   // No matching loop found — emit a runtime SyntaxError
   {
     int err_reg = alloc_temp();
-    int ci      = cpool_add(rt->atom_to_value(rt->intern("SyntaxError: illegal break/continue")));
+    int ci      = cpool_add(e_->atom_to_value(e_->intern("SyntaxError: illegal break/continue")));
     emit_iABx(RegOp::LOADK, static_cast<uint8_t>(err_reg), static_cast<uint16_t>(ci));
     emit_iABC(RegOp::THROW, 0, static_cast<uint8_t>(err_reg), 0);
     free_temp();
@@ -992,7 +991,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         next_token();
         RegSlot rhs = parse_assign_expr();
         for (auto &b : binds) {
-          int ci       = cpool_add(rt->atom_to_value(b.prop));
+          int ci       = cpool_add(e_->atom_to_value(b.prop));
           int elem_reg = alloc_temp();
           emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(ci));
 
@@ -1083,7 +1082,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
 
 FunctionDef *RegParseState::parse_function_decl(Atom name, bool is_expr, FunctionKind func_kind) {
   FunctionDef *parent_fd = cur_func;
-  auto *fd               = new FunctionDef(rt);
+  auto *fd               = new FunctionDef(e_);
   fd->parent             = parent_fd;
   fd->func_name          = name;
   fd->func_kind          = func_kind;
@@ -1157,7 +1156,7 @@ fail:
 // ─── Compilation entry ──────────────────────────────────────────────────────
 
 bool RegParseState::compile() {
-  auto *fd              = new FunctionDef(rt);
+  auto *fd              = new FunctionDef(e_);
   fd->is_eval           = true;
   fd->is_global_var     = true;
   fd->has_this_binding  = true;

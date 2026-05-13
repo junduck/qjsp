@@ -1,8 +1,6 @@
 #include "qjsp/context.hpp"
-#include "qjsp/array.hpp"
 #include "qjsp/class.hpp"
 #include "qjsp/object.hpp"
-#include "qjsp/regexp.hpp"
 #include "qjsp/runtime.hpp"
 #include "qjsp/shape.hpp"
 
@@ -11,7 +9,7 @@ namespace qjsp {
 Context::Context(Runtime *rt) : rt(rt) {
   rt->maybe_trigger_gc(sizeof(Context));
   ref_count   = 1;
-  gc_obj_type = GCObjType::js_context;
+  gc_obj_type = GCObjType::js_object;
   is_marked   = false;
   rt->add_gc_object(this);
 
@@ -27,12 +25,6 @@ Context::Context(Runtime *rt) : rt(rt) {
   for (uint32_t i = static_cast<uint32_t>(ClassID::object); i < class_proto_count; ++i) {
     rt->classes[i].class_name = kAtomNull;
   }
-
-  auto global = Object::create(rt, Value::undefined_(), ClassID::global_object);
-  global_obj  = global;
-  setup_global(this, global.as<Object>());
-  init_array_prototype(this);
-  init_regexp_prototype(this);
 }
 
 Context::~Context() {

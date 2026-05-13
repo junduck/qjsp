@@ -8,9 +8,7 @@
 
 namespace qjsp {
 
-struct Runtime;
-
-// ─── Token ──────────────────────────────────────────────────────────────────
+struct Engine;
 
 struct Token {
   TokenKind kind     = TokenKind::Eof;
@@ -39,7 +37,7 @@ struct Token {
 // ─── Lexer ──────────────────────────────────────────────────────────────────
 
 struct Lexer {
-  Runtime *rt              = nullptr;
+  Engine *e_              = nullptr;
   const char *filename     = nullptr;
   const uint8_t *buf_start = nullptr;
   const uint8_t *buf_ptr   = nullptr;
@@ -49,7 +47,7 @@ struct Lexer {
   bool got_lf              = false;
   bool allow_html_comments = false;
 
-  void init(Runtime *rt, const char *filename, const uint8_t *source, size_t source_len);
+  void init(Engine *e, const char *filename, const uint8_t *source, size_t source_len);
   void reset(const uint8_t *source, size_t source_len);
   size_t buf_pos() const { return static_cast<size_t>(buf_ptr - buf_start); }
 

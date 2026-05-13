@@ -16,8 +16,6 @@ struct ModuleDef;
 
 enum class AutoInitID : uint8_t { prototype, module_ns, prop };
 
-constexpr int kInterruptCounterInit = 10000;
-
 struct Context : GCObjectHeader {
   Runtime *rt = nullptr;
 
@@ -51,7 +49,7 @@ struct Context : GCObjectHeader {
 
   void *user_opaque      = nullptr;
   uint64_t random_state  = 0;
-  int interrupt_counter  = kInterruptCounterInit;
+  int interrupt_counter  = 0;
   int binary_object_size = 0;
 
   uint16_t binary_object_count = 0;

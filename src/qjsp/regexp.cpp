@@ -1,13 +1,12 @@
 #include "qjsp/regexp.hpp"
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/object.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 #include <re2/re2.h>
 
 namespace qjsp {
 
-Value RegExpObj::create(Context *ctx, StrPrim *pattern, StrPrim *flags_str) {
+Value RegExpObj::create(Engine *e, StrPrim *pattern, StrPrim *flags_str) {
   re2::StringPiece pat(pattern->data, pattern->len());
   re2::RE2::Options opts;
 
@@ -46,17 +45,15 @@ Value RegExpObj::create(Context *ctx, StrPrim *pattern, StrPrim *flags_str) {
   auto *obj        = new RegExpObj();
   obj->ref_count   = 1;
   obj->gc_obj_type = GCObjType::js_object;
-  obj->class_id    = ClassID::regexp;
-  obj->proto       = ctx->regexp_proto;
+  obj->clsid       = Builtin::object;
+  obj->proto       = Value::undefined_();
   obj->regex       = std::move(compiled);
   obj->flags       = flags;
-  ctx->rt->add_gc_object(obj);
+  e->add_gc_object(obj);
   return Value::object(obj);
 }
 
-// ── Prototype initialisation ────────────────────────────────────────────
-
-static Value regexp_test(Context *ctx, Value this_val, int argc, const Value *argv) {
+static Value regexp_test(Engine *e, Value this_val, int argc, const Value *argv) {
   auto *obj = this_val.as<RegExpObj>();
   if (!obj || argc < 1)
     return Value::bool_(false);
@@ -70,11 +67,10 @@ static Value regexp_test(Context *ctx, Value this_val, int argc, const Value *ar
   return Value::bool_(matched);
 }
 
-void init_regexp_prototype(Context *ctx) {
-  auto proto   = Object::create(ctx->rt, Value::undefined_(), ClassID::regexp);
-  auto test_fn = CFunctionObj::create(ctx, regexp_test, "test", 1);
-  proto.as<Object>()->set_own(ctx->rt, ctx->rt->intern("test"), test_fn);
-  ctx->regexp_proto = proto;
+void init_regexp_prototype(Engine *e) {
+  auto proto   = Object::create(e, Value::undefined_(), Builtin::object);
+  auto test_fn = CFunctionObj::create(e, regexp_test, "test", 1);
+  proto.as<Object>()->set_own(e, e->intern("test"), test_fn);
 }
 
 } // namespace qjsp

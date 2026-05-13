@@ -1,6 +1,5 @@
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/reg_interpreter.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/value.hpp"
 #include <cstring>
 #include <gtest/gtest.h>
@@ -9,9 +8,8 @@
 using namespace qjsp;
 
 struct RegInterpFixture : testing::Test {
-  std::unique_ptr<Runtime> rt  = std::make_unique<Runtime>();
-  std::unique_ptr<Context> ctx = std::make_unique<Context>(rt.get());
-  RegInterpreter interp{ctx.get()};
+  std::unique_ptr<Engine> e = std::make_unique<Engine>();
+  RegInterpreter interp{e.get()};
 
   Value eval(const char *source) { return interp.eval_source(source); }
 };

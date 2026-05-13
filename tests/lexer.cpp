@@ -1,9 +1,6 @@
-#include "qjsp/context.hpp"
+#include "qjsp/engine.hpp"
 #include "qjsp/lexer.hpp"
 #include "qjsp/object.hpp"
-#include "qjsp/reg_interpreter.hpp"
-#include "qjsp/reg_parser.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 #include "qjsp/value.hpp"
 #include <cstring>
@@ -11,13 +8,11 @@
 
 using namespace qjsp;
 
-// ─── Lexer ──────────────────────────────────────────────────────────────────
-
 struct LexerFixture : testing::Test {
-  std::unique_ptr<Runtime> rt = std::make_unique<Runtime>();
+  std::unique_ptr<Engine> e = std::make_unique<Engine>();
   Lexer lexer;
 
-  void init_lexer(const char *source) { lexer.init(rt.get(), "test.js", reinterpret_cast<const uint8_t *>(source), std::strlen(source)); }
+  void init_lexer(const char *source) { lexer.init(e.get(), "test.js", reinterpret_cast<const uint8_t *>(source), std::strlen(source)); }
 };
 
 TEST_F(LexerFixture, Eof) {
@@ -42,19 +37,19 @@ TEST_F(LexerFixture, Identifiers) {
   init_lexer("foo bar _x $y");
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.kind, TokenKind::Identifier);
-  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "foo");
+  EXPECT_EQ(e->atom_view(lexer.token.ident_atom), "foo");
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.kind, TokenKind::Identifier);
-  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "bar");
+  EXPECT_EQ(e->atom_view(lexer.token.ident_atom), "bar");
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.kind, TokenKind::Identifier);
-  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "_x");
+  EXPECT_EQ(e->atom_view(lexer.token.ident_atom), "_x");
 
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.kind, TokenKind::Identifier);
-  EXPECT_EQ(rt->atom_view(lexer.token.ident_atom), "$y");
+  EXPECT_EQ(e->atom_view(lexer.token.ident_atom), "$y");
 }
 
 TEST_F(LexerFixture, Keywords) {
