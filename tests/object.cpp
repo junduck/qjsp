@@ -672,3 +672,30 @@ TEST_F(ObjFixture, ArrayCtorViaNewPattern) {
   EXPECT_EQ(arr->proto.as<Object>(), proto_val.as<Object>()) << "new Array().__proto__ === Array.prototype";
   EXPECT_EQ(arr->elements.size(), 2u);
 }
+
+// ── FCLOSURE auto‑prototype ─────────────────────────────────────────────
+
+TEST_F(ObjFixture, FclosureCreatesPrototype) {
+  RegInterpreter interp(e.get());
+  auto result = interp.eval_source(
+      "function add(a, b) { return a + b; }; add",
+      "<fclosure_proto>");
+
+  ASSERT_TRUE(result.is_object());
+  auto *fn = result.as<Object>();
+
+  Value proto = fn->get_own(e.get(), e->intern("prototype"));
+  EXPECT_TRUE(proto.is_object()) << "function .prototype auto‑created by FCLOSURE";
+
+  Value cons = proto.as<Object>()->get_own(e.get(), e->intern("constructor"));
+  EXPECT_EQ(cons.as<Object>(), fn) << "proto.constructor === fn";
+}
+
+TEST_F(ObjFixture, FclosureCanBeCalled) {
+  RegInterpreter interp(e.get());
+  auto result = interp.eval_source(
+      "function add(a, b) { return a + b; }; add(3, 4)",
+      "<fclosure_call>");
+  EXPECT_TRUE(result.is_int32());
+  EXPECT_EQ(result.as_int32(), 7);
+}

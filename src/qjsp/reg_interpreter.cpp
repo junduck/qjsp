@@ -634,6 +634,14 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
             cl->var_refs[static_cast<size_t>(j)] = vr;
           }
         }
+        // Auto-create prototype for constructable functions
+        if (inner_bc->has_prototype()) {
+          auto proto_atom = e_->intern("prototype");
+          auto cons_atom  = e_->intern("constructor");
+          Value proto_obj = Object::create(e_, e_->get_proto(Builtin::object), Builtin::object);
+          proto_obj.as<Object>()->set_own(e_, cons_atom, closure);
+          cl->set_own(e_, proto_atom, proto_obj);
+        }
         regs[i.a()] = closure;
       } else {
         regs[i.a()] = Value::undefined_();
