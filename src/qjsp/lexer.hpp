@@ -1,7 +1,7 @@
 #pragma once
 
-#include "qjsp/atom.hpp"
-#include "qjsp/token_kind.hpp"
+#include "atom.hpp"
+#include "token_kind.hpp"
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -37,7 +37,7 @@ struct Token {
 // ─── Lexer ──────────────────────────────────────────────────────────────────
 
 struct Lexer {
-  Engine *e_              = nullptr;
+  Engine *e_               = nullptr;
   const char *filename     = nullptr;
   const uint8_t *buf_start = nullptr;
   const uint8_t *buf_ptr   = nullptr;

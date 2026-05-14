@@ -50,6 +50,7 @@ add_library(qjsp
   src/qjsp/object.cpp
   src/qjsp/array.cpp
   src/qjsp/function.cpp
+  src/qjsp/primitive.cpp
   src/qjsp/lexer.cpp
   src/qjsp/unicode_id.cpp
   src/qjsp/varref.cpp

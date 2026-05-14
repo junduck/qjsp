@@ -154,6 +154,9 @@ enum class RegOp : uint8_t {
   // ── regexp (1) ─────────────────────────────────────────────────────────
   REGEXP,
 
+  // ── instanceof (1) ─────────────────────────────────────────────────────
+  INSTANCEOF,
+
   NUM_OPCODES // sentinel count
 };
 

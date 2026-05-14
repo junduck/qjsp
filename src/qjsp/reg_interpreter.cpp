@@ -3,6 +3,7 @@
 #include "qjsp/engine.hpp"
 #include "qjsp/function.hpp"
 #include "qjsp/object.hpp"
+#include "qjsp/primitive.hpp"
 #include "qjsp/reg_opcode.hpp"
 #include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/reg_parser.hpp"
@@ -20,18 +21,6 @@ namespace qjsp {
 Object *RegInterpreter::global_obj() const { return e_->global_obj.as<Object>(); }
 
 // ─── Value helpers ──────────────────────────────────────────────────────────
-
-static bool is_truthy(Value v) {
-  if (v.is_null() || v.is_undefined())
-    return false;
-  if (v.is_bool())
-    return v.as_bool();
-  if (v.is_int32())
-    return v.as_int32() != 0;
-  if (v.is_double())
-    return v.as_double() != 0.0;
-  return true;
-}
 
 static Atom cpool_to_atom(Engine *e, Value field_val) {
   if (field_val.is_string())
@@ -246,7 +235,7 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
       break;
     }
     case RegOp::LNOT:
-      regs[i.a()] = Value::bool_(!is_truthy(regs[i.b()]));
+      regs[i.a()] = Value::bool_(regs[i.b()].is_falsy());
       break;
 
     case RegOp::INC: {
@@ -341,12 +330,12 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
       break;
 
     case RegOp::IS_FALSE:
-      if (!is_truthy(regs[i.a()]))
+      if (regs[i.a()].is_falsy())
         ip += i.sbx();
       break;
 
     case RegOp::IS_TRUE:
-      if (is_truthy(regs[i.a()]))
+      if (regs[i.a()].is_truthy())
         ip += i.sbx();
       break;
 
@@ -595,6 +584,10 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
       }
       break;
     }
+
+    case RegOp::INSTANCEOF:
+      regs[i.a()] = Value::bool_(instanceof(e_, regs[i.b()], regs[i.c()]));
+      break;
 
     case RegOp::FCLOSURE: {
       // Load bytecode from cpool

@@ -109,6 +109,9 @@ inline constexpr RegOpInfo kRegOpInfo[] = {
 
     // ── regexp (1) ─────────────────────────────────────────────────────────
     {"REGEXP", InstrFmt::ABx}, //  A=dst, Bx=cpool_idx (pattern; flags at idx+1)
+
+    // ── instanceof (1) ─────────────────────────────────────────────────────
+    {"INSTANCEOF", InstrFmt::ABC}, //  A=result, B=obj_reg, C=ctor_reg
 };
 
 static_assert(sizeof(kRegOpInfo) / sizeof(kRegOpInfo[0]) == static_cast<int>(RegOp::NUM_OPCODES), "kRegOpInfo size mismatch");
