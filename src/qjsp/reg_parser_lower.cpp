@@ -9,18 +9,18 @@
 namespace qjsp {
 // ─── Lowering ───────────────────────────────────────────────────────────────
 
-FunctionBytecode *lower_reg(FunctionDef *fd, Engine *e) {
-  auto *b      = new FunctionBytecode();
+Bytecode *lower_reg(FunctionDef *fd, Engine *e) {
+  auto *b      = new Bytecode();
   b->ref_count = 1;
 
   (void)e;
 
   for (auto *child : fd->children) {
-    FunctionBytecode *child_b = lower_reg(child, e);
+    Bytecode *child_b = lower_reg(child, e);
 
     // Replace the placeholder in cpool
     for (size_t i = 0; i < fd->cpool.size(); i++) {
-      if (fd->cpool[i].is_bytecode() && fd->cpool[i].as<FunctionBytecode>() == nullptr) {
+      if (fd->cpool[i].is_bytecode() && fd->cpool[i].as<Bytecode>() == nullptr) {
         fd->cpool[i] = Value::bytecode(child_b);
         break;
       }

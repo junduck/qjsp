@@ -16,15 +16,15 @@ class RegInterpreter {
 public:
   explicit RegInterpreter(Engine *e) : e_(e) {}
 
-  Value eval(FunctionBytecode *b);
-  Value call_bytecode(FunctionBytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals);
+  Value eval(Bytecode *b);
+  Value call_bytecode(Bytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals);
   Value eval_source(const char *source, const char *filename = "<eval>");
 
 private:
   Engine *e_;
   Object *global_obj() const;
 
-  Value run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list = nullptr);
+  Value run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list = nullptr);
 
   Value get_field(Value obj, Atom name);
   void put_field(Value obj, Atom name, Value val);
@@ -32,7 +32,7 @@ private:
   struct CatchFrame {
     int exc_reg;
     int target_pc;
-    const FunctionBytecode *bytecode;
+    const Bytecode *bytecode;
   };
   std::vector<CatchFrame> catch_stack_;
   std::vector<int> return_stack_; // GOSUB/RET return addresses

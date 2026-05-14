@@ -49,6 +49,7 @@ add_library(qjsp
   src/qjsp/string.cpp
   src/qjsp/object.cpp
   src/qjsp/array.cpp
+  src/qjsp/function.cpp
   src/qjsp/lexer.cpp
   src/qjsp/unicode_id.cpp
   src/qjsp/varref.cpp

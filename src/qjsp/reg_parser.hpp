@@ -303,7 +303,7 @@ struct RegParseState {
 
   // Track the object register for method calls (obj.method())
   int last_obj_reg_ = -1;
-  bool has_obj_reg_  = false;
+  bool has_obj_reg_ = false;
 
   // ── object / array ────────────────────────────────────────────────────
 
@@ -384,7 +384,7 @@ enum Precedence : int {
 
 // ─── Lowering ───────────────────────────────────────────────────────────────
 
-FunctionBytecode *lower_reg(FunctionDef *fd, Engine *e);
+Bytecode *lower_reg(FunctionDef *fd, Engine *e);
 
 // ─── Operator metadata tables and accessors ─────────────────────────────────
 

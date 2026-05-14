@@ -1,3 +1,4 @@
+#include "qjsp/function.hpp"
 #include "qjsp/engine.hpp"
 #include "qjsp/reg_interpreter.hpp"
 #include "qjsp/value.hpp"

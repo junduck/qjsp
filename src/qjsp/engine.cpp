@@ -1,6 +1,8 @@
+#include "qjsp/function.hpp"
 #include "qjsp/engine.hpp"
 #include "qjsp/array.hpp"
 #include "qjsp/class.hpp"
+#include "qjsp/function.hpp"
 #include "qjsp/object.hpp"
 #include "qjsp/regexp.hpp"
 #include "qjsp/shape.hpp"
@@ -68,6 +70,7 @@ Engine::Engine() {
 
 void Engine::init_builtins() {
   Object::setup(this);
+  Function::setup(this);
   ArrayObject::setup(this);
   RegExpObj::setup(this);
 }
@@ -101,6 +104,7 @@ bool Engine::init_atoms() {
   return true;
 }
 
+// TODO: populate a frequently used atom list like known
 Atom Engine::intern(std::string_view sv) {
   auto it = atom_map.find(sv);
   if (it != atom_map.end())

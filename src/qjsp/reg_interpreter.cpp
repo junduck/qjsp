@@ -1,6 +1,7 @@
 #include "qjsp/reg_interpreter.hpp"
 #include "qjsp/array.hpp"
 #include "qjsp/engine.hpp"
+#include "qjsp/function.hpp"
 #include "qjsp/object.hpp"
 #include "qjsp/reg_opcode.hpp"
 #include "qjsp/reg_opcode_info.hpp"
@@ -15,17 +16,6 @@
 #include <cstring>
 
 namespace qjsp {
-
-// ── BytecodeFunction virtuals ──────────────────────────────────────────────
-
-Value BytecodeFunction::call(Engine *e, Value this_val, int argc, const Value *argv) {
-  std::vector<VarRef *> upvals;
-  upvals.reserve(var_refs.size());
-  for (auto &v : var_refs)
-    upvals.push_back(v.as<VarRef>());
-  RegInterpreter interp{e};
-  return interp.call_bytecode(bytecode, this_val, argc, argv, upvals.data());
-}
 
 Object *RegInterpreter::global_obj() const { return e_->global_obj.as<Object>(); }
 
@@ -122,7 +112,7 @@ void RegInterpreter::put_field(Value obj, Atom name, Value val) {
 
 // ─── Run bytecode ───────────────────────────────────────────────────────────
 
-Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list) {
+Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, std::vector<VarRef *> *close_list) {
   const auto *ip  = reinterpret_cast<const Instruction *>(b->byte_code_buf.get());
   const auto *end = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + b->instr_count * 4);
 
@@ -522,34 +512,29 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       int argc       = i.c();
       Value func_val = regs[func_reg];
 
-      if (func_val.is_object()) {
-        auto *obj = func_val.as<Object>();
-        if (obj->is_callable()) {
-          auto *callable = static_cast<Callable *>(obj);
-          if (callable->is_bytecode()) {
-            auto *bf = static_cast<BytecodeFunction *>(callable);
-            std::vector<VarRef *> call_upvals;
-            call_upvals.reserve(bf->var_refs.size());
-            for (auto &v : bf->var_refs)
-              call_upvals.push_back(v.as<VarRef>());
-            Value call_ret = call_bytecode(bf->bytecode, Value::undefined_(), argc, &regs[func_reg + 1], call_upvals.data());
-            if (call_ret.is_exception()) {
-              if (!catch_stack_.empty() && catch_stack_.back().bytecode == b) {
-                auto cf = catch_stack_.back();
-                catch_stack_.pop_back();
-                regs[cf.exc_reg] = pending_exception_;
-                ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + cf.target_pc * 4);
-              } else {
-                return Value::exception();
-              }
-              break;
+      if (func_val.is_callable()) {
+        auto *callable = static_cast<Callable *>(func_val.as<Object>());
+        if (callable->is_bytecode()) {
+          auto *bf = static_cast<BFunctionObj *>(callable);
+          std::vector<VarRef *> call_upvals;
+          call_upvals.reserve(bf->var_refs.size());
+          for (auto &v : bf->var_refs)
+            call_upvals.push_back(v.as<VarRef>());
+          Value call_ret = call_bytecode(bf->bytecode, Value::undefined_(), argc, &regs[func_reg + 1], call_upvals.data());
+          if (call_ret.is_exception()) {
+            if (!catch_stack_.empty() && catch_stack_.back().bytecode == b) {
+              auto cf = catch_stack_.back();
+              catch_stack_.pop_back();
+              regs[cf.exc_reg] = pending_exception_;
+              ip               = reinterpret_cast<const Instruction *>(b->byte_code_buf.get() + cf.target_pc * 4);
+            } else {
+              return Value::exception();
             }
-            regs[i.a()] = call_ret;
-          } else {
-            regs[i.a()] = callable->call(e_, Value::undefined_(), argc, &regs[func_reg + 1]);
+            break;
           }
+          regs[i.a()] = call_ret;
         } else {
-          regs[i.a()] = Value::undefined_();
+          regs[i.a()] = callable->call(e_, Value::undefined_(), argc, &regs[func_reg + 1]);
         }
       } else {
         regs[i.a()] = Value::undefined_();
@@ -563,23 +548,38 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       Value func_val = regs[func_reg];
       Value this_val = regs[func_reg + 1];
 
-      if (func_val.is_object()) {
-        auto *obj = func_val.as<Object>();
-        if (obj->is_callable()) {
-          regs[i.a()] = static_cast<Callable *>(obj)->call(e_, this_val, argc, &regs[func_reg + 2]);
-        } else {
-          regs[i.a()] = Value::undefined_();
-        }
+      if (func_val.is_callable()) {
+        regs[i.a()] = static_cast<Callable *>(func_val.as<Object>())->call(e_, this_val, argc, &regs[func_reg + 2]);
       } else {
         regs[i.a()] = Value::undefined_();
       }
       break;
     }
 
-    case RegOp::CTOR:
-      // Placeholder: same as CALL for now
-      regs[i.a()] = Value::undefined_();
+    case RegOp::CTOR: {
+      int func_reg   = i.b();
+      int argc       = i.c();
+      Value func_val = regs[func_reg];
+
+      if (!func_val.is_callable()) {
+        regs[i.a()] = Value::undefined_();
+        break;
+      }
+
+      // 1. constructor.prototype
+      auto *ctor_obj  = func_val.as<Object>();
+      Value proto_val = ctor_obj->get(e_->intern("prototype"));
+
+      // 2. Create object with that prototype
+      Value new_obj = Object::create(e_, proto_val.is_object() ? proto_val : e_->get_proto(Builtin::object), Builtin::object);
+
+      // 3. Call constructor with this = new_obj
+      Value result = static_cast<Callable *>(ctor_obj)->call(e_, new_obj, argc, &regs[func_reg + 1]);
+
+      // 4. If constructor returns an object, use it; otherwise use new_obj
+      regs[i.a()] = result.is_object() ? result : new_obj;
       break;
+    }
 
     case RegOp::REGEXP: {
       auto ci = i.bx();
@@ -600,9 +600,9 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
       // Load bytecode from cpool
       auto ci = i.bx();
       if (ci < b->cpool_count && b->cpool[ci].is_bytecode()) {
-        auto *inner_bc = b->cpool[ci].as<FunctionBytecode>();
-        auto closure   = BytecodeFunction::create(e_, inner_bc);
-        auto *cl       = closure.as<BytecodeFunction>();
+        auto *inner_bc = b->cpool[ci].as<Bytecode>();
+        auto closure   = BFunctionObj::create(e_, inner_bc);
+        auto *cl       = closure.as<BFunctionObj>();
 
         // Create VarRefs for captured variables from the current frame
         int cv_count = static_cast<int>(inner_bc->closure_var_count);
@@ -767,7 +767,7 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
 // ─── Call bytecode ──────────────────────────────────────────────────────────
 
-Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals) {
+Value RegInterpreter::call_bytecode(Bytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals) {
   uint32_t total_regs = b->reg_count > 0 ? b->reg_count : 256;
   auto regs           = std::make_unique<Value[]>(total_regs);
 
@@ -793,7 +793,7 @@ Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int arg
 
 // ─── Eval ───────────────────────────────────────────────────────────────────
 
-Value RegInterpreter::eval(FunctionBytecode *b) {
+Value RegInterpreter::eval(Bytecode *b) {
   if (!b)
     return Value::undefined_();
   return call_bytecode(b, e_->global_obj, 0, nullptr, nullptr);

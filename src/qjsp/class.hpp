@@ -8,11 +8,13 @@ namespace qjsp {
 enum class Builtin : uint16_t {
   object = 0,
   array,
+  function,
   regexp,
 
   BuiltinCount
 };
 
+#if REMOVE_OUTDATED_CODE
 enum class ClassID : uint16_t {
   object = 1,
   array,
@@ -98,5 +100,5 @@ enum class ErrorEnum {
 };
 
 constexpr uint32_t kInvalidClassID = 0;
-
+#endif
 } // namespace qjsp

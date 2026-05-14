@@ -20,7 +20,7 @@ Value::~Value() {
     delete static_cast<VarRef *>(as_pointer());
     break;
   case RCType::Bytecode:
-    delete static_cast<FunctionBytecode *>(as_pointer());
+    delete static_cast<Bytecode *>(as_pointer());
     break;
   case RCType::BigInt:
     delete static_cast<Bigint *>(as_pointer());

@@ -40,6 +40,10 @@
 //! 1 VarRef
 //! 2 Bytecode
 //! 3 BigInt
+//!
+//! Obj sub types:
+//! 0 Object   (plain)
+//! 1 Callable (CFunctionObj / BFunctionObj)  — is_callable() returns true
 
 #pragma once
 
@@ -52,7 +56,7 @@
 namespace qjsp {
 
 struct VarRef;
-struct FunctionBytecode;
+struct Bytecode;
 
 constexpr int kTagShift         = 48;
 constexpr uint64_t kTagMask     = 0xFFFFull << kTagShift;
@@ -78,7 +82,8 @@ enum class RCType : uintptr_t {
   BigInt   = 3,
 };
 enum class ObjType : uintptr_t {
-  Object = 0,
+  Object   = 0,
+  Callable = 1,
 };
 
 // ─── Canonical quiet NaN ───────────────────────────────────────────────────
@@ -160,6 +165,13 @@ struct Value {
     return Value{(kTagObject << kTagShift) | p | static_cast<uintptr_t>(ObjType::Object)};
   }
 
+  static Value callable(void *ptr) {
+    auto p = reinterpret_cast<uintptr_t>(ptr);
+    assert((p & kTagMask) == 0);
+    assert((p & kPtrSubMask) == 0);
+    return Value{(kTagObject << kTagShift) | p | static_cast<uintptr_t>(ObjType::Callable)};
+  }
+
   static Value var_ref(void *ptr) {
     auto p = reinterpret_cast<uintptr_t>(ptr);
     assert((p & kTagMask) == 0);
@@ -222,7 +234,8 @@ struct Value {
 
   // pointer types
   bool is_rc() const { return tag_prefix() == kTagRC; }
-  bool is_object() const { return tag_prefix() == kTagObject && obj_type() == ObjType::Object; }
+  bool is_object() const { return tag_prefix() == kTagObject; } // matches Object + Callable
+  bool is_callable() const { return tag_prefix() == kTagObject && obj_type() == ObjType::Callable; }
   bool is_string() const { return is_rc() && rc_type() == RCType::StrPrim && !is_nullptr(); }
   bool is_bigint_ptr() const { return is_rc() && rc_type() == RCType::BigInt; }
   bool is_var_ref() const { return is_rc() && rc_type() == RCType::VarRef; }

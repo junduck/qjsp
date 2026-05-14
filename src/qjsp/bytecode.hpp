@@ -134,7 +134,7 @@ enum class FunctionKind : uint8_t {
   async_generator = (1 << 0) | (1 << 1),
 };
 
-struct FunctionBytecode : RefCounted {
+struct Bytecode : RefCounted {
 
   std::unique_ptr<uint8_t[]> byte_code_buf;
   std::unique_ptr<BytecodeVarDef[]> vardefs;

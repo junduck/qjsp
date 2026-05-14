@@ -1,3 +1,4 @@
+#include "qjsp/function.hpp"
 #include "qjsp/engine.hpp"
 #include "qjsp/object.hpp"
 #include "qjsp/array.hpp"
@@ -126,7 +127,7 @@ TEST_F(ObjFixture, ArrayIteratorManual) {
   auto si_atom = e->known[WellKnown::symbol_iterator];
   Value si_fn  = arr.as<Object>()->get(si_atom);
   EXPECT_TRUE(si_fn.is_object());
-  EXPECT_TRUE(si_fn.as<Object>()->is_callable());
+  EXPECT_TRUE(si_fn.is_callable());
 
   auto *callable = static_cast<Callable *>(si_fn.as<Object>());
   Value iter_val = callable->call(e.get(), arr, 0, nullptr);
@@ -577,4 +578,97 @@ TEST_F(ObjFixture, GcStressedCycleWithMultipleExtras) {
     }
     EXPECT_FALSE(found) << "object " << i << " should be collected";
   }
+}
+
+// ── Builtin class setup (constructor + prototype linkage) ──────────────
+
+TEST_F(ObjFixture, ObjectConstructorExists) {
+  Value obj_ctor = e->global_obj.as<Object>()->get_own(atom("Object"));
+  EXPECT_TRUE(obj_ctor.is_object());
+  EXPECT_TRUE(obj_ctor.is_callable());
+}
+
+TEST_F(ObjFixture, ObjectPrototypeLinkage) {
+  Value obj_ctor = e->global_obj.as<Object>()->get_own(atom("Object"));
+  ASSERT_TRUE(obj_ctor.is_object());
+
+  Value proto = obj_ctor.as<Object>()->get_own(atom("prototype"));
+  EXPECT_TRUE(proto.is_object()) << "Object.prototype must exist";
+
+  Value cons_back = proto.as<Object>()->get_own(atom("constructor"));
+  EXPECT_EQ(cons_back.as<Object>(), obj_ctor.as<Object>()) << "proto.constructor === Object";
+}
+
+TEST_F(ObjFixture, ArrayConstructorExists) {
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  EXPECT_TRUE(arr_ctor.is_object());
+  EXPECT_TRUE(arr_ctor.is_callable());
+}
+
+TEST_F(ObjFixture, ArrayPrototypeLinkage) {
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  ASSERT_TRUE(arr_ctor.is_object());
+
+  Value proto = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  EXPECT_TRUE(proto.is_object()) << "Array.prototype must exist";
+
+  Value cons_back = proto.as<Object>()->get_own(atom("constructor"));
+  EXPECT_EQ(cons_back.as<Object>(), arr_ctor.as<Object>()) << "proto.constructor === Array";
+}
+
+TEST_F(ObjFixture, ArrayPrototypeProtoChain) {
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  ASSERT_TRUE(arr_ctor.is_object());
+  Value arr_proto = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  ASSERT_TRUE(arr_proto.is_object());
+
+  Value obj_proto = e->builtin_protos[static_cast<size_t>(Builtin::object)];
+  EXPECT_EQ(arr_proto.as<Object>()->proto.as<Object>(), obj_proto.as<Object>())
+      << "Array.prototype.__proto__ === Object.prototype";
+}
+
+TEST_F(ObjFixture, ArrayPrototypeHasPush) {
+  Value arr_ctor  = e->global_obj.as<Object>()->get_own(atom("Array"));
+  Value arr_proto = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  ASSERT_TRUE(arr_proto.is_object());
+
+  Value push = arr_proto.as<Object>()->get(atom("push"));
+  EXPECT_TRUE(push.is_object()) << "Array.prototype.push exists via own+proto walk";
+  EXPECT_TRUE(push.is_callable());
+}
+
+TEST_F(ObjFixture, ArrayCtorCreatesArray) {
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  ASSERT_TRUE(arr_ctor.is_object() && arr_ctor.is_callable());
+
+  const Value args[] = {Value::int32(10), Value::int32(20), Value::int32(30)};
+  Value result = static_cast<Callable *>(arr_ctor.as<Object>())->call(e.get(), Value::undefined_(), 3, args);
+
+  EXPECT_TRUE(result.is_object());
+  auto *arr = result.as<ArrayObject>();
+  ASSERT_NE(arr, nullptr);
+  EXPECT_EQ(arr->clsid, Builtin::array);
+  EXPECT_EQ(arr->elements.size(), 3u);
+  EXPECT_EQ(arr->elements[0].as_int32(), 10);
+  EXPECT_EQ(arr->elements[1].as_int32(), 20);
+  EXPECT_EQ(arr->elements[2].as_int32(), 30);
+}
+
+TEST_F(ObjFixture, ArrayCtorViaNewPattern) {
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  ASSERT_TRUE(arr_ctor.is_object() && arr_ctor.is_callable());
+
+  Value proto_val = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  ASSERT_TRUE(proto_val.is_object());
+
+  Value new_obj       = Object::create(e.get(), proto_val, Builtin::object);
+  const Value args[]  = {Value::int32(1), Value::int32(2)};
+  Value result        = static_cast<Callable *>(arr_ctor.as<Object>())->call(e.get(), new_obj, 2, args);
+
+  EXPECT_TRUE(result.is_object());
+  EXPECT_NE(result.as<Object>(), new_obj.as<Object>()) << "Array ctor returns its own ArrayObject, not this_val";
+  auto *arr = result.as<ArrayObject>();
+  ASSERT_NE(arr, nullptr);
+  EXPECT_EQ(arr->proto.as<Object>(), proto_val.as<Object>()) << "new Array().__proto__ === Array.prototype";
+  EXPECT_EQ(arr->elements.size(), 2u);
 }
