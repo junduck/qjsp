@@ -1,14 +1,13 @@
 #pragma once
 
-#include "atom.hpp"
 #include <cstdint>
 
 namespace qjsp {
 
 enum class Builtin : uint16_t {
   object = 0,
-  array,
   function,
+  array,
   regexp,
 
   BuiltinCount

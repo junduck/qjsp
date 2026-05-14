@@ -11,10 +11,16 @@ namespace qjsp {
 
 struct Engine;
 
+struct Property {
+  Value value  = Value::undefined_(); // data value (kPropGetter not set)
+  Value getter = Value::undefined_(); // accessor getter (when kPropGetter)
+  Value setter = Value::undefined_(); // accessor setter (when kPropSetter)
+};
+
 struct Object : GCObjectHeader {
   Value proto  = Value::undefined_();
   Shape *shape = nullptr;
-  std::vector<Value> properties;
+  std::vector<Property> properties;
 
   Builtin clsid   = Builtin::object;
   bool extensible = true;
@@ -25,10 +31,15 @@ struct Object : GCObjectHeader {
   static Value create(Engine *e, Value proto, Builtin clsid);
 
   // ── property access ──────────────────────────────────────────────────
-  Value get_own(Atom atom) const;
+  //
+  //  get_own() dispatches through accessors when kPropGetter is set.
+  //  set_own() dispatches through setters when kPropSetter is set,
+  //  rejects writes on data properties when kPropWritable is clear,
+  //  and rejects new properties on non‑extensible objects.
+  Value get_own(Engine *e, Atom atom);
   bool set_own(Engine *e, Atom atom, Value value, int flags = kPropCWE);
   bool has_own(Atom atom) const { return shape && shape->find(atom) < shape->size(); }
-  Value get(Atom atom) const;
+  Value get(Engine *e, Atom atom);
 
   // ── GC ───────────────────────────────────────────────────────────────
   //

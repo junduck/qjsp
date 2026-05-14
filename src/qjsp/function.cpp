@@ -85,17 +85,10 @@ void BFunctionObj::gc_clear_refs() {
   Object::gc_clear_refs();
 }
 
-// ─── call() — virtual dispatch ───────────────────────────────────────────────
-
-Value call(Engine *e, Value func, Value this_val, int argc, const Value *argv) {
-  if (!func.is_callable())
-    return Value::undefined_();
-  return static_cast<Callable *>(func.as<Object>())->call(e, this_val, argc, argv);
-}
-
+namespace {
 // ─── Function prototype methods ──────────────────────────────────────────────
 
-static Value function_call(Engine *e, Value this_val, int argc, const Value *argv) {
+Value function_call(Engine *e, Value this_val, int argc, const Value *argv) {
   if (!this_val.is_callable())
     return Value::undefined_();
   Value this_arg         = argc > 0 ? argv[0] : Value::undefined_();
@@ -104,7 +97,7 @@ static Value function_call(Engine *e, Value this_val, int argc, const Value *arg
   return static_cast<Callable *>(this_val.as<Object>())->call(e, this_arg, call_argc, call_argv);
 }
 
-static Value function_apply(Engine *e, Value this_val, int argc, const Value *argv) {
+Value function_apply(Engine *e, Value this_val, int argc, const Value *argv) {
   if (!this_val.is_callable())
     return Value::undefined_();
   Value this_arg = argc > 0 ? argv[0] : Value::undefined_();
@@ -122,12 +115,21 @@ static Value function_apply(Engine *e, Value this_val, int argc, const Value *ar
 
 // ─── Function constructor (stub) ─────────────────────────────────────────────
 
-static Value function_constructor(Engine *e, Value this_val, int argc, const Value *argv) {
+Value function_constructor(Engine *e, Value this_val, int argc, const Value *argv) {
   (void)argc;
   (void)argv;
   if (this_val.is_object())
     return this_val;
   return Object::create(e, e->get_proto(Builtin::function), Builtin::object);
+}
+} // namespace
+
+// ─── call() — virtual dispatch ───────────────────────────────────────────────
+
+Value call(Engine *e, Value func, Value this_val, int argc, const Value *argv) {
+  if (!func.is_callable())
+    return Value::undefined_();
+  return static_cast<Callable *>(func.as<Object>())->call(e, this_val, argc, argv);
 }
 
 // ============================================================================
@@ -165,7 +167,7 @@ void Function::setup(Engine *e) {
   // ── Retroactive fix ────────────────────────────────────────────────────
   //  Object constructor was created in Object::setup before Function::setup
   //  ran, so its __proto__ was undefined.  Set it to Function.prototype now.
-  Value obj_ctor = e->global_obj.as<Object>()->get_own(e->intern("Object"));
+  Value obj_ctor = e->global_obj.as<Object>()->get_own(e, e->intern("Object"));
   if (obj_ctor.is_object())
     obj_ctor.as<Object>()->proto = proto;
 }

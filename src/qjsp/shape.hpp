@@ -9,6 +9,8 @@ namespace qjsp {
 constexpr int kPropConfigurable = (1 << 0);
 constexpr int kPropWritable     = (1 << 1);
 constexpr int kPropEnumerable   = (1 << 2);
+constexpr int kPropGetter       = (1 << 3);
+constexpr int kPropSetter       = (1 << 4);
 constexpr int kPropCWE          = kPropConfigurable | kPropWritable | kPropEnumerable;
 
 struct ShapeProperty {

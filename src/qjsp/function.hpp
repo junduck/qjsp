@@ -18,7 +18,7 @@ using CFunction = Value(Engine *e, Value this_val, int argc, const Value *argv);
 //  The call() receiver decides whether to use this_val or create its own.
 
 struct Callable : Object {
-  bool is_bytecode = false;
+  bool is_bytecode                                                           = false;
   virtual Value call(Engine *e, Value this_val, int argc, const Value *argv) = 0;
 };
 

@@ -58,16 +58,23 @@ Value Object::create(Engine *e, Value proto, Builtin clsid) {
 
 // ── property access ────────────────────────────────────────────────────────
 
-Value Object::get_own(Atom atom) const {
+Value Object::get_own(Engine *e, Atom atom) {
   if (!shape)
     return Value::undefined_();
   auto idx = shape->find(atom);
-  return idx < shape->size() ? properties[idx] : Value::undefined_();
+  if (idx >= shape->size())
+    return Value::undefined_();
+  auto &prop  = properties[idx];
+  int flags   = shape->entries[idx].flags;
+  if ((flags & kPropGetter) && prop.getter.is_callable())
+    return call(e, prop.getter, Value::object(this), 0, nullptr);
+  return prop.value;
 }
 
-Value Object::get(Atom atom) const {
+Value Object::get(Engine *e, Atom atom) {
   for (auto *cur = this; cur; cur = cur->proto.is_object() ? cur->proto.as<Object>() : nullptr) {
-    if (Value v = cur->get_own(atom); !v.is_undefined())
+    Value v = cur->get_own(e, atom);
+    if (!v.is_undefined())
       return v;
   }
   return Value::undefined_();
@@ -75,35 +82,48 @@ Value Object::get(Atom atom) const {
 
 bool Object::set_own(Engine *e, Atom atom, Value value, int flags) {
   if (shape) {
-    if (auto idx = shape->find(atom); idx < shape->size()) {
-      properties[idx] = value;
+    auto idx = shape->find(atom);
+    if (idx < shape->size()) {
+      auto &prop         = properties[idx];
+      int existing_flags = shape->entries[idx].flags;
+      // accessor: dispatch through setter
+      if ((existing_flags & kPropSetter) && prop.setter.is_callable()) {
+        const Value args[] = {value};
+        call(e, prop.setter, Value::object(this), 1, args);
+        return true;
+      }
+      // data property: refuse if not writable
+      if (!(existing_flags & kPropWritable))
+        return false;
+      prop.value = value;
       return true;
     }
     if (!extensible)
       return false;
   }
   shape = e->add_shape(shape, atom, flags);
-  properties.emplace_back(value);
+  properties.push_back({value, Value::undefined_(), Value::undefined_()});
   return true;
 }
 
+// ── GC ─────────────────────────────────────────────────────────────────────
+
 void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   is_marked = true;
-  if (proto.is_object()) {
-    auto *p = proto.as<Object>();
-    if (p && !p->is_marked) {
-      p->is_marked = true;
-      worklist.push_back(p);
-    }
-  }
-  for (auto &p : properties) {
-    if (p.is_object()) {
-      auto *obj = p.as<Object>();
+  auto mark_val = [&](Value &v) {
+    if (v.is_object()) {
+      auto *obj = v.as<Object>();
       if (obj && !obj->is_marked) {
         obj->is_marked = true;
         worklist.push_back(obj);
       }
     }
+  };
+  mark_val(proto);
+  for (auto &p : properties) {
+    mark_val(p.value);
+    mark_val(p.getter);
+    mark_val(p.setter);
   }
 }
 
@@ -113,13 +133,16 @@ void Object::gc_clear_refs() {
 }
 
 void Object::gc_decref_refs() {
-  if (proto.is_object())
-    if (auto *p = proto.as<Object>())
-      p->gc_refs--;
-  for (auto &p : properties) {
-    if (p.is_object())
-      if (auto *obj = p.as<Object>())
+  auto dec = [](Value &v) {
+    if (v.is_object())
+      if (auto *obj = v.as<Object>())
         obj->gc_refs--;
+  };
+  dec(proto);
+  for (auto &p : properties) {
+    dec(p.value);
+    dec(p.getter);
+    dec(p.setter);
   }
 }
 

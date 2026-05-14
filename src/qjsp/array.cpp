@@ -79,11 +79,11 @@ static Value array_iterator_next(Engine *e, Value this_val, int, const Value *) 
     return Value::undefined_();
 
   uint32_t idx = 0;
-  Value idx_v  = iter->get_own(e->intern("_idx"));
+  Value idx_v  = iter->get_own(e, e->intern("_idx"));
   if (idx_v.is_int32())
     idx = static_cast<uint32_t>(idx_v.as_int32());
 
-  Value arr_v = iter->get_own(e->intern("_arr"));
+  Value arr_v = iter->get_own(e, e->intern("_arr"));
   if (!arr_v.is_object())
     goto done;
   {

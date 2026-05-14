@@ -25,14 +25,14 @@ TEST_F(ObjFixture, SetAndGet) {
   Value obj = Object::create(e.get(), Value::undefined_(), Builtin::object);
   auto *o   = obj.as<Object>();
   o->set_own(e.get(), atom("x"), Value::int32(100));
-  EXPECT_EQ(o->get_own(atom("x")).as_int32(), 100);
+  EXPECT_EQ(o->get_own(e.get(), atom("x")).as_int32(), 100);
 }
 
 TEST_F(ObjFixture, PrototypeChain) {
   Value proto = Object::create(e.get(), Value::undefined_(), Builtin::object);
   proto.as<Object>()->set_own(e.get(), atom("a"), Value::int32(999));
   Value child = Object::create(e.get(), proto, Builtin::object);
-  EXPECT_EQ(child.as<Object>()->get(atom("a")).as_int32(), 999);
+  EXPECT_EQ(child.as<Object>()->get(e.get(), atom("a")).as_int32(), 999);
 }
 
 TEST_F(ObjFixture, ShapeReuse) {
@@ -65,7 +65,7 @@ TEST_F(ObjFixture, MakeCFunc) {
   auto *f  = static_cast<CFunctionObj *>(fn.as<Object>());
   EXPECT_EQ(f->clsid, Builtin::object);
   EXPECT_NE(f->fn, nullptr);
-  EXPECT_EQ(f->get_own(atom("length")).as_int32(), 2);
+  EXPECT_EQ(f->get_own(e.get(), atom("length")).as_int32(), 2);
 }
 
 TEST_F(ObjFixture, CallCFunc) {
@@ -91,7 +91,7 @@ TEST_F(ObjFixture, GlobalObjectExists) {
 
 TEST_F(ObjFixture, PrintIsDefined) {
   auto *global = e->global_obj.as<Object>();
-  EXPECT_TRUE(global->get_own(atom("print")).is_object());
+  EXPECT_TRUE(global->get_own(e.get(), atom("print")).is_object());
 }
 
 TEST_F(ObjFixture, GcCollectsUnreachable) {
@@ -113,8 +113,8 @@ TEST_F(ObjFixture, GcPreservesReachable) {
   auto *objptr = obj.as<Object>();
   global->set_own(e.get(), key, obj);
   e->run_gc();
-  EXPECT_TRUE(global->get_own(key).is_object());
-  EXPECT_EQ(global->get_own(key).as<Object>(), objptr);
+  EXPECT_TRUE(global->get_own(e.get(), key).is_object());
+  EXPECT_EQ(global->get_own(e.get(), key).as<Object>(), objptr);
   global->set_own(e.get(), key, Value::undefined_());
 }
 
@@ -125,7 +125,7 @@ TEST_F(ObjFixture, ArrayIteratorManual) {
   a->elements.push_back(Value::int32(20));
 
   auto si_atom = e->known[WellKnown::symbol_iterator];
-  Value si_fn  = arr.as<Object>()->get(si_atom);
+  Value si_fn  = arr.as<Object>()->get(e.get(), si_atom);
   EXPECT_TRUE(si_fn.is_object());
   EXPECT_TRUE(si_fn.is_callable());
 
@@ -134,20 +134,20 @@ TEST_F(ObjFixture, ArrayIteratorManual) {
   EXPECT_TRUE(iter_val.is_object());
 
   auto *iter    = iter_val.as<Object>();
-  Value next_fn = iter->get(e->intern("next"));
+  Value next_fn = iter->get(e.get(), e->intern("next"));
   EXPECT_TRUE(next_fn.is_object());
 
   auto *next_callable = static_cast<Callable *>(next_fn.as<Object>());
   Value r1            = next_callable->call(e.get(), iter_val, 0, nullptr);
   EXPECT_TRUE(r1.is_object());
-  EXPECT_EQ(r1.as<Object>()->get_own(e->intern("value")).as_int32(), 10);
-  EXPECT_FALSE(r1.as<Object>()->get_own(e->intern("done")).as_bool());
+  EXPECT_EQ(r1.as<Object>()->get_own(e.get(), e->intern("value")).as_int32(), 10);
+  EXPECT_FALSE(r1.as<Object>()->get_own(e.get(), e->intern("done")).as_bool());
 
   Value r2 = next_callable->call(e.get(), iter_val, 0, nullptr);
-  EXPECT_EQ(r2.as<Object>()->get_own(e->intern("value")).as_int32(), 20);
+  EXPECT_EQ(r2.as<Object>()->get_own(e.get(), e->intern("value")).as_int32(), 20);
 
   Value r3 = next_callable->call(e.get(), iter_val, 0, nullptr);
-  EXPECT_TRUE(r3.as<Object>()->get_own(e->intern("done")).as_bool());
+  EXPECT_TRUE(r3.as<Object>()->get_own(e.get(), e->intern("done")).as_bool());
 }
 
 // ── GC stress tests (kGcThresholdInit=8 in debug) ────────────────────────
@@ -210,8 +210,8 @@ TEST_F(ObjFixture, GcTransitiveRevival) {
   c = Value::undefined_();
   e->run_gc();
   EXPECT_EQ(a.as<Object>(), aptr);
-  EXPECT_EQ(a.as<Object>()->get_own(atom("ref")).as<Object>(), bptr);
-  EXPECT_EQ(a.as<Object>()->get_own(atom("ref")).as<Object>()->get_own(atom("ref")).as<Object>(), cptr);
+  EXPECT_EQ(a.as<Object>()->get_own(e.get(), atom("ref")).as<Object>(), bptr);
+  EXPECT_EQ(a.as<Object>()->get_own(e.get(), atom("ref")).as<Object>()->get_own(e.get(), atom("ref")).as<Object>(), cptr);
 }
 
 TEST_F(ObjFixture, GcDeepCycle) {
@@ -271,7 +271,7 @@ TEST_F(ObjFixture, GcArrayElementsSurvive) {
   e->run_gc();
   for (int i = 0; i < 20; i++) {
     EXPECT_TRUE(a->elements[i].is_object());
-    EXPECT_EQ(a->elements[i].as<Object>()->get_own(atom("val")).as_int32(), i);
+    EXPECT_EQ(a->elements[i].as<Object>()->get_own(e.get(), atom("val")).as_int32(), i);
   }
 }
 
@@ -286,7 +286,7 @@ TEST_F(ObjFixture, GcProtoChainSurvives) {
   p2 = Value::undefined_();
   e->run_gc();
   EXPECT_TRUE(p3.is_object());
-  EXPECT_EQ(p3.as<Object>()->get(atom("root")).as_int32(), 42);
+  EXPECT_EQ(p3.as<Object>()->get(e.get(), atom("root")).as_int32(), 42);
   EXPECT_EQ(p3.as<Object>()->proto.as<Object>(), p2ptr);
   EXPECT_EQ(p3.as<Object>()->proto.as<Object>()->proto.as<Object>(), p1ptr);
 }
@@ -583,43 +583,43 @@ TEST_F(ObjFixture, GcStressedCycleWithMultipleExtras) {
 // ── Builtin class setup (constructor + prototype linkage) ──────────────
 
 TEST_F(ObjFixture, ObjectConstructorExists) {
-  Value obj_ctor = e->global_obj.as<Object>()->get_own(atom("Object"));
+  Value obj_ctor = e->global_obj.as<Object>()->get_own(e.get(), atom("Object"));
   EXPECT_TRUE(obj_ctor.is_object());
   EXPECT_TRUE(obj_ctor.is_callable());
 }
 
 TEST_F(ObjFixture, ObjectPrototypeLinkage) {
-  Value obj_ctor = e->global_obj.as<Object>()->get_own(atom("Object"));
+  Value obj_ctor = e->global_obj.as<Object>()->get_own(e.get(), atom("Object"));
   ASSERT_TRUE(obj_ctor.is_object());
 
-  Value proto = obj_ctor.as<Object>()->get_own(atom("prototype"));
+  Value proto = obj_ctor.as<Object>()->get_own(e.get(), atom("prototype"));
   EXPECT_TRUE(proto.is_object()) << "Object.prototype must exist";
 
-  Value cons_back = proto.as<Object>()->get_own(atom("constructor"));
+  Value cons_back = proto.as<Object>()->get_own(e.get(), atom("constructor"));
   EXPECT_EQ(cons_back.as<Object>(), obj_ctor.as<Object>()) << "proto.constructor === Object";
 }
 
 TEST_F(ObjFixture, ArrayConstructorExists) {
-  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(e.get(), atom("Array"));
   EXPECT_TRUE(arr_ctor.is_object());
   EXPECT_TRUE(arr_ctor.is_callable());
 }
 
 TEST_F(ObjFixture, ArrayPrototypeLinkage) {
-  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(e.get(), atom("Array"));
   ASSERT_TRUE(arr_ctor.is_object());
 
-  Value proto = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  Value proto = arr_ctor.as<Object>()->get_own(e.get(), atom("prototype"));
   EXPECT_TRUE(proto.is_object()) << "Array.prototype must exist";
 
-  Value cons_back = proto.as<Object>()->get_own(atom("constructor"));
+  Value cons_back = proto.as<Object>()->get_own(e.get(), atom("constructor"));
   EXPECT_EQ(cons_back.as<Object>(), arr_ctor.as<Object>()) << "proto.constructor === Array";
 }
 
 TEST_F(ObjFixture, ArrayPrototypeProtoChain) {
-  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(e.get(), atom("Array"));
   ASSERT_TRUE(arr_ctor.is_object());
-  Value arr_proto = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  Value arr_proto = arr_ctor.as<Object>()->get_own(e.get(), atom("prototype"));
   ASSERT_TRUE(arr_proto.is_object());
 
   Value obj_proto = e->builtin_protos[static_cast<size_t>(Builtin::object)];
@@ -628,17 +628,17 @@ TEST_F(ObjFixture, ArrayPrototypeProtoChain) {
 }
 
 TEST_F(ObjFixture, ArrayPrototypeHasPush) {
-  Value arr_ctor  = e->global_obj.as<Object>()->get_own(atom("Array"));
-  Value arr_proto = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  Value arr_ctor  = e->global_obj.as<Object>()->get_own(e.get(), atom("Array"));
+  Value arr_proto = arr_ctor.as<Object>()->get_own(e.get(), atom("prototype"));
   ASSERT_TRUE(arr_proto.is_object());
 
-  Value push = arr_proto.as<Object>()->get(atom("push"));
+  Value push = arr_proto.as<Object>()->get(e.get(), atom("push"));
   EXPECT_TRUE(push.is_object()) << "Array.prototype.push exists via own+proto walk";
   EXPECT_TRUE(push.is_callable());
 }
 
 TEST_F(ObjFixture, ArrayCtorCreatesArray) {
-  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(e.get(), atom("Array"));
   ASSERT_TRUE(arr_ctor.is_object() && arr_ctor.is_callable());
 
   const Value args[] = {Value::int32(10), Value::int32(20), Value::int32(30)};
@@ -655,10 +655,10 @@ TEST_F(ObjFixture, ArrayCtorCreatesArray) {
 }
 
 TEST_F(ObjFixture, ArrayCtorViaNewPattern) {
-  Value arr_ctor = e->global_obj.as<Object>()->get_own(atom("Array"));
+  Value arr_ctor = e->global_obj.as<Object>()->get_own(e.get(), atom("Array"));
   ASSERT_TRUE(arr_ctor.is_object() && arr_ctor.is_callable());
 
-  Value proto_val = arr_ctor.as<Object>()->get_own(atom("prototype"));
+  Value proto_val = arr_ctor.as<Object>()->get_own(e.get(), atom("prototype"));
   ASSERT_TRUE(proto_val.is_object());
 
   Value new_obj       = Object::create(e.get(), proto_val, Builtin::object);

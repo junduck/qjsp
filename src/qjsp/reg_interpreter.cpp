@@ -97,7 +97,7 @@ Value RegInterpreter::get_field(Value obj, Atom name) {
   if (obj.is_object()) {
     auto *o = obj.as<Object>();
     if (o)
-      return o->get(name);
+      return o->get(e_, name);
   }
   return Value::undefined_();
 }
@@ -568,7 +568,7 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
 
       // 1. constructor.prototype
       auto *ctor_obj  = func_val.as<Object>();
-      Value proto_val = ctor_obj->get(e_->intern("prototype"));
+      Value proto_val = ctor_obj->get(e_, e_->intern("prototype"));
 
       // 2. Create object with that prototype
       Value new_obj = Object::create(e_, proto_val.is_object() ? proto_val : e_->get_proto(Builtin::object), Builtin::object);
