@@ -3,6 +3,7 @@ add_executable(test_main
   value.cpp
   runtime.cpp
   object.cpp
+  gc_adversarial.cpp
   lexer.cpp
   parser.cpp
   interpreter.cpp
