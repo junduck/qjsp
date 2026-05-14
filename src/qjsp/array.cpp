@@ -6,12 +6,10 @@
 namespace qjsp {
 
 Value ArrayObject::create(Engine *e) {
-  e->maybe_trigger_gc(sizeof(ArrayObject));
-  auto *obj        = new ArrayObject();
-  obj->ref_count   = 1;
-  obj->gc_obj_type = GCObjType::js_object;
-  obj->clsid       = Builtin::array;
-  obj->proto       = e->get_proto(Builtin::array);
+  auto *obj      = new ArrayObject();
+  obj->ref_count = 1;
+  obj->clsid     = Builtin::array;
+  obj->proto     = e->get_proto(Builtin::array);
   e->add_gc_object(obj);
   return Value::object(obj);
 }
@@ -32,17 +30,15 @@ void ArrayObject::gc_mark(std::vector<GCObjectHeader *> &worklist) {
 void ArrayObject::gc_decref_refs() {
   Object::gc_decref_refs();
   for (auto &v : elements) {
-    if (v.is_object()) {
-      auto *obj = v.as<Object>();
-      if (obj && !obj->is_marked)
+    if (v.is_object())
+      if (auto *obj = v.as<Object>())
         obj->gc_refs--;
-    }
   }
 }
 
 void ArrayObject::gc_clear_refs() {
-  Object::gc_clear_refs();
   elements.clear();
+  Object::gc_clear_refs();
 }
 
 static Value array_iterator_next(Engine *e, Value this_val, int, const Value *) {

@@ -42,11 +42,10 @@ Value RegExpObj::create(Engine *e, StrPrim *pattern, StrPrim *flags_str) {
   if (!compiled->ok())
     return Value::exception();
 
-  auto *obj        = new RegExpObj();
-  obj->ref_count   = 1;
-  obj->gc_obj_type = GCObjType::js_object;
-  obj->clsid       = Builtin::regexp;
-  obj->proto       = e->get_proto(Builtin::regexp);
+  auto *obj      = new RegExpObj();
+  obj->ref_count = 1;
+  obj->clsid     = Builtin::regexp;
+  obj->proto     = e->get_proto(Builtin::regexp);
   obj->regex       = std::move(compiled);
   obj->flags       = flags;
   e->add_gc_object(obj);

@@ -165,15 +165,12 @@ Shape *Runtime::add_shape(Shape *from, Atom atom, int flags) {
 // ─── GC ────────────────────────────────────────────────────────────────────
 
 void Runtime::run_gc() {
-  gc_phase = GCPhase::remove_cycles;
-
   for (auto *obj : gc_objects)
     obj->is_marked = false;
 
   std::vector<GCObjectHeader *> mark_worklist;
   for (auto *obj : gc_objects)
-    if (obj->gc_obj_type == GCObjType::js_object)
-      obj->gc_mark(mark_worklist);
+    obj->gc_mark(mark_worklist);
 
   while (!mark_worklist.empty()) {
     auto *p = mark_worklist.back();
@@ -193,7 +190,6 @@ void Runtime::run_gc() {
     }
   }
 
-  gc_phase            = GCPhase::none;
   gc_alloc_count      = 0;
   malloc_gc_threshold = malloc_gc_threshold > 0 ? malloc_gc_threshold + (malloc_gc_threshold >> 1) : 1024;
 }

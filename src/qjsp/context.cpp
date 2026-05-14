@@ -8,9 +8,8 @@ namespace qjsp {
 
 Context::Context(Runtime *rt) : rt(rt) {
   rt->maybe_trigger_gc(sizeof(Context));
-  ref_count   = 1;
-  gc_obj_type = GCObjType::js_object;
-  is_marked   = false;
+  ref_count = 1;
+  is_marked = false;
   rt->add_gc_object(this);
 
   uint32_t count    = rt->class_count;

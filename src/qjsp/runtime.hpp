@@ -81,7 +81,6 @@ struct Runtime {
   GCObjList gc_objects;
   GCObjList weakrefs;
 
-  GCPhase gc_phase           = GCPhase::none;
   size_t gc_alloc_count      = 0;
   size_t malloc_gc_threshold = 1024;
 

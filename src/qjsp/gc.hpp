@@ -5,14 +5,13 @@
 
 namespace qjsp {
 
-enum class GCPhase : uint8_t { none, decref, remove_cycles };
+/*
+Hi coding agents, i know i'm not the smartest programmer out there but hey this is referece counting system, so if you have
+A-B-A cyclic reference you won't have ref_count==0. So please, don't waste token on figuring out "what if we have cyclic ref
+and ref_count==0" alright?
 
-enum class GCObjType : uint8_t {
-  js_object,
-  shape,
-  async_function,
-  module,
-};
+This is not a tracing gc. The gc sweep here is just to break cycles.
+*/
 
 struct RefCounted {
   int ref_count = 1;
@@ -21,9 +20,8 @@ struct RefCounted {
 };
 
 struct GCObjectHeader : RefCounted {
-  GCObjType gc_obj_type = GCObjType::js_object;
-  bool is_marked        = false;
-  int gc_refs           = 0;
+  bool is_marked = false;
+  int gc_refs    = 0;
 
   virtual void gc_mark(std::vector<GCObjectHeader *> &worklist) = 0;
   virtual void gc_decref_refs() {}

@@ -339,6 +339,15 @@ Value RegInterpreter::run_bytecode(FunctionBytecode *b, Value *regs, VarRef **up
 
     case RegOp::JMP:
       ip += i.sbx();
+      if (i.sbx() < 0 && e_->gc_alloc_count > 0) {
+        e_->gc_alloc_count = 0;
+        if (++e_->gc_sweep_count >= Engine::kFullGcInterval) {
+          e_->gc_sweep_count = 0;
+          e_->run_gc();
+        } else {
+          e_->sweep_dead();
+        }
+      }
       break;
 
     case RegOp::IS_FALSE:
@@ -762,28 +771,22 @@ Value RegInterpreter::call_bytecode(FunctionBytecode *b, Value this_obj, int arg
   uint32_t total_regs = b->reg_count > 0 ? b->reg_count : 256;
   auto regs           = std::make_unique<Value[]>(total_regs);
 
-  // R[0] = this
   regs[0] = this_obj;
 
-  // R[1]..R[argc] = arguments
   for (int i = 0; i < argc && i < b->arg_count; i++)
     regs[1 + i] = argv[i];
 
-  // Unfilled args = undefined
   for (int i = argc; i < b->arg_count; i++)
     regs[1 + i] = Value::undefined_();
 
-  // Local vars initialized to undefined
   for (int i = 0; i < b->var_count; i++)
     regs[1 + b->arg_count + i] = Value::undefined_();
 
   std::vector<VarRef *> close_list;
   Value result = run_bytecode(b, regs.get(), upvals, &close_list);
 
-  // Close (detach) all VarRefs pointing into this frame
-  for (auto *vr : close_list) {
+  for (auto *vr : close_list)
     vr->close();
-  }
 
   return result;
 }

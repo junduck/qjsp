@@ -6,25 +6,16 @@
 
 namespace qjsp {
 
-void Object::setup(Engine *e) {
-  e->builtin_protos[static_cast<size_t>(Builtin::object)] = Object::create(e, Value::null_(), Builtin::object);
-}
+void Object::setup(Engine *e) { e->builtin_protos[static_cast<size_t>(Builtin::object)] = Object::create(e, Value::null_(), Builtin::object); }
 
 Value Object::create(Engine *e, Value proto, Builtin clsid) {
-  e->maybe_trigger_gc();
-  auto *obj        = new Object();
-  obj->ref_count   = 1;
-  obj->gc_obj_type = GCObjType::js_object;
-  obj->extensible  = true;
-  obj->clsid       = clsid;
-  obj->proto       = proto;
+  auto *obj       = new Object();
+  obj->ref_count  = 1;
+  obj->extensible = true;
+  obj->clsid      = clsid;
+  obj->proto      = proto;
   e->add_gc_object(obj);
   return Value::object(obj);
-}
-
-void Object::destroy(Engine *e) {
-  e->remove_gc_object(this);
-  delete this;
 }
 
 // ── property access ────────────────────────────────────────────────────────
@@ -88,31 +79,27 @@ void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   }
 }
 
-void Object::gc_decref_refs() {
-  if (proto.is_object()) {
-    auto *p = proto.as<Object>();
-    if (p && !p->is_marked)
-      p->gc_refs--;
-  }
-  for (auto &p : properties) {
-    if (p.value.is_object()) {
-      auto *obj = p.value.as<Object>();
-      if (obj && !obj->is_marked)
-        obj->gc_refs--;
-    }
-  }
-}
-
 void Object::gc_clear_refs() {
   proto = Value::undefined_();
   properties.clear();
+}
+
+void Object::gc_decref_refs() {
+  if (proto.is_object())
+    if (auto *p = proto.as<Object>())
+      p->gc_refs--;
+  for (auto &p : properties) {
+    if (p.value.is_object())
+      if (auto *obj = p.value.as<Object>())
+        obj->gc_refs--;
+  }
 }
 
 void BytecodeFunction::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   Object::gc_mark(worklist);
   for (auto &v : var_refs) {
     if (v.is_var_ref()) {
-      auto *vr = v.as<VarRef>();
+      auto *vr    = v.as<VarRef>();
       Value inner = vr->load();
       if (inner.is_object()) {
         auto *obj = inner.as<Object>();
@@ -129,30 +116,27 @@ void BytecodeFunction::gc_decref_refs() {
   Object::gc_decref_refs();
   for (auto &v : var_refs) {
     if (v.is_var_ref()) {
-      auto *vr = v.as<VarRef>();
+      auto *vr    = v.as<VarRef>();
       Value inner = vr->load();
-      if (inner.is_object()) {
-        auto *obj = inner.as<Object>();
-        if (obj && !obj->is_marked)
+      if (inner.is_object())
+        if (auto *obj = inner.as<Object>())
           obj->gc_refs--;
-      }
     }
   }
 }
 
 void BytecodeFunction::gc_clear_refs() {
-  Object::gc_clear_refs();
   var_refs.clear();
+  Object::gc_clear_refs();
 }
 
 // ── CFunctionObj ──────────────────────────────────────────────────────────
 
 Value CFunctionObj::create(Engine *e, CFunction *fn, std::string_view name, int length) {
-  auto *obj        = new CFunctionObj();
-  obj->ref_count   = 1;
-  obj->gc_obj_type = GCObjType::js_object;
-  obj->clsid       = Builtin::object;
-  obj->fn          = fn;
+  auto *obj      = new CFunctionObj();
+  obj->ref_count = 1;
+  obj->clsid     = Builtin::object;
+  obj->fn        = fn;
   e->add_gc_object(obj);
   obj->set_own(e, e->intern("length"), Value::int32(length));
   obj->set_own(e, e->intern("name"), StrPrim::create(name));
@@ -162,11 +146,10 @@ Value CFunctionObj::create(Engine *e, CFunction *fn, std::string_view name, int 
 // ── BytecodeFunction ──────────────────────────────────────────────────────
 
 Value BytecodeFunction::create(Engine *e, FunctionBytecode *bc) {
-  auto *obj        = new BytecodeFunction();
-  obj->ref_count   = 1;
-  obj->gc_obj_type = GCObjType::js_object;
-  obj->clsid       = Builtin::object;
-  obj->bytecode    = bc;
+  auto *obj      = new BytecodeFunction();
+  obj->ref_count = 1;
+  obj->clsid     = Builtin::object;
+  obj->bytecode  = bc;
   e->add_gc_object(obj);
   return Value::object(obj);
 }

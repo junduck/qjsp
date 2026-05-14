@@ -85,8 +85,10 @@ struct Engine {
   GCObjList gc_objects;
   GCObjList weakrefs;
 
-  size_t gc_alloc_count      = 0;
-  size_t malloc_gc_threshold = kGcThresholdInit;
+  size_t gc_alloc_count = 0;
+  size_t gc_sweep_count = 0;
+
+  static constexpr size_t kFullGcInterval = 16;
 
   Value global_obj     = Value::undefined_();
   Value global_var_obj = Value::undefined_();
@@ -112,7 +114,10 @@ struct Engine {
 
   // ── GC ───────────────────────────────────────────────────────────────────
 
-  void add_gc_object(GCObjectHeader *obj) { gc_objects.push_back(obj); }
+  void add_gc_object(GCObjectHeader *obj) {
+    gc_objects.push_back(obj);
+    ++gc_alloc_count;
+  }
   void remove_gc_object(GCObjectHeader *obj) {
     auto it = std::find(gc_objects.begin(), gc_objects.end(), obj);
     if (it != gc_objects.end()) {
@@ -122,19 +127,11 @@ struct Engine {
   }
 
   void run_gc();
-  void maybe_trigger_gc(size_t size_hint = 0);
-
-  /// Mark GC roots directly from Engine's member values.
-  /// Replaces the old pattern of iterating Context objects in gc_objects.
-  void gc_mark_roots(std::vector<GCObjectHeader *> &worklist);
+  void sweep_dead();
 
   // ── shapes ───────────────────────────────────────────────────────────────
 
   Shape *add_shape(Shape *from, Atom atom, int flags);
-
-  // ── resources ───────────────────────────────────────────────────────────────
-
-  Value create_object(Value proto, Builtin class_id = Builtin::object);
 };
 
 } // namespace qjsp

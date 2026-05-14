@@ -152,111 +152,63 @@ Shape *Engine::add_shape(Shape *from, Atom atom, int flags) {
   return it2->second.get();
 }
 
-Value Engine::create_object(Value proto, Builtin class_id) { // TODO: remove this method
-  maybe_trigger_gc();
-  auto *obj        = new Object();
-  obj->ref_count   = 1;
-  obj->gc_obj_type = GCObjType::js_object;
-  obj->extensible  = true;
-  obj->clsid       = class_id;
-  obj->proto       = proto;
-  add_gc_object(obj);
-  return Value::object(obj);
-}
-
 // ── GC ──────────────────────────────────────────────────────────────────────
 
-void Engine::gc_mark_roots(std::vector<GCObjectHeader *> &worklist) {
-  if (global_obj.is_object()) {
-    auto *obj = global_obj.as<Object>();
-    if (obj && !obj->is_marked) {
+void Engine::run_gc() {
+  for (auto *obj : gc_objects) {
+    obj->is_marked = false;
+    obj->gc_refs   = obj->ref_count;
+  }
+
+  for (auto *obj : gc_objects)
+    obj->gc_decref_refs();
+
+  std::vector<GCObjectHeader *> worklist;
+  for (auto *obj : gc_objects) {
+    if (obj->gc_refs > 0 && !obj->is_marked) {
       obj->is_marked = true;
       worklist.push_back(obj);
     }
   }
-  for (size_t i = 0; i < static_cast<size_t>(Builtin::BuiltinCount); ++i) {
-    auto &v = builtin_protos[i];
-    if (v.is_object()) {
-      auto *obj = v.as<Object>();
-      if (obj && !obj->is_marked) {
-        obj->is_marked = true;
-        worklist.push_back(obj);
-      }
-    }
-  }
-}
-
-void Engine::run_gc() {
-  // Phase 1: Clear marks
-  for (auto *obj : gc_objects)
-    obj->is_marked = false;
-
-  // Phase 2: Mark from roots
-  std::vector<GCObjectHeader *> worklist;
-  gc_mark_roots(worklist);
   while (!worklist.empty()) {
     auto *p = worklist.back();
     worklist.pop_back();
     p->gc_mark(worklist);
   }
 
-  // Phase 3: Partition into survivors (marked) and candidates (unmarked)
-  std::vector<GCObjectHeader *> candidates;
+  // re-using worklist as "dead" object list
   size_t write = 0;
   for (size_t read = 0; read < gc_objects.size(); ++read) {
     if (gc_objects[read]->is_marked) {
       gc_objects[write++] = gc_objects[read];
     } else {
-      candidates.push_back(gc_objects[read]);
+      worklist.push_back(gc_objects[read]);
     }
   }
   gc_objects.resize(write);
 
-  if (candidates.empty()) {
-    gc_alloc_count      = 0;
-    malloc_gc_threshold = malloc_gc_threshold > 0 ? malloc_gc_threshold + (malloc_gc_threshold >> 1) : 1024;
-    return;
-  }
+  for (auto *d : worklist)
+    d->gc_clear_refs();
+  for (auto *d : worklist)
+    delete d;
 
-  // Phase 4: Trial deletion — gc_refs = ref_count, then subtract internal refs
-  for (auto *c : candidates)
-    c->gc_refs = c->ref_count;
-  for (auto *c : candidates)
-    c->gc_decref_refs();
-
-  // Phase 5: Revive candidates with external references (gc_refs > 0)
-  for (auto *c : candidates) {
-    if (c->gc_refs > 0 && !c->is_marked) {
-      c->is_marked = true;
-      worklist.push_back(c);
-    }
-  }
-  while (!worklist.empty()) {
-    auto *p = worklist.back();
-    worklist.pop_back();
-    p->gc_mark(worklist);
-  }
-
-  // Phase 6: Break refs in dead candidates, then delete
-  for (auto *c : candidates) {
-    if (!c->is_marked)
-      c->gc_clear_refs();
-  }
-  for (auto *c : candidates) {
-    if (c->is_marked) {
-      gc_objects.push_back(c);
-    } else {
-      delete c;
-    }
-  }
-
-  gc_alloc_count      = 0;
-  malloc_gc_threshold = malloc_gc_threshold > 0 ? malloc_gc_threshold + (malloc_gc_threshold >> 1) : 1024;
+  gc_alloc_count = 0;
 }
 
-void Engine::maybe_trigger_gc(size_t) {
-  if (++gc_alloc_count >= malloc_gc_threshold)
-    run_gc();
+void Engine::sweep_dead() {
+  std::vector<GCObjectHeader *> dead;
+  size_t write = 0;
+  for (size_t read = 0; read < gc_objects.size(); ++read) {
+    if (gc_objects[read]->ref_count == 0) {
+      dead.push_back(gc_objects[read]);
+    } else {
+      gc_objects[write++] = gc_objects[read];
+    }
+  }
+  gc_objects.resize(write);
+  for (auto *d : dead)
+    delete d;
+  gc_alloc_count = 0;
 }
 
 } // namespace qjsp
