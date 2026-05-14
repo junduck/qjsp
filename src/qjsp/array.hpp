@@ -13,8 +13,7 @@ struct Engine;
 struct ArrayObject : Object {
   std::vector<Value> elements;
 
-  static bool setup(Engine *e);
-
+  static void setup(Engine *e);
   static Value create(Engine *e);
 
   Value get_elem(uint32_t idx) const { return idx < elements.size() ? elements[idx] : Value::undefined_(); }
@@ -27,7 +26,5 @@ struct ArrayObject : Object {
 
   void gc_mark(std::vector<GCObjectHeader *> &worklist) override;
 };
-
-void init_array_prototype(Engine *e);
 
 } // namespace qjsp

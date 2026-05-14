@@ -17,9 +17,8 @@ struct RegExpObj : Object {
   uint8_t flags  = 0;
   int last_index = 0;
 
+  static void setup(Engine *e);
   static Value create(Engine *e, StrPrim *pattern, StrPrim *flags_str);
 };
-
-void init_regexp_prototype(Engine *e);
 
 } // namespace qjsp

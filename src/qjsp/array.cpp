@@ -11,21 +11,9 @@ Value ArrayObject::create(Engine *e) {
   obj->ref_count   = 1;
   obj->gc_obj_type = GCObjType::js_object;
   obj->clsid       = Builtin::array;
-  obj->proto       = e->array_proto;
+  obj->proto       = e->get_proto(Builtin::array);
   e->add_gc_object(obj);
   return Value::object(obj);
-}
-
-bool ArrayObject::setup(Engine *e) {
-  auto proto_v = Object::create(e, Value::undefined_(), Builtin::array);
-  auto proto   = proto_v.as<Object>();
-
-  {
-    auto *fn        = new CFunctionObj();
-    fn->ref_count   = 1;
-    fn->gc_obj_type = GCObjType::js_object;
-    fn->clsid       = Builtin::object;
-  }
 }
 
 void ArrayObject::gc_mark(std::vector<GCObjectHeader *> &worklist) {
@@ -61,7 +49,7 @@ static Value array_iterator_next(Engine *e, Value this_val, int, const Value *) 
     auto *arr = static_cast<ArrayObject *>(o);
     if (idx >= arr->elements.size())
       goto done;
-    Value r  = Object::create(e, Value::undefined_(), Builtin::object);
+    Value r  = Object::create(e, e->get_proto(Builtin::object), Builtin::object);
     auto *ro = r.as<Object>();
     ro->set_own(e, e->intern("value"), arr->elements[idx]);
     ro->set_own(e, e->intern("done"), Value::bool_(false));
@@ -69,7 +57,7 @@ static Value array_iterator_next(Engine *e, Value this_val, int, const Value *) 
     return r;
   }
 done: {
-  Value r = Object::create(e, Value::undefined_(), Builtin::object);
+  Value r = Object::create(e, e->get_proto(Builtin::object), Builtin::object);
   r.as<Object>()->set_own(e, e->intern("done"), Value::bool_(true));
   r.as<Object>()->set_own(e, e->intern("value"), Value::undefined_());
   return r;
@@ -77,7 +65,7 @@ done: {
 }
 
 static Value array_values(Engine *e, Value this_val, int, const Value *) {
-  Value iter = Object::create(e, Value::undefined_(), Builtin::object);
+  Value iter = Object::create(e, e->get_proto(Builtin::object), Builtin::object);
   auto *o    = iter.as<Object>();
   o->set_own(e, e->intern("_arr"), this_val);
   o->set_own(e, e->intern("_idx"), Value::int32(0));
@@ -94,14 +82,15 @@ static Value array_push(Engine *e, Value this_val, int argc, const Value *argv) 
   return Value::int32(static_cast<int32_t>(arr->elements.size()));
 }
 
-void init_array_prototype(Engine *e) {
-  auto si_atom     = e->known[WellKnown::symbol_iterator];
-  e->array_proto   = Object::create(e, Value::undefined_(), Builtin::object);
-  auto *proto      = e->array_proto.as<Object>();
-  auto si_fn       = CFunctionObj::create(e, array_values, "[Symbol.iterator]", 0);
-  proto->set_own(e, si_atom, si_fn);
-  auto push_fn = CFunctionObj::create(e, array_push, "push", 1);
-  proto->set_own(e, e->intern("push"), push_fn);
+void ArrayObject::setup(Engine *e) {
+  constexpr auto id = Builtin::array;
+  auto idx          = static_cast<size_t>(id);
+  e->builtin_protos[idx] = Object::create(e, e->get_proto(Builtin::object), id);
+  auto *proto            = e->builtin_protos[idx].as<Object>();
+
+  auto si_atom = e->known[WellKnown::symbol_iterator];
+  proto->set_own(e, si_atom, CFunctionObj::create(e, array_values, "[Symbol.iterator]", 0));
+  proto->set_own(e, e->intern("push"), CFunctionObj::create(e, array_push, "push", 1));
 }
 
 } // namespace qjsp

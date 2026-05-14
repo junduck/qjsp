@@ -8,8 +8,8 @@ namespace qjsp {
 enum class Builtin : uint16_t {
   object = 0,
   array,
+  regexp,
 
-  // Sentinel
   BuiltinCount
 };
 

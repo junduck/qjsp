@@ -45,8 +45,8 @@ Value RegExpObj::create(Engine *e, StrPrim *pattern, StrPrim *flags_str) {
   auto *obj        = new RegExpObj();
   obj->ref_count   = 1;
   obj->gc_obj_type = GCObjType::js_object;
-  obj->clsid       = Builtin::object;
-  obj->proto       = Value::undefined_();
+  obj->clsid       = Builtin::regexp;
+  obj->proto       = e->get_proto(Builtin::regexp);
   obj->regex       = std::move(compiled);
   obj->flags       = flags;
   e->add_gc_object(obj);
@@ -67,10 +67,13 @@ static Value regexp_test(Engine *e, Value this_val, int argc, const Value *argv)
   return Value::bool_(matched);
 }
 
-void init_regexp_prototype(Engine *e) {
-  auto proto   = Object::create(e, Value::undefined_(), Builtin::object);
-  auto test_fn = CFunctionObj::create(e, regexp_test, "test", 1);
-  proto.as<Object>()->set_own(e, e->intern("test"), test_fn);
+void RegExpObj::setup(Engine *e) {
+  constexpr auto id = Builtin::regexp;
+  auto idx          = static_cast<size_t>(id);
+  e->builtin_protos[idx] = Object::create(e, e->get_proto(Builtin::object), id);
+  auto *proto            = e->builtin_protos[idx].as<Object>();
+
+  proto->set_own(e, e->intern("test"), CFunctionObj::create(e, regexp_test, "test", 1));
 }
 
 } // namespace qjsp

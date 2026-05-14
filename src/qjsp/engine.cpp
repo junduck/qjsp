@@ -42,39 +42,34 @@ static Value builtin_print(Engine * /*e*/, Value /*this_val*/, int argc, const V
 // ── Engine ──────────────────────────────────────────────────────────────────
 
 Engine::Engine() {
-  // ── Runtime init ────────────────────────────────────────────────────────
   init_atoms();
 
-  // ── global object ───────────────────────────────────────────────────────
+  builtin_protos = std::make_unique<Value[]>(static_cast<size_t>(Builtin::BuiltinCount));
+
   global_obj = Object::create(this, Value::undefined_(), Builtin::object);
 
-  // ── built-in setup (inline, will use Engine* API in final migration) ────
+  auto *g = global_obj.as<Object>();
 
-  // setup_global — wires print() and Symbol onto global_obj
   {
-    auto *g = global_obj.as<Object>();
+    auto fn_val     = CFunctionObj::create(this, builtin_print, "print", 1);
+    g->set_own(this, intern("print"), fn_val);
+  }
 
-    // print: CFunction — inlined because CFunctionObj::create still takes Context*
-    {
-      auto *cfo        = new CFunctionObj();
-      cfo->ref_count   = 1;
-      cfo->gc_obj_type = GCObjType::js_object;
-      cfo->clsid       = Builtin::object;
-      cfo->fn          = builtin_print;
-      add_gc_object(cfo);
-      auto fn_val = Value::object(cfo);
-      g->set_own(this, intern("print"), fn_val);
-    }
-    // Symbol object
+  {
     auto sym_val  = Object::create(this, Value::undefined_(), Builtin::object);
     auto *sym_obj = sym_val.as<Object>();
-    for (auto i = WellKnown::SymbolBegin; i < WellKnown::Count; ++i) {
+    for (auto i = WellKnown::SymbolBegin; i < WellKnown::Count; ++i)
       sym_obj->set_own(this, known[i], Value::symbol_from_atom(known[i]));
-    }
     g->set_own(this, intern("Symbol"), sym_val);
   }
 
-  init_array_prototype(this);
+  init_builtins();
+}
+
+void Engine::init_builtins() {
+  Object::setup(this);
+  ArrayObject::setup(this);
+  RegExpObj::setup(this);
 }
 
 // ── atoms ───────────────────────────────────────────────────────────────────
@@ -187,7 +182,6 @@ Value Engine::create_object(Value proto, Builtin class_id) { // TODO: remove thi
 // ── GC ──────────────────────────────────────────────────────────────────────
 
 void Engine::gc_mark_roots(std::vector<GCObjectHeader *> &worklist) {
-  // Mark global_obj
   if (global_obj.is_object()) {
     auto *obj = global_obj.as<Object>();
     if (obj && !obj->is_marked) {
@@ -195,10 +189,10 @@ void Engine::gc_mark_roots(std::vector<GCObjectHeader *> &worklist) {
       worklist.push_back(obj);
     }
   }
-  //? Mark builtins
-  for (auto i = 0u; i < builtins_count; ++i) {
-    if (builtins[i].proto.is_object()) {
-      auto *obj = builtins[i].proto.as<Object>();
+  for (size_t i = 0; i < static_cast<size_t>(Builtin::BuiltinCount); ++i) {
+    auto &v = builtin_protos[i];
+    if (v.is_object()) {
+      auto *obj = v.as<Object>();
       if (obj && !obj->is_marked) {
         obj->is_marked = true;
         worklist.push_back(obj);

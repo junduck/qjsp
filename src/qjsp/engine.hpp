@@ -66,17 +66,15 @@ struct Engine {
   // NOTE: holding Shape*, manual life
   std::unordered_map<ShapeKey, std::unique_ptr<Shape>, ShapeKeyHash> shapes;
 
-  // ── Built-ins ─────────────────────────────────────────────────────
+  // ── Built-in prototypes ──────────────────────────────────────────────
 
-  struct BuiltIns {
-    // Builtin class_id; // built-in class_id
-    Shape *shape;
-    Value proto;
-    Value ctor;
-  };
-  std::unique_ptr<BuiltIns[]> builtins;
-  size_t builtins_count;
-  // TODO: arrange Builtin -> built_ins[id] -> Built-in class
+  // Flat array indexed by Builtin enum. Each entry holds the prototype
+  // object for that builtin type. Populated by init_builtins().
+  std::unique_ptr<Value[]> builtin_protos;
+
+  Value get_proto(Builtin id) const {
+    return builtin_protos[static_cast<size_t>(id)];
+  }
 
   // ── GC ─────────────────────────────────────────────────────
 
@@ -88,15 +86,15 @@ struct Engine {
 
   Value global_obj     = Value::undefined_();
   Value global_var_obj = Value::undefined_();
-  Value array_proto    = Value::undefined_();
 
-  // ── lifecycle ────────────────────────────────────────────────────────────
+  // ── lifecycle ────────────────────────────────────────────────────
 
   Engine();
 
-  // ── atoms ────────────────────────────────────────────────────────────────
+  // ── atoms ────────────────────────────────────────────────────────
 
   bool init_atoms();
+  void init_builtins();
   Atom intern(std::string_view sv);
   Atom intern_copy(StrPrim *s);
   Value atom_to_value(Atom a) const;

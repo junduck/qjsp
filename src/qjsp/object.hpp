@@ -28,6 +28,8 @@ struct Object : GCObjectHeader {
   Builtin clsid   = Builtin::object;
   bool extensible = true;
 
+  static void setup(Engine *e);
+
   // ── resources ──────────────────────────────────────────────────
   static Value create(Engine *e, Value proto, Builtin clsid);
   void destroy(Engine *e);

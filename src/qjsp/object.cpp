@@ -1,11 +1,13 @@
 #include "qjsp/object.hpp"
 #include "qjsp/bytecode.hpp"
-#include "qjsp/context.hpp"
 #include "qjsp/engine.hpp"
-#include "qjsp/runtime.hpp"
 #include "qjsp/string.hpp"
 
 namespace qjsp {
+
+void Object::setup(Engine *e) {
+  e->builtin_protos[static_cast<size_t>(Builtin::object)] = Object::create(e, Value::null_(), Builtin::object);
+}
 
 Value Object::create(Engine *e, Value proto, Builtin clsid) {
   e->maybe_trigger_gc();
