@@ -45,8 +45,6 @@ add_library(qjsp::headers ALIAS qjsp_headers)
 
 add_library(qjsp
   src/qjsp/engine.cpp
-  src/qjsp/runtime.cpp
-  src/qjsp/context.cpp
   src/qjsp/value.cpp
   src/qjsp/string.cpp
   src/qjsp/object.cpp
