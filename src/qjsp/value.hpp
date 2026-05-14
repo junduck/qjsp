@@ -262,6 +262,17 @@ struct Value {
   bool is_number() const { return is_double() || is_int32(); }
   bool is_bigint() const { return is_int32() || is_bigint_ptr(); }
 
+  // ── ToBoolean coercion ────────────────────────────────────────────────
+
+  bool is_truthy() const {
+    if (is_null() || is_undefined()) return false;
+    if (is_bool()) return as_bool();
+    if (is_int32()) return as_int32() != 0;
+    if (is_double()) return as_double() != 0.0;
+    return true; // objects, strings, symbols — all truthy
+  }
+  bool is_falsy() const { return !is_truthy(); }
+
   // ── extractors ───────────────────────────────────────────────────────
 
   RCType rc_type() const { return static_cast<RCType>(data & kPtrSubMask); }
