@@ -29,6 +29,22 @@ void ArrayObject::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   }
 }
 
+void ArrayObject::gc_decref_refs() {
+  Object::gc_decref_refs();
+  for (auto &v : elements) {
+    if (v.is_object()) {
+      auto *obj = v.as<Object>();
+      if (obj && !obj->is_marked)
+        obj->gc_refs--;
+    }
+  }
+}
+
+void ArrayObject::gc_clear_refs() {
+  Object::gc_clear_refs();
+  elements.clear();
+}
+
 static Value array_iterator_next(Engine *e, Value this_val, int, const Value *) {
   auto *iter = this_val.as<Object>();
   if (!iter)

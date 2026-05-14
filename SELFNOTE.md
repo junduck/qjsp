@@ -11,7 +11,9 @@ I've built a couple of stack-based VMs before for some dynamic code-gen in my tr
 
 For the lexer and parser, I initially wanted to reuse QuickJS's stuff and just follow their parser path while emitting my own opcodes. But yeah, I quickly realized I'm not smart enough to wrap my head around their tricks and quirks — negative tokens, mixing atoms with tokens, etc. So I rewrote them myself and the lexer and parser are also pretty ad-hoc right now. I'll optimize them once I nail down the basic language features. I looked into using oxc, but integration turned out harder than I thought. Yuku's great, and Zig makes generating FFI headers easier, but they're both still heavily in development, so that's also tricky. Might just study their code instead — they seem to have built a ridiculously fast parser.
 
-The goal is to push as much logic into C++ as possible so performance doesn't totally suck. I want to keep things tight with the ASIO event loop — runtime and context sitting at a couple KB each, fast enough to spin up on threads.
+The goal is to push as much logic into C++ as possible so performance doesn't totally suck. I want to keep things tight with the ASIO event loop — engine sitting at a couple KB, fast enough to spin up on threads.
+
+Architecture: single `Engine` owns everything (atoms, GC, shape cache, builtins, global scope). Each builtin type registers itself via `static setup(Engine*)` that creates its prototype and installs methods. Object creation uses `Engine::get_proto(Builtin::id)` for the fast path. No separate Runtime/Context — Engine merged them both.
 
 Still scratching my head over a decent sparse array though.
 

@@ -46,6 +46,8 @@ struct Object : GCObjectHeader {
 
   // ── GC ───────────────────────────────────────────────────────────────
   void gc_mark(std::vector<GCObjectHeader *> &worklist) override;
+  void gc_decref_refs() override;
+  void gc_clear_refs() override;
   virtual ~Object() = default;
 };
 
@@ -80,6 +82,8 @@ struct BytecodeFunction : Callable {
   Value call(Engine *e, Value this_val, int argc, const Value *argv) override;
 
   void gc_mark(std::vector<GCObjectHeader *> &worklist) override;
+  void gc_decref_refs() override;
+  void gc_clear_refs() override;
 };
 
 // ── calling ───────────────────────────────────────────────────────────

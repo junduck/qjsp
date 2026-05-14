@@ -147,3 +147,144 @@ TEST_F(ObjFixture, ArrayIteratorManual) {
   Value r3 = next_callable->call(e.get(), iter_val, 0, nullptr);
   EXPECT_TRUE(r3.as<Object>()->get_own(e->intern("done")).as_bool());
 }
+
+// ── GC stress tests (kGcThresholdInit=8 in debug) ────────────────────────
+
+TEST_F(ObjFixture, GcStackValueSurvives) {
+  Value obj = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  auto *ptr = obj.as<Object>();
+  for (int i = 0; i < 20; i++) {
+    Value tmp = Object::create(e.get(), Value::undefined_(), Builtin::object);
+    tmp.as<Object>()->set_own(e.get(), atom("i"), Value::int32(i));
+  }
+  EXPECT_EQ(obj.as<Object>(), ptr);
+  EXPECT_TRUE(obj.is_object());
+}
+
+TEST_F(ObjFixture, GcCycleCollected) {
+  Value a = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  Value b = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  auto *aptr = a.as<Object>();
+  auto *bptr = b.as<Object>();
+  aptr->set_own(e.get(), atom("next"), b);
+  bptr->set_own(e.get(), atom("next"), a);
+  size_t before = e->gc_objects.size();
+  a = Value::undefined_();
+  b = Value::undefined_();
+  e->run_gc();
+  bool found_a = false, found_b = false;
+  for (auto *hdr : e->gc_objects) {
+    if (hdr == aptr) found_a = true;
+    if (hdr == bptr) found_b = true;
+  }
+  EXPECT_FALSE(found_a);
+  EXPECT_FALSE(found_b);
+}
+
+TEST_F(ObjFixture, GcCycleWithExternalRefPreserved) {
+  Value a = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  Value b = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  a.as<Object>()->set_own(e.get(), atom("next"), b);
+  b.as<Object>()->set_own(e.get(), atom("next"), a);
+  auto *aptr = a.as<Object>();
+  auto *bptr = b.as<Object>();
+  e->run_gc();
+  EXPECT_TRUE(a.is_object());
+  EXPECT_TRUE(b.is_object());
+  EXPECT_EQ(a.as<Object>(), aptr);
+  EXPECT_EQ(b.as<Object>(), bptr);
+}
+
+TEST_F(ObjFixture, GcTransitiveRevival) {
+  Value a = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  Value b = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  Value c = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  a.as<Object>()->set_own(e.get(), atom("ref"), b);
+  b.as<Object>()->set_own(e.get(), atom("ref"), c);
+  auto *aptr = a.as<Object>();
+  auto *bptr = b.as<Object>();
+  auto *cptr = c.as<Object>();
+  b = Value::undefined_();
+  c = Value::undefined_();
+  e->run_gc();
+  EXPECT_EQ(a.as<Object>(), aptr);
+  EXPECT_EQ(a.as<Object>()->get_own(atom("ref")).as<Object>(), bptr);
+  EXPECT_EQ(a.as<Object>()->get_own(atom("ref")).as<Object>()->get_own(atom("ref")).as<Object>(), cptr);
+}
+
+TEST_F(ObjFixture, GcDeepCycle) {
+  Value a = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  Value b = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  Value c = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  Value d = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  a.as<Object>()->set_own(e.get(), atom("next"), b);
+  b.as<Object>()->set_own(e.get(), atom("next"), c);
+  c.as<Object>()->set_own(e.get(), atom("next"), d);
+  d.as<Object>()->set_own(e.get(), atom("next"), a);
+  auto *aptr = a.as<Object>();
+  auto *bptr = b.as<Object>();
+  auto *cptr = c.as<Object>();
+  auto *dptr = d.as<Object>();
+  a = Value::undefined_();
+  b = Value::undefined_();
+  c = Value::undefined_();
+  d = Value::undefined_();
+  e->run_gc();
+  bool found = false;
+  for (auto *hdr : e->gc_objects) {
+    if (hdr == aptr || hdr == bptr || hdr == cptr || hdr == dptr)
+      found = true;
+  }
+  EXPECT_FALSE(found);
+}
+
+TEST_F(ObjFixture, GcDeepCyclePartialExternal) {
+  Value nodes[4];
+  for (int i = 0; i < 4; i++)
+    nodes[i] = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  for (int i = 0; i < 4; i++)
+    nodes[i].as<Object>()->set_own(e.get(), atom("next"), nodes[(i + 1) % 4]);
+  Object *ptrs[4];
+  for (int i = 0; i < 4; i++) ptrs[i] = nodes[i].as<Object>();
+  nodes[1] = Value::undefined_();
+  nodes[2] = Value::undefined_();
+  nodes[3] = Value::undefined_();
+  e->run_gc();
+  for (int i = 0; i < 4; i++) {
+    bool found = false;
+    for (auto *hdr : e->gc_objects)
+      if (hdr == ptrs[i]) found = true;
+    EXPECT_TRUE(found) << "node " << i << " should survive (reachable from node 0)";
+  }
+}
+
+TEST_F(ObjFixture, GcArrayElementsSurvive) {
+  auto arr = ArrayObject::create(e.get());
+  auto *a  = static_cast<ArrayObject *>(arr.as<Object>());
+  for (int i = 0; i < 20; i++) {
+    Value inner = Object::create(e.get(), Value::undefined_(), Builtin::object);
+    inner.as<Object>()->set_own(e.get(), atom("val"), Value::int32(i));
+    a->elements.push_back(inner);
+  }
+  e->run_gc();
+  for (int i = 0; i < 20; i++) {
+    EXPECT_TRUE(a->elements[i].is_object());
+    EXPECT_EQ(a->elements[i].as<Object>()->get_own(atom("val")).as_int32(), i);
+  }
+}
+
+TEST_F(ObjFixture, GcProtoChainSurvives) {
+  Value p1 = Object::create(e.get(), Value::null_(), Builtin::object);
+  Value p2 = Object::create(e.get(), p1, Builtin::object);
+  Value p3 = Object::create(e.get(), p2, Builtin::object);
+  p1.as<Object>()->set_own(e.get(), atom("root"), Value::int32(42));
+  auto *p1ptr = p1.as<Object>();
+  auto *p2ptr = p2.as<Object>();
+  p1 = Value::undefined_();
+  p2 = Value::undefined_();
+  e->run_gc();
+  EXPECT_TRUE(p3.is_object());
+  EXPECT_EQ(p3.as<Object>()->get(atom("root")).as_int32(), 42);
+  EXPECT_EQ(p3.as<Object>()->proto.as<Object>(), p2ptr);
+  EXPECT_EQ(p3.as<Object>()->proto.as<Object>()->proto.as<Object>(), p1ptr);
+}

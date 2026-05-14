@@ -2,6 +2,7 @@
 #include "qjsp/bytecode.hpp"
 #include "qjsp/engine.hpp"
 #include "qjsp/string.hpp"
+#include "qjsp/varref.hpp"
 
 namespace qjsp {
 
@@ -87,7 +88,62 @@ void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
   }
 }
 
-void BytecodeFunction::gc_mark(std::vector<GCObjectHeader *> &worklist) { Object::gc_mark(worklist); }
+void Object::gc_decref_refs() {
+  if (proto.is_object()) {
+    auto *p = proto.as<Object>();
+    if (p && !p->is_marked)
+      p->gc_refs--;
+  }
+  for (auto &p : properties) {
+    if (p.value.is_object()) {
+      auto *obj = p.value.as<Object>();
+      if (obj && !obj->is_marked)
+        obj->gc_refs--;
+    }
+  }
+}
+
+void Object::gc_clear_refs() {
+  proto = Value::undefined_();
+  properties.clear();
+}
+
+void BytecodeFunction::gc_mark(std::vector<GCObjectHeader *> &worklist) {
+  Object::gc_mark(worklist);
+  for (auto &v : var_refs) {
+    if (v.is_var_ref()) {
+      auto *vr = v.as<VarRef>();
+      Value inner = vr->load();
+      if (inner.is_object()) {
+        auto *obj = inner.as<Object>();
+        if (obj && !obj->is_marked) {
+          obj->is_marked = true;
+          worklist.push_back(obj);
+        }
+      }
+    }
+  }
+}
+
+void BytecodeFunction::gc_decref_refs() {
+  Object::gc_decref_refs();
+  for (auto &v : var_refs) {
+    if (v.is_var_ref()) {
+      auto *vr = v.as<VarRef>();
+      Value inner = vr->load();
+      if (inner.is_object()) {
+        auto *obj = inner.as<Object>();
+        if (obj && !obj->is_marked)
+          obj->gc_refs--;
+      }
+    }
+  }
+}
+
+void BytecodeFunction::gc_clear_refs() {
+  Object::gc_clear_refs();
+  var_refs.clear();
+}
 
 // ── CFunctionObj ──────────────────────────────────────────────────────────
 

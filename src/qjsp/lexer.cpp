@@ -708,10 +708,7 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
 
   buf_ptr = p;
 
-  auto *str = StrPrim::allocate_raw(ident_buf);
-  if (!str)
-    return false;
-  Atom atom               = e_->intern_copy(str);
+  Atom atom               = e_->intern(ident_buf);
   token.ident_atom        = atom;
   token.ident_has_escape  = has_escape;
   token.ident_is_reserved = false;
@@ -764,11 +761,7 @@ bool Lexer::parse_private_name() {
     append_utf8(ident_buf, static_cast<unsigned>(c));
   }
 
-  buf_ptr   = p;
-  auto *str = StrPrim::allocate_raw(ident_buf);
-  if (!str)
-    return false;
-  Atom atom               = e_->intern_copy(str);
+  Atom atom               = e_->intern(ident_buf);
   token.ident_atom        = atom;
   token.ident_has_escape  = false;
   token.ident_is_reserved = false;

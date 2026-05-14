@@ -28,6 +28,12 @@ inline void hash_combine(size_t &seed, size_t v) { seed ^= v + 0x9e3779b9u + (se
 constexpr inline size_t kInterruptCounterInit = 10000;
 constexpr inline size_t kDefaultStackSize     = 1024 * 1024;
 
+#ifdef NDEBUG
+constexpr inline size_t kGcThresholdInit = 1024;
+#else
+constexpr inline size_t kGcThresholdInit = 8;
+#endif
+
 // ─── Engine ─────────────────────────────────────────────────────────────────
 //
 // Engine merges what were previously Runtime (backend: atoms, GC, class table,
@@ -72,9 +78,7 @@ struct Engine {
   // object for that builtin type. Populated by init_builtins().
   std::unique_ptr<Value[]> builtin_protos;
 
-  Value get_proto(Builtin id) const {
-    return builtin_protos[static_cast<size_t>(id)];
-  }
+  Value get_proto(Builtin id) const { return builtin_protos[static_cast<size_t>(id)]; }
 
   // ── GC ─────────────────────────────────────────────────────
 
@@ -82,7 +86,7 @@ struct Engine {
   GCObjList weakrefs;
 
   size_t gc_alloc_count      = 0;
-  size_t malloc_gc_threshold = 1024;
+  size_t malloc_gc_threshold = kGcThresholdInit;
 
   Value global_obj     = Value::undefined_();
   Value global_var_obj = Value::undefined_();
@@ -96,7 +100,6 @@ struct Engine {
   bool init_atoms();
   void init_builtins();
   Atom intern(std::string_view sv);
-  Atom intern_copy(StrPrim *s);
   Value atom_to_value(Atom a) const;
   std::string_view atom_view(Atom a) const {
     if (a == kAtomNull || a >= static_cast<Atom>(atom_table.size()))

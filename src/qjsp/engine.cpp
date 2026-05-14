@@ -51,7 +51,7 @@ Engine::Engine() {
   auto *g = global_obj.as<Object>();
 
   {
-    auto fn_val     = CFunctionObj::create(this, builtin_print, "print", 1);
+    auto fn_val = CFunctionObj::create(this, builtin_print, "print", 1);
     g->set_own(this, intern("print"), fn_val);
   }
 
@@ -112,21 +112,6 @@ Atom Engine::intern(std::string_view sv) {
   return idx;
 }
 
-Atom Engine::intern_copy(StrPrim *s) {
-  if (!s)
-    return kAtomNull;
-  auto it = atom_map.find(s->view());
-  if (it != atom_map.end()) {
-    s->unref();
-    return it->second;
-  }
-  s->set_interned();
-  auto idx = static_cast<Atom>(atom_table.size());
-  atom_table.emplace_back(std::unique_ptr<StrPrim>{s}, false);
-  atom_map.emplace(s->view(), idx);
-  return idx;
-}
-
 Atom Engine::create_symbol(std::string_view desc) {
   Atom idx = static_cast<Atom>(atom_table.size());
   auto *s  = !desc.empty() ? alloc_string(desc) : nullptr;
@@ -162,7 +147,7 @@ Shape *Engine::add_shape(Shape *from, Atom atom, int flags) {
     auto *base = from->entries.get();
     std::copy(base, base + cnt, shape->entries.get());
   }
-  shape->entries[cnt] = {atom, flags};
+  shape->entries[cnt]  = {atom, flags};
   auto [it2, inserted] = shapes.emplace(key, std::move(shape));
   return it2->second.get();
 }
@@ -202,34 +187,69 @@ void Engine::gc_mark_roots(std::vector<GCObjectHeader *> &worklist) {
 }
 
 void Engine::run_gc() {
-  // GCPhase::remove_cycles;
-
+  // Phase 1: Clear marks
   for (auto *obj : gc_objects)
     obj->is_marked = false;
 
-  // Mark roots directly from Engine — no longer iterating Context objects.
-  std::vector<GCObjectHeader *> mark_worklist;
-  gc_mark_roots(mark_worklist);
-
-  while (!mark_worklist.empty()) {
-    auto *p = mark_worklist.back();
-    mark_worklist.pop_back();
-    p->gc_mark(mark_worklist);
+  // Phase 2: Mark from roots
+  std::vector<GCObjectHeader *> worklist;
+  gc_mark_roots(worklist);
+  while (!worklist.empty()) {
+    auto *p = worklist.back();
+    worklist.pop_back();
+    p->gc_mark(worklist);
   }
 
-  size_t i = 0;
-  while (i < gc_objects.size()) {
-    auto *p = gc_objects[i];
-    if (!p->is_marked) {
-      gc_objects[i] = gc_objects.back();
-      gc_objects.pop_back();
-      delete p;
+  // Phase 3: Partition into survivors (marked) and candidates (unmarked)
+  std::vector<GCObjectHeader *> candidates;
+  size_t write = 0;
+  for (size_t read = 0; read < gc_objects.size(); ++read) {
+    if (gc_objects[read]->is_marked) {
+      gc_objects[write++] = gc_objects[read];
     } else {
-      ++i;
+      candidates.push_back(gc_objects[read]);
+    }
+  }
+  gc_objects.resize(write);
+
+  if (candidates.empty()) {
+    gc_alloc_count      = 0;
+    malloc_gc_threshold = malloc_gc_threshold > 0 ? malloc_gc_threshold + (malloc_gc_threshold >> 1) : 1024;
+    return;
+  }
+
+  // Phase 4: Trial deletion — gc_refs = ref_count, then subtract internal refs
+  for (auto *c : candidates)
+    c->gc_refs = c->ref_count;
+  for (auto *c : candidates)
+    c->gc_decref_refs();
+
+  // Phase 5: Revive candidates with external references (gc_refs > 0)
+  for (auto *c : candidates) {
+    if (c->gc_refs > 0 && !c->is_marked) {
+      c->is_marked = true;
+      worklist.push_back(c);
+    }
+  }
+  while (!worklist.empty()) {
+    auto *p = worklist.back();
+    worklist.pop_back();
+    p->gc_mark(worklist);
+  }
+
+  // Phase 6: Break refs in dead candidates, then delete
+  for (auto *c : candidates) {
+    if (!c->is_marked)
+      c->gc_clear_refs();
+  }
+  for (auto *c : candidates) {
+    if (c->is_marked) {
+      gc_objects.push_back(c);
+    } else {
+      delete c;
     }
   }
 
-  //  GCPhase::none;
   gc_alloc_count      = 0;
   malloc_gc_threshold = malloc_gc_threshold > 0 ? malloc_gc_threshold + (malloc_gc_threshold >> 1) : 1024;
 }

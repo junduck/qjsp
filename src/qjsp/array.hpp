@@ -25,6 +25,8 @@ struct ArrayObject : Object {
   }
 
   void gc_mark(std::vector<GCObjectHeader *> &worklist) override;
+  void gc_decref_refs() override;
+  void gc_clear_refs() override;
 };
 
 } // namespace qjsp
