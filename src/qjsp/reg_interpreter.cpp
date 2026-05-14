@@ -514,7 +514,7 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
 
       if (func_val.is_callable()) {
         auto *callable = static_cast<Callable *>(func_val.as<Object>());
-        if (callable->is_bytecode()) {
+        if (callable->is_bytecode) {
           auto *bf = static_cast<BFunctionObj *>(callable);
           std::vector<VarRef *> call_upvals;
           call_upvals.reserve(bf->var_refs.size());

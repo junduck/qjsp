@@ -18,7 +18,7 @@ using CFunction = Value(Engine *e, Value this_val, int argc, const Value *argv);
 //  The call() receiver decides whether to use this_val or create its own.
 
 struct Callable : Object {
-  virtual bool is_bytecode() const { return false; }
+  bool is_bytecode = false;
   virtual Value call(Engine *e, Value this_val, int argc, const Value *argv) = 0;
 };
 
@@ -37,8 +37,6 @@ struct CFunctionObj : Callable {
 struct BFunctionObj : Callable {
   Bytecode *bytecode = nullptr;
   std::vector<Value> var_refs;
-
-  bool is_bytecode() const final { return true; }
 
   static Value create(Engine *e, Bytecode *bc);
 

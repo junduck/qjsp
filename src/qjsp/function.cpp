@@ -31,11 +31,12 @@ Value CFunctionObj::create(Engine *e, CFunction *fn, std::string_view name, int 
 // ─── BFunctionObj ──────────────────────────────────────────────────────
 
 Value BFunctionObj::create(Engine *e, Bytecode *bc) {
-  auto *obj      = new BFunctionObj();
-  obj->ref_count = 1;
-  obj->clsid     = Builtin::object;
-  obj->bytecode  = bc;
-  obj->proto     = e->get_proto(Builtin::function);
+  auto *obj        = new BFunctionObj();
+  obj->ref_count   = 1;
+  obj->clsid       = Builtin::object;
+  obj->bytecode    = bc;
+  obj->proto       = e->get_proto(Builtin::function);
+  obj->is_bytecode = true;
   e->add_gc_object(obj);
   return Value::callable(obj);
 }
