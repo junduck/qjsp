@@ -73,9 +73,8 @@ Value Object::get_own(Engine *e, Atom atom) {
 
 Value Object::get(Engine *e, Atom atom) {
   for (auto *cur = this; cur; cur = cur->proto.is_object() ? cur->proto.as<Object>() : nullptr) {
-    Value v = cur->get_own(e, atom);
-    if (!v.is_undefined())
-      return v;
+    if (cur->has_own(atom))
+      return cur->get_own(e, atom);
   }
   return Value::undefined_();
 }
