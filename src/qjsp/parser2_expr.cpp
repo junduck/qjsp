@@ -376,14 +376,14 @@ NodeIndex Parser::parse_prefix() {
     if (tag == tok_new) {
         advance();
         if (current_.tag == tok_dot) {
+            uint32_t new_end = prev_end_;
             advance();
             Token prop = expect(tok_ident);
             if (!source_eq(prop.start, prop.end, "target")) {
                 error("the only valid meta property for 'new' is 'new.target'");
             }
             return tree_.alloc(NK_META_PROPERTY, span_from(start),
-                               start, prev_end_ - (prev_end_ - prop.start),
-                               prop.start, prop.end);
+                               start, new_end, prop.start, prop.end);
         }
         NodeIndex callee = parse_expr(Prec::New);
         IndexRange args = {0, 0};
@@ -412,9 +412,14 @@ NodeIndex Parser::parse_prefix() {
     if (tag == tok_import) {
         advance();
         if (at(tok_dot)) {
+            uint32_t import_end = prev_end_;
             advance();
-            expect(tok_ident);
-            return tree_.alloc(NK_META_PROPERTY, span_from(start));
+            Token prop = expect(tok_ident);
+            if (!source_eq(prop.start, prop.end, "meta")) {
+                error("the only valid meta property for 'import' is 'import.meta'");
+            }
+            return tree_.alloc(NK_META_PROPERTY, span_from(start),
+                               start, import_end, prop.start, prop.end);
         }
         expect(tok_lparen);
         NodeIndex src = parse_expr(Prec::Assign);

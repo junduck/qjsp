@@ -86,13 +86,14 @@ NodeIndex Parser::parse_primary() {
     case tok_import:
         advance();
         if (at(tok_dot)) {
+            uint32_t import_end = prev_end_;
             advance();
             Token prop = expect(tok_ident);
             if (!source_eq(prop.start, prop.end, "meta")) {
                 error("the only valid meta property for 'import' is 'import.meta'");
             }
             return tree_.alloc(NK_META_PROPERTY, {start, prev_end_},
-                               start, prev_end_, prop.start, prop.end);
+                               start, import_end, prop.start, prop.end);
         }
         expect(tok_lparen);
         {

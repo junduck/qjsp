@@ -442,7 +442,7 @@ TEST_F(Parser2Fixture, ExportNamedSpecifiers) {
     auto body = tree().range(n, 0);
     auto decl = tree().extra(body)[0];
     EXPECT_EQ(kind(decl), NK_EXPORT_NAMED);
-    auto specs = tree().range(decl, 1);
+    auto specs = tree().range(decl, 0);
     EXPECT_EQ(specs.len, 2u);
     EXPECT_EQ(kind(tree().extra(specs)[0]), NK_EXPORT_SPEC);
     EXPECT_EQ(kind(tree().extra(specs)[1]), NK_EXPORT_SPEC);
@@ -453,14 +453,14 @@ TEST_F(Parser2Fixture, ExportNamedFromSource) {
     auto body = tree().range(n, 0);
     auto decl = tree().extra(body)[0];
     EXPECT_EQ(kind(decl), NK_EXPORT_NAMED);
-    EXPECT_NE(tree().d(decl, 3), NodeNull);
+    EXPECT_NE(tree().d(decl, 2), NodeNull);
 }
 
 TEST_F(Parser2Fixture, ExportDeclaration) {
     auto n = parse("export function foo() {}");
     auto body = tree().range(n, 0);
     auto decl = tree().extra(body)[0];
-    EXPECT_EQ(kind(decl), NK_EXPORT_NAMED);
+    EXPECT_EQ(kind(decl), NK_EXPORT_DECL);
     auto inner = tree().d(decl, 0);
     EXPECT_EQ(kind(inner), NK_FUNCTION);
 }
@@ -541,7 +541,7 @@ TEST_F(Parser2Fixture, ExportVar) {
     auto n = parse("export const x = 1;");
     auto body = tree().range(n, 0);
     auto decl = tree().extra(body)[0];
-    EXPECT_EQ(kind(decl), NK_EXPORT_NAMED);
+    EXPECT_EQ(kind(decl), NK_EXPORT_DECL);
     auto inner = tree().d(decl, 0);
     EXPECT_EQ(kind(inner), NK_VAR_DECL);
 }
@@ -550,14 +550,14 @@ TEST_F(Parser2Fixture, ExportClass) {
     auto n = parse("export class Foo {}");
     auto body = tree().range(n, 0);
     auto decl = tree().extra(body)[0];
-    EXPECT_EQ(kind(decl), NK_EXPORT_NAMED);
+    EXPECT_EQ(kind(decl), NK_EXPORT_DECL);
 }
 
 TEST_F(Parser2Fixture, ExportAsyncFunction) {
     auto n = parse("export async function foo() {}");
     auto body = tree().range(n, 0);
     auto decl = tree().extra(body)[0];
-    EXPECT_EQ(kind(decl), NK_EXPORT_NAMED);
+    EXPECT_EQ(kind(decl), NK_EXPORT_DECL);
     auto fn = tree().d(decl, 0);
     EXPECT_EQ(kind(fn), NK_FUNCTION);
     EXPECT_TRUE(tree().d(fn, 3) & NF::Async);

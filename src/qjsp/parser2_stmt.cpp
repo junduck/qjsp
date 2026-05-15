@@ -124,6 +124,7 @@ NodeIndex Parser::parse_stmt() {
     case tok_import: {
         uint32_t import_start = current_.start;
         advance();
+        uint32_t import_end = prev_end_;
         if (at(tok_dot)) {
             advance();
             Token prop = expect(tok_ident);
@@ -131,7 +132,7 @@ NodeIndex Parser::parse_stmt() {
                 error("the only valid meta property for 'import' is 'import.meta'");
             }
             NodeIndex meta = tree_.alloc(NK_META_PROPERTY, span_from(import_start),
-                                         import_start, prev_end_, prop.start, prop.end);
+                                         import_start, import_end, prop.start, prop.end);
             eat_semi();
             return tree_.alloc(NK_EXPR_STMT, span_from(import_start), meta);
         }
@@ -209,8 +210,8 @@ NodeIndex Parser::parse_switch_stmt() {
     expect(tok_lbrace);
     IndexRange cases = parse_switch_cases();
     expect(tok_rbrace);
-    return tree_.alloc(NK_SWITCH_STMT, span_from(start), disc,
-                       cases.start, cases.len);
+    return tree_.alloc(NK_SWITCH_STMT, span_from(start),
+                       cases.start, cases.len, disc);
 }
 
 IndexRange Parser::parse_switch_cases() {
@@ -232,7 +233,7 @@ IndexRange Parser::parse_switch_cases() {
         }
         IndexRange body = flush_scratch(scratch_b_, body_cp);
         NodeIndex c = tree_.alloc(NK_SWITCH_CASE, span_from(case_start),
-                                  test, body.start, body.len);
+                                  body.start, body.len, test);
         scratch_a_.push_back(c);
     }
     return flush_scratch(scratch_a_, cp);
@@ -625,8 +626,7 @@ NodeIndex Parser::parse_export_decl() {
         break;
     }
 
-    return tree_.alloc(NK_EXPORT_NAMED, span_from(start),
-                       decl, 0, 0, NodeNull);
+    return tree_.alloc(NK_EXPORT_DECL, span_from(start), decl);
 }
 
 NodeIndex Parser::parse_export_default() {
@@ -681,7 +681,7 @@ NodeIndex Parser::parse_export_named() {
 
     eat_semi();
     return tree_.alloc(NK_EXPORT_NAMED, span_from(start),
-                       NodeNull, specs.start, specs.len, source);
+                       specs.start, specs.len, source);
 }
 
 NodeIndex Parser::parse_export_all() {

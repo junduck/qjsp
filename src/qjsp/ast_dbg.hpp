@@ -83,6 +83,7 @@ inline const char *node_kind_name(NodeKind k) {
     case NK_IMPORT_DEFAULT: return "IMPORT_DEFAULT";
     case NK_IMPORT_NAMESPACE: return "IMPORT_NAMESPACE";
     case NK_EXPORT_NAMED:   return "EXPORT_NAMED";
+    case NK_EXPORT_DECL:    return "EXPORT_DECL";
     case NK_EXPORT_DEFAULT: return "EXPORT_DEFAULT";
     case NK_EXPORT_ALL:     return "EXPORT_ALL";
     case NK_EXPORT_SPEC:    return "EXPORT_SPEC";
