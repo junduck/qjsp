@@ -115,6 +115,8 @@ NodeIndex Parser::parse_primary() {
 NodeIndex Parser::parse_array_expr() {
     uint32_t start = current_.start;
     expect(tok_lbrack);
+    bool saved_cover = in_cover_;
+    in_cover_ = true;
     auto cp = static_cast<uint32_t>(scratch_a_.size());
     while (!at(tok_rbrack) && !at(tok_eof)) {
         if (eat(tok_comma)) {
@@ -133,12 +135,15 @@ NodeIndex Parser::parse_array_expr() {
     }
     IndexRange elems = flush_scratch(scratch_a_, cp);
     expect(tok_rbrack);
+    in_cover_ = saved_cover;
     return tree_.alloc(NK_ARRAY_EXPR, span_from(start), elems.start, elems.len);
 }
 
 NodeIndex Parser::parse_object_expr() {
     uint32_t start = current_.start;
     expect(tok_lbrace);
+    bool saved_cover = in_cover_;
+    in_cover_ = true;
     auto cp = static_cast<uint32_t>(scratch_a_.size());
     while (!at(tok_rbrace) && !at(tok_eof)) {
         uint32_t prop_start = current_.start;
@@ -229,11 +234,25 @@ NodeIndex Parser::parse_object_expr() {
         } else if (flags & NF::Computed) {
             error("expected ':' or '('");
             continue;
+        } else if (at(tok_assign)) {
+            cover_has_init_name_ = true;
+            advance();
+            NodeIndex init = parse_expr(Prec::Assign);
+            NodeIndex id_ref = tree_.alloc(NK_IDENT_REF, tree_.span(key));
+            NodeIndex value = tree_.alloc(NK_ASSIGNMENT_EXPR, span_from(prop_start),
+                                          id_ref, init, AsgnAssign);
+            flags |= NF::Shorthand;
+            NodeIndex prop = tree_.alloc(NK_OBJECT_PROP, span_from(prop_start),
+                                          key, value, flags);
+            scratch_a_.push_back(prop);
+            if (at(tok_comma)) { advance(); continue; }
+            if (!at(tok_rbrace)) expect(tok_comma);
+            continue;
         } else {
             flags |= NF::Shorthand;
             NodeIndex value = tree_.alloc(NK_IDENT_REF, tree_.span(key));
             NodeIndex prop = tree_.alloc(NK_OBJECT_PROP, span_from(prop_start),
-                                         key, value, flags);
+                                          key, value, flags);
             scratch_a_.push_back(prop);
             if (at(tok_comma)) { advance(); continue; }
             if (!at(tok_rbrace)) expect(tok_comma);
@@ -255,7 +274,15 @@ NodeIndex Parser::parse_object_expr() {
     }
     IndexRange props = flush_scratch(scratch_a_, cp);
     expect(tok_rbrace);
-    return tree_.alloc(NK_OBJECT_EXPR, span_from(start), props.start, props.len);
+    NodeIndex obj = tree_.alloc(NK_OBJECT_EXPR, span_from(start), props.start, props.len);
+    if (!saved_cover && cover_has_init_name_) {
+        if (!at(tok_assign) && !at(tok_in) && !at(tok_of)) {
+            validate_cover_init(obj);
+        }
+        cover_has_init_name_ = false;
+    }
+    in_cover_ = saved_cover;
+    return obj;
 }
 
 NodeIndex Parser::parse_paren_or_arrow() {
@@ -277,17 +304,22 @@ NodeIndex Parser::parse_paren_or_arrow() {
     }
 
     auto cp = static_cast<uint32_t>(scratch_cover_.size());
+    bool saved_cover = in_cover_;
+    in_cover_ = true;
     NodeIndex first = parse_expr(Prec::Assign);
     scratch_cover_.push_back(first);
 
+    bool has_trailing_comma = false;
     while (eat(tok_comma)) {
-        if (at(tok_rparen)) break;
+        if (at(tok_rparen)) { has_trailing_comma = true; break; }
         scratch_cover_.push_back(parse_expr(Prec::Assign));
     }
     expect(tok_rparen);
+    in_cover_ = saved_cover;
 
     if (at(tok_arrow) && !has_newline_before()) {
         advance();
+        cover_has_init_name_ = false;
         NodeIndex params = build_arrow_params(
             scratch_cover_.size() - cp == 1
                 ? first
@@ -327,6 +359,20 @@ NodeIndex Parser::parse_paren_or_arrow() {
         result = tree_.alloc(NK_SEQUENCE_EXPR, span_from(start),
                              exprs.start, exprs.len);
     }
+
+    for (uint32_t i = cp; i < scratch_cover_.size(); i++) {
+        NodeIndex el = scratch_cover_[i];
+        if (tree_.kind(el) == NK_SPREAD) {
+            error_at(tree_.span(el),
+                "rest element is not allowed in parenthesized expression");
+        }
+        validate_cover_init(el);
+    }
+
+    if (has_trailing_comma) {
+        error("trailing comma is not allowed in parenthesized expression");
+    }
+
     scratch_cover_.resize(cp);
     return tree_.alloc(NK_PAREN_EXPR, span_from(start), result);
 }
@@ -336,6 +382,8 @@ NodeIndex Parser::expr_to_binding(NodeIndex expr) {
     case NK_IDENT_REF:
         tree_.nodes[expr].kind = NK_BINDING_IDENT;
         return expr;
+    case NK_PAREN_EXPR:
+        return expr_to_binding(tree_.d(expr, 0));
     case NK_ASSIGNMENT_EXPR: {
         NodeIndex left = tree_.d(expr, 0);
         NodeIndex right = tree_.d(expr, 1);

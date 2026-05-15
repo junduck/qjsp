@@ -90,6 +90,108 @@ bool Parser::is_simple_assign_target(NodeIndex n) const {
     return false;
 }
 
+void Parser::validate_cover_init(NodeIndex n) {
+    NodeKind k = kind(n);
+    switch (k) {
+    case NK_SEQUENCE_EXPR: {
+        IndexRange exprs = tree_.range(n, 0);
+        for (uint32_t i = 0; i < exprs.len; i++)
+            validate_cover_init(tree_.extra(exprs)[i]);
+        break;
+    }
+    case NK_PAREN_EXPR:
+        validate_cover_init(tree_.d(n, 0));
+        break;
+    case NK_ARRAY_EXPR: {
+        IndexRange elems = tree_.range(n, 0);
+        for (uint32_t i = 0; i < elems.len; i++) {
+            NodeIndex el = tree_.extra(elems)[i];
+            if (el != NodeNull) validate_cover_init(el);
+        }
+        break;
+    }
+    case NK_OBJECT_EXPR: {
+        IndexRange props = tree_.range(n, 0);
+        for (uint32_t i = 0; i < props.len; i++) {
+            NodeIndex prop = tree_.extra(props)[i];
+            if (tree_.kind(prop) == NK_OBJECT_PROP) validate_cover_init(prop);
+            else if (tree_.kind(prop) == NK_SPREAD) validate_cover_init(tree_.d(prop, 0));
+        }
+        break;
+    }
+    case NK_OBJECT_PROP: {
+        uint32_t flags = tree_.d(n, 2);
+        if (flags & NF::Shorthand) {
+            NodeIndex val = tree_.d(n, 1);
+            if (tree_.kind(val) == NK_ASSIGNMENT_EXPR &&
+                tree_.d(val, 2) == AsgnAssign) {
+                error_at(tree_.span(n),
+                    "shorthand property cannot have a default value in object expression");
+                break;
+            }
+        }
+        validate_cover_init(tree_.d(n, 1));
+        break;
+    }
+    case NK_BINARY_EXPR:
+        validate_cover_init(tree_.d(n, 0));
+        validate_cover_init(tree_.d(n, 1));
+        break;
+    case NK_LOGICAL_EXPR:
+        validate_cover_init(tree_.d(n, 0));
+        validate_cover_init(tree_.d(n, 1));
+        break;
+    case NK_ASSIGNMENT_EXPR:
+        validate_cover_init(tree_.d(n, 0));
+        validate_cover_init(tree_.d(n, 1));
+        break;
+    case NK_CONDITIONAL_EXPR:
+        validate_cover_init(tree_.d(n, 0));
+        validate_cover_init(tree_.d(n, 1));
+        validate_cover_init(tree_.d(n, 2));
+        break;
+    case NK_UNARY_EXPR:
+    case NK_UPDATE_EXPR:
+    case NK_AWAIT_EXPR:
+    case NK_YIELD_EXPR:
+    case NK_SPREAD:
+        validate_cover_init(tree_.d(n, 0));
+        break;
+    case NK_CALL_EXPR: {
+        validate_cover_init(tree_.d(n, 0));
+        IndexRange args = tree_.range(n, 1);
+        for (uint32_t i = 0; i < args.len; i++)
+            validate_cover_init(tree_.extra(args)[i]);
+        break;
+    }
+    case NK_NEW_EXPR: {
+        validate_cover_init(tree_.d(n, 0));
+        IndexRange args = tree_.range(n, 1);
+        for (uint32_t i = 0; i < args.len; i++)
+            validate_cover_init(tree_.extra(args)[i]);
+        break;
+    }
+    case NK_CHAIN_EXPR:
+        validate_cover_init(tree_.d(n, 0));
+        validate_cover_init(tree_.d(n, 1));
+        break;
+    case NK_MEMBER_EXPR:
+        validate_cover_init(tree_.d(n, 0));
+        validate_cover_init(tree_.d(n, 1));
+        break;
+    case NK_TAGGED_TEMPLATE:
+        validate_cover_init(tree_.d(n, 0));
+        break;
+    case NK_METHOD_DEF:
+    case NK_PROPERTY_DEF:
+        validate_cover_init(tree_.d(n, 0));
+        validate_cover_init(tree_.d(n, 1));
+        break;
+    default:
+        break;
+    }
+}
+
 // ─── Operator mapping ────────────────────────────────────────────────────────
 
 BinOp Parser::token_binop(TokenTag t) {
@@ -414,6 +516,7 @@ NodeIndex Parser::parse_infix(uint8_t prec, NodeIndex left) {
         advance();
         if (op == AsgnAssign) {
             left = expr_to_binding(left);
+            cover_has_init_name_ = false;
         } else {
             if (!is_simple_assign_target(left)) {
                 error("invalid assignment target");

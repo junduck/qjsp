@@ -24,6 +24,8 @@ private:
     bool ctx_yield_ = false;
     bool ctx_await_ = false;
     bool ctx_return_ = false;
+    bool cover_has_init_name_ = false;
+    bool in_cover_ = false;
 
     std::vector<uint32_t> scratch_stmts_;
     std::vector<uint32_t> scratch_cover_;
@@ -104,6 +106,7 @@ private:
     NodeIndex parse_export_spec();
 
     void validate_for_init_declarators(NodeIndex decl);
+    void validate_cover_init(NodeIndex expr);
 
     // ─── Destructuring / patterns ──────────────────────────────────────────
     NodeIndex parse_binding();

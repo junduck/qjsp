@@ -57,7 +57,7 @@ NodeIndex Parser::parse_stmt() {
     case tok_const:     return parse_var_decl();
     case tok_function:  advance(); return parse_function(false);
     case tok_async: {
-        if (current_.has_newline_before()) break;
+        if (current_.has_newline_before()) return parse_expr_or_label_or_directive();
         uint32_t as = current_.start;
         advance();
         if (at(tok_function)) {
@@ -82,8 +82,13 @@ NodeIndex Parser::parse_stmt() {
                 eat_semi();
                 return tree_.alloc(NK_EXPR_STMT, span_from(as), arrow);
             }
+            auto seq_cp = static_cast<uint32_t>(scratch_a_.size());
             NodeIndex id_ref = tree_.alloc(NK_IDENT_REF, {id_tok.start, prev_end_});
-            NodeIndex seq = tree_.alloc(NK_SEQUENCE_EXPR, {as, prev_end_}, 0, 0);
+            scratch_a_.push_back(async_id);
+            scratch_a_.push_back(id_ref);
+            IndexRange items = flush_scratch(scratch_a_, seq_cp);
+            NodeIndex seq = tree_.alloc(NK_SEQUENCE_EXPR, {as, prev_end_},
+                                         items.start, items.len);
             eat_semi();
             return tree_.alloc(NK_EXPR_STMT, span_from(as), seq);
         }
@@ -157,6 +162,7 @@ NodeIndex Parser::parse_expr_or_label_or_directive() {
         return tree_.alloc(NK_LABELED_STMT, span_from(start), expr, body);
     }
 
+    validate_cover_init(expr);
     eat_semi();
     return tree_.alloc(NK_EXPR_STMT, span_from(start), expr);
 }
@@ -251,12 +257,20 @@ NodeIndex Parser::parse_for_rest(NodeIndex init, bool init_is_decl, bool is_awai
     if (at(tok_in)) {
         if (is_await) error("'for await' requires 'of', not 'in'");
         advance();
+        if (!init_is_decl && init != NodeNull) {
+            init = expr_to_binding(init);
+            cover_has_init_name_ = false;
+        }
         NodeIndex right = parse_expr();
         uint32_t kind = NK_FOR_IN_STMT;
         return tree_.alloc(static_cast<NodeKind>(kind), cur_span(), init, right);
     }
     if (at(tok_of)) {
         advance();
+        if (!init_is_decl && init != NodeNull) {
+            init = expr_to_binding(init);
+            cover_has_init_name_ = false;
+        }
         NodeIndex right = parse_expr();
         uint32_t flags = is_await ? NF::Await : 0;
         return tree_.alloc(NK_FOR_OF_STMT, cur_span(), init, right, flags);
