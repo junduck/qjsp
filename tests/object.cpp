@@ -699,3 +699,18 @@ TEST_F(ObjFixture, FclosureCanBeCalled) {
   EXPECT_TRUE(result.is_int32());
   EXPECT_EQ(result.as_int32(), 7);
 }
+
+// ─── Bug confirmation tests ──────────────────────────────────────────────
+
+TEST_F(ObjFixture, BugObjectGetSkipsUndefinedOwn) {
+  Value proto = Object::create(e.get(), Value::undefined_(), Builtin::object);
+  proto.as<Object>()->set_own(e.get(), atom("x"), Value::int32(42));
+
+  Value child = Object::create(e.get(), proto, Builtin::object);
+  child.as<Object>()->set_own(e.get(), atom("x"), Value::undefined_());
+
+  // Bug: get() returns int32(42) from proto instead of undefined from own prop
+  Value v = child.as<Object>()->get(e.get(), atom("x"));
+  EXPECT_TRUE(v.is_undefined())
+      << "BUG: own property x=undefined should shadow proto's x=42, but get() walks past it";
+}

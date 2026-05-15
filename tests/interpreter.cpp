@@ -526,3 +526,57 @@ TEST_F(RegInterpFixture, CallInBinary) {
   EXPECT_TRUE(v.is_int32());
   EXPECT_EQ(v.as_int32(), 6);
 }
+
+// ─── Bug confirmation tests ──────────────────────────────────────────────
+
+TEST_F(RegInterpFixture, BugSetElemArrayInconsistency) {
+  Value v = eval("var a = []; a[0] = 5; a[0];");
+  EXPECT_TRUE(v.is_int32()) << "SETELEM should write to elements so GETELEM can read back";
+  EXPECT_EQ(v.as_int32(), 5);
+}
+
+TEST_F(RegInterpFixture, BugSetElemArrayOverwrite) {
+  Value v = eval("var a = [10, 20]; a[1] = 99; a[1];");
+  EXPECT_TRUE(v.is_int32()) << "SETELEM should overwrite existing elements";
+  EXPECT_EQ(v.as_int32(), 99);
+}
+
+TEST_F(RegInterpFixture, BugSetElemArrayExtend) {
+  Value v = eval("var a = []; a[0] = 1; a[1] = 2; a[0] + a[1];");
+  EXPECT_TRUE(v.is_int32()) << "SETELEM should extend elements vector";
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(RegInterpFixture, ArrayStringIndexGet) {
+  Value v = eval("var a = [10, 20, 30]; a[\"1\"];");
+  EXPECT_TRUE(v.is_int32()) << "arr[\"1\"] should access elements via string index";
+  EXPECT_EQ(v.as_int32(), 20);
+}
+
+TEST_F(RegInterpFixture, ArrayStringIndexSet) {
+  Value v = eval("var a = [10, 20]; a[\"1\"] = 99; a[1];");
+  EXPECT_TRUE(v.is_int32()) << "arr[\"1\"] = 99 should write to elements";
+  EXPECT_EQ(v.as_int32(), 99);
+}
+
+TEST_F(RegInterpFixture, ArrayStringIndexNonNumeric) {
+  Value v = eval("var a = [10, 20]; a[\"foo\"];");
+  EXPECT_TRUE(v.is_undefined()) << "arr[\"foo\"] should return undefined (not an index)";
+}
+
+TEST_F(RegInterpFixture, ArrayStringIndexZero) {
+  Value v = eval("var a = [42]; a[\"0\"];");
+  EXPECT_TRUE(v.is_int32()) << "arr[\"0\"] should access elements[0]";
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(RegInterpFixture, BugModDoubleTruncation) {
+  Value v = eval("5.5 % 2;");
+  // Bug: mod_values truncates doubles to int32, so 5.5 becomes 5, giving 5%2=1 instead of fmod(5.5,2)=1.5
+  // Correct result should be double(1.5); confirm the bug by checking we get int32(1)
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+  // When fixed, this should become:
+  // ASSERT_TRUE(v.is_double());
+  // EXPECT_DOUBLE_EQ(v.as_double(), 1.5);
+}
