@@ -105,9 +105,11 @@ Value function_apply(Engine *e, Value this_val, int argc, const Value *argv) {
   if (argc < 2 || !argv[1].is_object()) {
     return static_cast<Callable *>(this_val.as<Object>())->call(e, this_arg, 0, nullptr);
   }
-  auto *arr = argv[1].as<ArrayObject>();
-  if (!arr)
-    return Value::undefined_();
+  auto *obj = argv[1].as<Object>();
+  if (obj->clsid != Builtin::array) {
+    return static_cast<Callable *>(this_val.as<Object>())->call(e, this_arg, 0, nullptr);
+  }
+  auto *arr = static_cast<ArrayObject *>(obj);
 
   return static_cast<Callable *>(this_val.as<Object>())
       ->call(e, this_arg, static_cast<int>(arr->elements.size()), arr->elements.empty() ? nullptr : arr->elements.data());
