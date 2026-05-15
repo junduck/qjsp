@@ -747,6 +747,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         bool is_nested_obj = false;
         int nested_start   = -1;
         bool has_default   = false;
+        bool is_rest       = false;
         size_t def_start   = 0;
         size_t def_end     = 0;
       };
@@ -758,6 +759,23 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
           for_pattern_.binds.push_back({kAtomNull, -1});
           next_token();
           continue;
+        }
+        // Rest element: ...rest
+        if (lexer.token.kind == TokenKind::Ellipsis) {
+          next_token();
+          if (lexer.token.kind != TokenKind::Identifier)
+            return;
+          Atom name = lexer.token.ident_atom;
+          next_token();
+          if (!js_define_var(name, decl_tok))
+            return;
+          int idx = cur_func->find_var(name);
+          ArrBind bind;
+          bind.name    = name;
+          bind.reg     = cur_func->alloc.var(idx < 0 ? 0u : idx);
+          bind.is_rest = true;
+          binds.push_back(bind);
+          break;
         }
         // Nested array: [a, [b, c]]
         if (lexer.token.kind == TokenKind::LBracket) {
@@ -780,7 +798,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
             if (!js_define_var(name, decl_tok))
               return;
             int idx = cur_func->find_var(name);
-            binds.push_back({name, cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx))});
+            binds.push_back({name, cur_func->alloc.var(idx < 0 ? 0 : idx)});
             nested_count++;
             if (lexer.token.kind == TokenKind::Comma)
               next_token();
@@ -801,7 +819,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         int idx = cur_func->find_var(name);
         ArrBind bind;
         bind.name = name;
-        bind.reg  = cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx));
+        bind.reg  = cur_func->alloc.var(idx < 0 ? 0 : idx);
 
         // Capture default value source range for lazy re-parsing
         if (lexer.token.kind == TokenKind::EqAssign) {
@@ -846,6 +864,9 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         int arr_pos = 0; // track actual array index
         for (size_t i = 0; i < binds.size(); ++i) {
           auto &b = binds[i];
+
+          if (b.is_rest)
+            continue;
 
           // Nested array: extract element, then recurse for inner binds
           if (b.is_nested_arr) {
@@ -906,6 +927,12 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
           free_temp(); // elem_reg
           arr_pos++;
         }
+
+        // Rest element: emit SLICE for the last rest binding
+        if (!binds.empty() && binds.back().is_rest) {
+          emit_iABC(RegOp::SLICE, static_cast<uint8_t>(binds.back().reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(arr_pos));
+        }
+
         free_temp(); // rhs
       }
 
@@ -951,7 +978,7 @@ void RegParseState::parse_var_decls(TokenKind decl_tok) {
         ObjBind bind;
         bind.prop     = prop;
         bind.var_name = var_name;
-        bind.reg      = cur_func->alloc.var(idx < 0 ? 0 : static_cast<uint32_t>(idx));
+        bind.reg      = cur_func->alloc.var(idx < 0 ? 0 : idx);
 
         if (lexer.token.kind == TokenKind::EqAssign) {
           size_t def_s = lexer.buf_pos(); // '=' already consumed by earlier next_token

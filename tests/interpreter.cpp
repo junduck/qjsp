@@ -269,6 +269,48 @@ TEST_F(RegInterpFixture, DestructureObjectDefaultUsed) {
   EXPECT_EQ(v.as_int32(), 5);
 }
 
+TEST_F(RegInterpFixture, DestructureArrayRest) {
+  Value v = eval("var [a, ...rest] = [1, 2, 3]; a + rest[0] + rest[1];");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 6);
+}
+
+TEST_F(RegInterpFixture, DestructureArrayRestEmpty) {
+  Value v = eval("var [a, ...rest] = [1]; a;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(RegInterpFixture, DestructureArrayRestOnly) {
+  Value v = eval("var [...rest] = [10, 20]; rest[0] + rest[1];");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 30);
+}
+
+TEST_F(RegInterpFixture, AssignDestructureArrayRest) {
+  Value v = eval("var a, rest; [a, ...rest] = [1, 2, 3]; a + rest[0] + rest[1];");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 6);
+}
+
+TEST_F(RegInterpFixture, AssignDestructureObject) {
+  Value v = eval("var a, b; ({x: a, y: b} = {x: 10, y: 20}); a + b;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 30);
+}
+
+TEST_F(RegInterpFixture, AssignDestructureObjectShorthand) {
+  Value v = eval("var x, y; ({x, y} = {x: 5, y: 7}); x + y;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 12);
+}
+
+TEST_F(RegInterpFixture, AssignDestructureObjectDefault) {
+  Value v = eval("var z; ({z = 42} = {}); z;");
+  EXPECT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
 // ─── Try / Catch ────────────────────────────────────────────────────────
 
 TEST_F(RegInterpFixture, TryCatchCaught) {

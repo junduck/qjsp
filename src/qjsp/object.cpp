@@ -46,6 +46,10 @@ void Object::setup(Engine *e) {
   e->global_obj.as<Object>()->set_own(e, e->intern("Object"), ctor);
 }
 
+// TODO: cyclic prototype chain check — walk new proto's chain and reject if `this` is found.
+// Need native exception facility. Native builtins assign proto from
+// carefully chosen values so cycles are unlikely, but user-facing __proto__ needs guarding.
+
 Value Object::create(Engine *e, Value proto, Builtin clsid) {
   auto *obj       = new Object();
   obj->ref_count  = 1;
@@ -64,8 +68,8 @@ Value Object::get_own(Engine *e, Atom atom) {
   auto idx = shape->find(atom);
   if (idx >= shape->size())
     return Value::undefined_();
-  auto &prop  = properties[idx];
-  int flags   = shape->entries[idx].flags;
+  auto &prop = properties[idx];
+  int flags  = shape->entries[idx].flags;
   if ((flags & kPropGetter) && prop.getter.is_callable())
     return call(e, prop.getter, Value::object(this), 0, nullptr);
   return prop.value;
@@ -108,7 +112,7 @@ bool Object::set_own(Engine *e, Atom atom, Value value, int flags) {
 // ── GC ─────────────────────────────────────────────────────────────────────
 
 void Object::gc_mark(std::vector<GCObjectHeader *> &worklist) {
-  is_marked = true;
+  is_marked     = true;
   auto mark_val = [&](Value &v) {
     if (v.is_object()) {
       auto *obj = v.as<Object>();

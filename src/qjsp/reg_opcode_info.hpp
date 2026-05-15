@@ -107,6 +107,9 @@ inline constexpr RegOpInfo kRegOpInfo[] = {
     {"FOR_OF_START", InstrFmt::ABC}, //  A=iter_reg, B=obj_reg
     {"FOR_OF_NEXT", InstrFmt::ABC},  //  A=val_reg, B=iter_reg, C=more_reg
 
+    // ── array slice (1) ──────────────────────────────────────────────────────
+    {"SLICE", InstrFmt::ABC}, //  A=dst, B=src_arr, C=start_idx
+
     // ── regexp (1) ─────────────────────────────────────────────────────────
     {"REGEXP", InstrFmt::ABx}, //  A=dst, Bx=cpool_idx (pattern; flags at idx+1)
 

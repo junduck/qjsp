@@ -630,6 +630,23 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
       break;
     }
 
+    case RegOp::SLICE: {
+      Value &src = regs[i.b()];
+      int start  = i.c();
+      auto result = ArrayObject::create(e_);
+      auto *dst   = static_cast<ArrayObject *>(result.as<Object>());
+      if (src.is_object()) {
+        auto *o = src.as<Object>();
+        if (o && o->clsid == Builtin::array) {
+          auto *arr = static_cast<ArrayObject *>(o);
+          for (size_t k = static_cast<size_t>(start); k < arr->elements.size(); k++)
+            dst->elements.push_back(arr->elements[k]);
+        }
+      }
+      regs[i.a()] = result;
+      break;
+    }
+
     case RegOp::INSTANCEOF:
       regs[i.a()] = Value::bool_(instanceof(e_, regs[i.b()], regs[i.c()]));
       break;

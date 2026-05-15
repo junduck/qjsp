@@ -503,14 +503,155 @@ RegSlot RegParseState::parse_assign_expr() {
     return parse_expr_from(this, val, PREC_ASSIGN + 1); // stop before any assignment
   }
 
+  // Object destructuring assignment: ({x, y} = expr)
+  if (tok == TokenKind::LBrace) {
+    TokenKind next = peek_token(false);
+    if (next == TokenKind::Identifier || next == TokenKind::Comma) {
+      Lexer saved_lexer = lexer;
+      next_token(); // skip '{'
+
+      struct ObjAssignTarget {
+        LValue lv;
+        Atom prop;
+        bool has_default;
+        size_t def_start;
+        size_t def_end;
+      };
+      std::vector<ObjAssignTarget> targets;
+      bool valid = true;
+
+      while (lexer.token.kind != TokenKind::RBrace) {
+        if (lexer.token.kind == TokenKind::Comma) {
+          next_token();
+          continue;
+        }
+        if (lexer.token.kind != TokenKind::Identifier) {
+          valid = false;
+          break;
+        }
+        Atom prop = lexer.token.ident_atom;
+        next_token();
+
+        Atom var_name = prop; // shorthand: {x}
+        if (lexer.token.kind == TokenKind::Colon) {
+          next_token();
+          if (lexer.token.kind != TokenKind::Identifier) {
+            valid = false;
+            break;
+          }
+          var_name = lexer.token.ident_atom;
+          next_token();
+        }
+
+        LValue lv;
+        bool found = false;
+        for (int j = cur_func->var_count; j-- > 0;) {
+          if (cur_func->vars[static_cast<size_t>(j)].var_name == var_name) {
+            lv.kind    = LValue::LOCAL;
+            lv.var_idx = j;
+            lv.prop    = var_name;
+            found      = true;
+            break;
+          }
+        }
+        if (!found) {
+          for (int j = cur_func->arg_count; j-- > 0;) {
+            if (cur_func->args[static_cast<size_t>(j)].var_name == var_name) {
+              lv.kind    = LValue::ARG;
+              lv.var_idx = j;
+              lv.prop    = var_name;
+              found      = true;
+              break;
+            }
+          }
+        }
+        if (!found) {
+          int upval = cur_func->resolve_upval(var_name);
+          if (upval >= 0) {
+            lv.kind      = LValue::UPVAL;
+            lv.upval_idx = upval;
+            lv.prop      = var_name;
+            found        = true;
+          }
+        }
+        if (!found) {
+          lv.kind = LValue::GLOBAL;
+          lv.prop = var_name;
+        }
+
+        ObjAssignTarget t{lv, prop, false, 0, 0};
+        if (lexer.token.kind == TokenKind::EqAssign) {
+          t.def_start = lexer.buf_pos();
+          int depth   = 0;
+          for (;;) {
+            TokenKind k = lexer.token.kind;
+            if (k == TokenKind::LParen || k == TokenKind::LBracket || k == TokenKind::LBrace)
+              depth++;
+            else if (k == TokenKind::RParen || k == TokenKind::RBracket || k == TokenKind::RBrace) {
+              if (depth == 0)
+                break;
+              depth--;
+            } else if (depth == 0 && (k == TokenKind::Comma || k == TokenKind::RBrace))
+              break;
+            if (k == TokenKind::Eof)
+              break;
+            next_token();
+          }
+          t.def_end     = lexer.buf_pos();
+          t.has_default = true;
+        }
+        targets.push_back(t);
+        if (lexer.token.kind == TokenKind::Comma)
+          next_token();
+      }
+
+      if (valid && lexer.token.kind == TokenKind::RBrace) {
+        next_token(); // skip '}'
+        if (lexer.token.kind == TokenKind::EqAssign) {
+          next_token(); // '='
+          RegSlot rhs = parse_expr(PREC_ASSIGN);
+          for (auto &t : targets) {
+            int ci       = cpool_add(e_->atom_to_value(t.prop));
+            int elem_reg = alloc_temp();
+            emit_iABC(RegOp::GETFIELD, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(ci));
+
+            if (t.has_default) {
+              int skip_lab = new_label(), def_lab = new_label();
+              emit_jump(RegOp::IS_UNDEF, def_lab, {elem_reg});
+              emit_jump(RegOp::JMP, skip_lab, 0);
+              emit_label(def_lab);
+              Lexer saved2 = lexer;
+              lexer.reset(lexer.buf_start + t.def_start, t.def_end - t.def_start);
+              lexer.next_token();
+              RegSlot def = parse_assign_expr();
+              emit_iABC(RegOp::MOVE, static_cast<uint8_t>(elem_reg), static_cast<uint8_t>(def.reg), 0);
+              free_temp();
+              lexer = saved2;
+              emit_label(skip_lab);
+            }
+
+            emit_lvalue_store(t.lv, {elem_reg});
+            free_temp();
+          }
+          free_temp(); // rhs
+          return rhs;
+        }
+      }
+
+      // Not object destructuring — restore lexer and fall through
+      lexer = saved_lexer;
+    }
+  }
+
   // Assignment destructuring: [a, b] = expr
   if (tok == TokenKind::LBracket) {
     TokenKind next = peek_token(false);
-    if (next == TokenKind::Comma || next == TokenKind::Identifier) {
+    if (next == TokenKind::Comma || next == TokenKind::Identifier || next == TokenKind::Ellipsis) {
       next_token(); // skip '['
       struct AssignTarget {
         LValue lv;
         bool has_default;
+        bool is_rest;
         size_t def_start;
         size_t def_end;
       };
@@ -520,6 +661,52 @@ RegSlot RegParseState::parse_assign_expr() {
         if (lexer.token.kind == TokenKind::Comma) {
           next_token();
           continue;
+        }
+        // Rest element: ...rest
+        if (lexer.token.kind == TokenKind::Ellipsis) {
+          next_token();
+          if (lexer.token.kind != TokenKind::Identifier)
+            goto parse_as_value;
+          Atom name = lexer.token.ident_atom;
+          next_token();
+
+          LValue lv;
+          bool found = false;
+          for (int j = cur_func->var_count; j-- > 0;) {
+            if (cur_func->vars[static_cast<size_t>(j)].var_name == name) {
+              lv.kind    = LValue::LOCAL;
+              lv.var_idx = j;
+              lv.prop    = name;
+              found      = true;
+              break;
+            }
+          }
+          if (!found) {
+            for (int j = cur_func->arg_count; j-- > 0;) {
+              if (cur_func->args[static_cast<size_t>(j)].var_name == name) {
+                lv.kind    = LValue::ARG;
+                lv.var_idx = j;
+                lv.prop    = name;
+                found      = true;
+                break;
+              }
+            }
+          }
+          if (!found) {
+            int upval = cur_func->resolve_upval(name);
+            if (upval >= 0) {
+              lv.kind      = LValue::UPVAL;
+              lv.upval_idx = upval;
+              lv.prop      = name;
+              found        = true;
+            }
+          }
+          if (!found) {
+            lv.kind = LValue::GLOBAL;
+            lv.prop = name;
+          }
+          targets.push_back({lv, false, true, 0, 0});
+          break; // rest must be last
         }
         if (lexer.token.kind != TokenKind::Identifier)
           goto parse_as_value;
@@ -562,7 +749,7 @@ RegSlot RegParseState::parse_assign_expr() {
           lv.prop = name;
         }
 
-        AssignTarget t{lv, false, 0, 0};
+        AssignTarget t{lv, false, false, 0, 0};
         if (lexer.token.kind == TokenKind::EqAssign) {
           t.def_start = lexer.buf_pos();
           int depth   = 0;
@@ -617,6 +804,15 @@ RegSlot RegParseState::parse_assign_expr() {
           emit_lvalue_store(targets[i].lv, {elem_reg});
           free_temp();
         }
+
+        // Rest element: emit SLICE for the last rest target
+        if (!targets.empty() && targets.back().is_rest) {
+          int rest_reg = alloc_temp();
+          emit_iABC(RegOp::SLICE, static_cast<uint8_t>(rest_reg), static_cast<uint8_t>(rhs.reg), static_cast<uint8_t>(targets.size() - 1));
+          emit_lvalue_store(targets.back().lv, {rest_reg});
+          free_temp();
+        }
+
         free_temp(); // rhs
         return rhs;
       }
@@ -821,6 +1017,9 @@ RegSlot RegParseState::parse_array_literal() {
 
   for (int i = 0; i < count; i++)
     free_temp();
+
+  if (cur_func->alloc.next_temp_ <= static_cast<uint32_t>(arr_reg))
+    cur_func->alloc.next_temp_ = static_cast<uint32_t>(arr_reg) + 1;
 
   return {arr_reg};
 }
