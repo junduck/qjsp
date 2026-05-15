@@ -538,6 +538,7 @@ NodeIndex Parser::parse_infix(uint8_t prec, NodeIndex left) {
     if (tag == tok_comma) {
         auto cp = static_cast<uint32_t>(scratch_a_.size());
         scratch_a_.push_back(left);
+        advance();
         do {
             scratch_a_.push_back(parse_expr(Prec::Assign));
         } while (eat(tok_comma) && tag_prec(tok_comma) >= prec);
