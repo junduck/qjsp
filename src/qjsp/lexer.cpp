@@ -1050,7 +1050,7 @@ bool Lexer::parse_regexp() {
 // Called by the parser when a '/' token might actually be a regexp literal.
 // Rewinds to the start of the '/' and tries to parse as a regexp.
 bool Lexer::reparse_as_regexp() {
-  buf_ptr = last_ptr; // rewind to start of '/'
+  buf_ptr = token.ptr; // rewind to start of the '/' token (not last_ptr which may include preceding whitespace)
   return parse_regexp();
 }
 
