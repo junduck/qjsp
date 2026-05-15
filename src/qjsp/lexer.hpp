@@ -32,9 +32,14 @@ enum class LexErrorKind : uint8_t {
   UnexpectedChar,
 };
 
+struct SourceLoc {
+  uint32_t line   = 1;
+  uint32_t column = 1;
+};
+
 struct LexError {
   LexErrorKind kind   = LexErrorKind::None;
-  size_t offset       = 0;
+  SourceLoc    loc;
 
   explicit operator bool() const { return kind != LexErrorKind::None; }
 };
@@ -72,6 +77,8 @@ struct Lexer {
   const uint8_t *buf_ptr   = nullptr;
   const uint8_t *buf_end   = nullptr;
   const uint8_t *last_ptr  = nullptr;
+  const uint8_t *line_start_ = nullptr;
+  uint32_t line_            = 1;
   Token token;
   LexError error_;
   bool got_lf              = false;
@@ -80,6 +87,9 @@ struct Lexer {
   void init(Engine *e, const char *filename, const uint8_t *source, size_t source_len);
   void reset(const uint8_t *source, size_t source_len);
   size_t buf_pos() const { return static_cast<size_t>(buf_ptr - buf_start); }
+  SourceLoc source_loc(const uint8_t *p) const {
+    return {line_, static_cast<uint32_t>(p - line_start_ + 1)};
+  }
 
   bool next_token();
   TokenKind peek_token(bool no_line_terminator);
@@ -90,9 +100,14 @@ struct Lexer {
 
 private:
   bool fail(LexErrorKind kind, const uint8_t *ptr) {
-    error_.kind   = kind;
-    error_.offset = static_cast<size_t>(ptr - buf_start);
+    error_.kind = kind;
+    error_.loc  = source_loc(ptr);
     return false;
+  }
+
+  void advance_line(const uint8_t *next_line_start) {
+    line_++;
+    line_start_ = next_line_start;
   }
 
   bool parse_ident_token(int first_c, bool has_escape);

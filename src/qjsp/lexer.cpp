@@ -270,23 +270,27 @@ int Lexer::parse_escape(const uint8_t **pp, bool allow_utf16) {
 // ─── Lexer initialisation ───────────────────────────────────────────────────
 
 void Lexer::init(Engine *e_val, const char *filename_val, const uint8_t *source, size_t source_len) {
-  e_        = e_val;
-  filename  = filename_val;
-  buf_start = source;
-  buf_ptr   = source;
-  buf_end   = source + source_len;
-  last_ptr  = source;
-  got_lf    = false;
-  error_    = LexError{};
+  e_          = e_val;
+  filename    = filename_val;
+  buf_start   = source;
+  buf_ptr     = source;
+  buf_end     = source + source_len;
+  last_ptr    = source;
+  line_start_ = source;
+  line_       = 1;
+  got_lf      = false;
+  error_      = LexError{};
 }
 
 void Lexer::reset(const uint8_t *source, size_t source_len) {
-  buf_start = source;
-  buf_ptr   = source;
-  buf_end   = source + source_len;
-  last_ptr  = source;
-  got_lf    = false;
-  token     = Token{};
+  buf_start   = source;
+  buf_ptr     = source;
+  buf_end     = source + source_len;
+  last_ptr    = source;
+  line_start_ = source;
+  line_       = 1;
+  got_lf      = false;
+  token       = Token{};
   error_    = LexError{};
 }
 
@@ -332,6 +336,7 @@ redo:
     p++;
   line_terminator:
     got_lf = true;
+    advance_line(p);
     goto redo;
 
   case '\f':
@@ -351,14 +356,23 @@ redo:
           p += 2;
           break;
         }
-        if (*p == '\n' || *p == '\r') {
+        if (*p == '\n') {
+          got_lf = true;
+          advance_line(p + 1);
+          p++;
+        } else if (*p == '\r') {
           got_lf = true;
           p++;
+          if (*p == '\n')
+            p++;
+          advance_line(p);
         } else if (*p >= 0x80) {
           const uint8_t *p_next;
           c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next);
-          if (c == CP_LS || c == CP_PS)
+          if (c == CP_LS || c == CP_PS) {
             got_lf = true;
+            advance_line(p_next);
+          }
           else if (c == -1)
             p++;
           p = p_next;

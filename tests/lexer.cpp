@@ -414,7 +414,7 @@ TEST_F(LexerFixture, ErrorKindUnterminatedString) {
   EXPECT_FALSE(lexer.next_token());
   EXPECT_TRUE(lexer.error_);
   EXPECT_EQ(lexer.error_.kind, LexErrorKind::UnterminatedString);
-  EXPECT_GT(lexer.error_.offset, 0u);
+  EXPECT_GT(lexer.error_.loc.line, 0u);
 }
 
 TEST_F(LexerFixture, ErrorKindUnterminatedComment) {
@@ -446,6 +446,37 @@ TEST_F(LexerFixture, ErrorClearedOnSuccess) {
   EXPECT_TRUE(lexer.next_token());
   EXPECT_FALSE(lexer.error_);
   EXPECT_EQ(lexer.error_.kind, LexErrorKind::None);
+}
+
+TEST_F(LexerFixture, ErrorLocSingleLine) {
+  init_lexer("  0x");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.loc.line, 1u);
+  EXPECT_EQ(lexer.error_.loc.column, 5u);
+}
+
+TEST_F(LexerFixture, ErrorLocMultiLine) {
+  init_lexer("var x = 1;\nvar y = 0x");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.loc.line, 2u);
+  EXPECT_EQ(lexer.error_.loc.column, 11u);
+}
+
+TEST_F(LexerFixture, ErrorLocBlockCommentNewlines) {
+  init_lexer("/* a\nb */ 42 0x");
+  EXPECT_TRUE(lexer.next_token()) << "42 should parse, line=" << lexer.error_.loc.line;
+  EXPECT_EQ(lexer.token.kind, TokenKind::Number);
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.loc.line, 2u);
+  EXPECT_EQ(lexer.error_.loc.column, 11u);
 }
 
 // ── Bug-reproduction tests ──────────────────────────────────────────────────
