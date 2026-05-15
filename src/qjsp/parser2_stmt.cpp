@@ -432,7 +432,7 @@ NodeIndex Parser::parse_var_decl() {
         scratch_a_.push_back(declarator);
     } while (eat(tok_comma));
 
-    if (!at(tok_rparen)) eat_semi();
+    if (!at(tok_rparen) && !at(tok_in) && !at(tok_of)) eat_semi();
 
     IndexRange decls = flush_scratch(scratch_a_, cp);
     return tree_.alloc(NK_VAR_DECL, span_from(start), decls.start, decls.len, kind);
