@@ -306,13 +306,30 @@ NodeIndex Parser::parse_paren_or_arrow() {
     auto cp = static_cast<uint32_t>(scratch_cover_.size());
     bool saved_cover = in_cover_;
     in_cover_ = true;
-    NodeIndex first = parse_expr(Prec::Assign);
+
+    NodeIndex first = NodeNull;
+    if (at(tok_spread)) {
+        uint32_t spread_start = current_.start;
+        advance();
+        NodeIndex arg = parse_expr(Prec::Assign);
+        first = tree_.alloc(NK_SPREAD, {spread_start, prev_end_}, arg);
+    } else {
+        first = parse_expr(Prec::Assign);
+    }
     scratch_cover_.push_back(first);
 
     bool has_trailing_comma = false;
     while (eat(tok_comma)) {
         if (at(tok_rparen)) { has_trailing_comma = true; break; }
-        scratch_cover_.push_back(parse_expr(Prec::Assign));
+        if (at(tok_spread)) {
+            uint32_t spread_start = current_.start;
+            advance();
+            NodeIndex arg = parse_expr(Prec::Assign);
+            NodeIndex sp = tree_.alloc(NK_SPREAD, {spread_start, prev_end_}, arg);
+            scratch_cover_.push_back(sp);
+        } else {
+            scratch_cover_.push_back(parse_expr(Prec::Assign));
+        }
     }
     expect(tok_rparen);
     in_cover_ = saved_cover;
@@ -327,7 +344,8 @@ NodeIndex Parser::parse_paren_or_arrow() {
         if (scratch_cover_.size() - cp > 1) {
             auto pcp = static_cast<uint32_t>(scratch_a_.size());
             for (uint32_t i = cp; i < scratch_cover_.size(); i++) {
-                scratch_a_.push_back(expr_to_binding(scratch_cover_[i]));
+                NodeIndex el = scratch_cover_[i];
+                if (el != NodeNull) scratch_a_.push_back(expr_to_binding(el));
             }
             IndexRange items = flush_scratch(scratch_a_, pcp);
             params = tree_.alloc(NK_FORMAL_PARAMS, span_from(start),
@@ -362,6 +380,7 @@ NodeIndex Parser::parse_paren_or_arrow() {
 
     for (uint32_t i = cp; i < scratch_cover_.size(); i++) {
         NodeIndex el = scratch_cover_[i];
+        if (el == NodeNull) continue;
         if (tree_.kind(el) == NK_SPREAD) {
             error_at(tree_.span(el),
                 "rest element is not allowed in parenthesized expression");
