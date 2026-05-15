@@ -6,6 +6,7 @@ add_executable(test_main
   gc_adversarial.cpp
   lexer.cpp
   parser.cpp
+  parser2.cpp
   interpreter.cpp
 )
 target_link_libraries(test_main GTest::gtest_main qjsp::qjsp)

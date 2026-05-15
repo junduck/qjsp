@@ -52,6 +52,11 @@ add_library(qjsp
   src/qjsp/function.cpp
   src/qjsp/primitive.cpp
   src/qjsp/lexer.cpp
+  src/qjsp/lexer2.cpp
+  src/qjsp/parser2_expr.cpp
+  src/qjsp/parser2_primary.cpp
+  src/qjsp/parser2_stmt.cpp
+  src/qjsp/parser2_fn.cpp
   src/qjsp/unicode_id.cpp
   src/qjsp/varref.cpp
   src/qjsp/reg_parser_emit.cpp
