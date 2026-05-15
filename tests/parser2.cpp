@@ -336,23 +336,32 @@ TEST_F(Parser2Fixture, AsyncKeyword) {
 }
 
 TEST_F(Parser2Fixture, StringEscapes) {
-    auto n = parse("\"hello\\nworld\";");
+    auto n = parse("{ \"hello\\nworld\"; }");
     auto body = tree().range(n, 0);
-    auto lit = tree().d(tree().extra(body)[0], 0);
+    auto block = tree().extra(body)[0];
+    auto block_body = tree().range(block, 0);
+    auto expr_stmt = tree().extra(block_body)[0];
+    auto lit = tree().d(expr_stmt, 0);
     EXPECT_EQ(kind(lit), NK_STRING_LIT);
 }
 
 TEST_F(Parser2Fixture, StringHexEscape) {
-    auto n = parse("\"\\x41\";");
+    auto n = parse("{ \"\\x41\"; }");
     auto body = tree().range(n, 0);
-    auto lit = tree().d(tree().extra(body)[0], 0);
+    auto block = tree().extra(body)[0];
+    auto block_body = tree().range(block, 0);
+    auto expr_stmt = tree().extra(block_body)[0];
+    auto lit = tree().d(expr_stmt, 0);
     EXPECT_EQ(kind(lit), NK_STRING_LIT);
 }
 
 TEST_F(Parser2Fixture, StringUnicodeEscape) {
-    auto n = parse("\"\\u0041\";");
+    auto n = parse("{ \"\\u0041\"; }");
     auto body = tree().range(n, 0);
-    auto lit = tree().d(tree().extra(body)[0], 0);
+    auto block = tree().extra(body)[0];
+    auto block_body = tree().range(block, 0);
+    auto expr_stmt = tree().extra(block_body)[0];
+    auto lit = tree().d(expr_stmt, 0);
     EXPECT_EQ(kind(lit), NK_STRING_LIT);
 }
 
@@ -563,12 +572,14 @@ TEST_F(Parser2Fixture, ImportExpressionInCall) {
 
 TEST_F(Parser2Fixture, ThrowNewlineIsError) {
     auto n = parse("throw\n42;");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, ArrowDisablesYield) {
     auto n = parse("function* g() { var f = () => yield; }");
     EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
 }
 
 TEST_F(Parser2Fixture, SuperFollowToken) {
@@ -580,28 +591,34 @@ TEST_F(Parser2Fixture, SuperFollowToken) {
 
 TEST_F(Parser2Fixture, SuperAloneIsError) {
     auto n = parse("function f() { super + 1; }");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, PrivateIdentBareIsError) {
     auto n = parse("#foo;");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, ForAwaitOnlyWithOf) {
     auto n = parse("async function f() { for await (const x of y) {} }");
     EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
     auto n2 = parse("async function f() { for await (const x in y) {} }");
+    EXPECT_NE(n2, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, ForAwaitClassicForIsError) {
     auto n = parse("async function f() { for await (;;) {} }");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, UnaryPowError) {
     auto n = parse("-2 ** 3;");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
@@ -614,16 +631,19 @@ TEST_F(Parser2Fixture, UnaryPowParenOk) {
 
 TEST_F(Parser2Fixture, AwaitPowError) {
     auto n = parse("async function f() { await 2 ** 3; }");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, NullishLogicalMixError) {
     auto n = parse("a ?? b || c;");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, LogicalNullishMixError) {
     auto n = parse("a && b ?? c;");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
@@ -641,6 +661,7 @@ TEST_F(Parser2Fixture, NewTarget) {
 
 TEST_F(Parser2Fixture, NewOtherPropertyError) {
     auto n = parse("function f() { new.foo; }");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
@@ -653,6 +674,7 @@ TEST_F(Parser2Fixture, ImportMeta) {
 
 TEST_F(Parser2Fixture, ImportOtherPropertyError) {
     auto n = parse("import.foo;");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
@@ -681,16 +703,19 @@ TEST_F(Parser2Fixture, CompoundAssignmentLHSMember) {
 
 TEST_F(Parser2Fixture, CompoundAssignmentLHSLiteralError) {
     auto n = parse("5 += 1;");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, ForInitConstNoInitError) {
     auto n = parse("for (const x;;) {}");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 
 TEST_F(Parser2Fixture, ForInitDestructureNoInitError) {
     auto n = parse("for (var [a, b];;) {}");
+    EXPECT_NE(n, NodeNull);
     EXPECT_TRUE(tree().errors.size() > 0);
 }
 

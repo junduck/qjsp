@@ -63,7 +63,11 @@ NodeIndex Parser::parse_stmt() {
     case tok_semi:      return parse_empty_stmt();
     case tok_var:
     case tok_let:
-    case tok_const:     return parse_var_decl();
+    case tok_const: {
+        NodeIndex d = parse_var_decl();
+        validate_const_init(d);
+        return d;
+    }
     case tok_function:  advance(); return parse_function(false);
     case tok_async: {
         if (current_.has_newline_before()) return parse_expr_or_label_or_directive();
@@ -71,7 +75,7 @@ NodeIndex Parser::parse_stmt() {
         advance();
         if (at(tok_function)) {
             advance();
-            NodeIndex fn = parse_function(false);
+            NodeIndex fn = parse_function(false, true);
             tree_.d(fn, 3) |= NF::Async;
             tree_.nodes[fn].span.start = as;
             return fn;
@@ -461,10 +465,6 @@ NodeIndex Parser::parse_var_decl() {
         }
         NodeIndex declarator = tree_.alloc(NK_VAR_DECLARATOR, span_from(decl_start),
                                            id, init);
-        if (kind == VarConst && init == NodeNull) {
-            error_at(tree_.span(declarator),
-                "missing initializer in const declaration");
-        }
         scratch_a_.push_back(declarator);
     } while (eat(tok_comma));
 
@@ -610,7 +610,7 @@ NodeIndex Parser::parse_export_decl() {
         advance();
         if (at(tok_function)) {
             advance();
-            decl = parse_function(false);
+            decl = parse_function(false, true);
             tree_.d(decl, 3) |= NF::Async;
             tree_.nodes[decl].span.start = as;
         }
@@ -641,7 +641,7 @@ NodeIndex Parser::parse_export_default() {
         advance();
         if (at(tok_function)) {
             advance();
-            decl = parse_function(false);
+            decl = parse_function(false, true);
             tree_.d(decl, 3) |= NF::Async;
         }
     } else if (at(tok_class)) {
@@ -749,6 +749,19 @@ void Parser::validate_for_init_declarators(NodeIndex decl) {
         NodeKind id_kind = kind(id);
         if ((id_kind == NK_ARRAY_PAT || id_kind == NK_OBJECT_PAT) && init == NodeNull) {
             error_at(tree_.span(declarator), "destructuring declaration in for loop initializer must be initialized");
+        }
+    }
+}
+
+void Parser::validate_const_init(NodeIndex decl) {
+    uint32_t var_kind = tree_.d(decl, 2);
+    if (var_kind != VarConst) return;
+    IndexRange declarators = tree_.range(decl, 0);
+    for (uint32_t i = 0; i < declarators.len; i++) {
+        NodeIndex declarator = tree_.extra(declarators)[i];
+        if (tree_.d(declarator, 1) == NodeNull) {
+            error_at(tree_.span(declarator),
+                "missing initializer in const declaration");
         }
     }
 }

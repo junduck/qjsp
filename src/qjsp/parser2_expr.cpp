@@ -430,7 +430,7 @@ NodeIndex Parser::parse_prefix() {
         Token async_tok = current_;
         advance();
         if (at(tok_function)) {
-            return parse_function(true);
+            return parse_function(true, true);
         }
         if (at(tok_ident) && !current_.has_newline_before()) {
             Token id_tok = current_;

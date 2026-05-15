@@ -88,7 +88,7 @@ private:
     NodeIndex parse_var_decl();
 
     // ─── Functions / classes ───────────────────────────────────────────────
-    NodeIndex parse_function(bool is_expr);
+    NodeIndex parse_function(bool is_expr, bool is_async = false);
     NodeIndex parse_function_body();
     NodeIndex parse_formal_params();
     NodeIndex parse_class(bool is_expr);
@@ -107,6 +107,7 @@ private:
     NodeIndex parse_export_spec();
 
     void validate_for_init_declarators(NodeIndex decl);
+    void validate_const_init(NodeIndex decl);
     void validate_cover_init(NodeIndex expr);
 
     // ─── Destructuring / patterns ──────────────────────────────────────────

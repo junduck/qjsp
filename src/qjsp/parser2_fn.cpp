@@ -4,9 +4,10 @@ namespace qjsp {
 
 // ─── Function parsing ────────────────────────────────────────────────────────
 
-NodeIndex Parser::parse_function(bool is_expr) {
+NodeIndex Parser::parse_function(bool is_expr, bool is_async) {
     uint32_t start = prev_end_;
     uint32_t flags = is_expr ? NF::IsExpr : 0;
+    if (is_async) flags |= NF::Async;
     if (current_.tag == tok_star) {
         flags |= NF::Generator;
         advance();
