@@ -22,6 +22,15 @@ NodeIndex Parser::parse_stmt_list_body() {
     uint32_t start = current_.start;
     auto cp = static_cast<uint32_t>(scratch_stmts_.size());
 
+    while (at(tok_string) && !current_.has_newline_before()) {
+        uint32_t dir_start = current_.start;
+        advance();
+        NodeIndex dir = tree_.alloc(NK_DIRECTIVE, {dir_start, prev_end_});
+        scratch_stmts_.push_back(dir);
+        eat_semi();
+        if (has_newline_before() || current_.tag != tok_string) break;
+    }
+
     while (!at(tok_eof)) {
         NodeIndex s = parse_stmt();
         if (s != NodeNull) scratch_stmts_.push_back(s);
@@ -158,7 +167,9 @@ NodeIndex Parser::parse_expr_or_label_or_directive() {
 
     if (at(tok_colon) && tree_.kind(expr) == NK_IDENT_REF && !has_newline_before()) {
         advance();
+        ctx_single_stmt_ = true;
         NodeIndex body = parse_stmt();
+        ctx_single_stmt_ = false;
         return tree_.alloc(NK_LABELED_STMT, span_from(start), expr, body);
     }
 
@@ -173,10 +184,14 @@ NodeIndex Parser::parse_if_stmt() {
     expect(tok_lparen);
     NodeIndex test = parse_expr();
     expect(tok_rparen);
+    ctx_single_stmt_ = true;
     NodeIndex consequent = parse_stmt();
+    ctx_single_stmt_ = false;
     NodeIndex alternate = NodeNull;
     if (eat(tok_else)) {
+        ctx_single_stmt_ = true;
         alternate = parse_stmt();
+        ctx_single_stmt_ = false;
     }
     return tree_.alloc(NK_IF_STMT, span_from(start), test, consequent, alternate);
 }
@@ -224,6 +239,7 @@ NodeIndex Parser::parse_for_stmt() {
 
     bool is_await = false;
     if (at(tok_await) && !has_newline_before()) {
+        if (!ctx_await_) error("'for await' is only valid in async functions or modules");
         is_await = true;
         advance();
     }
@@ -247,7 +263,9 @@ NodeIndex Parser::parse_for_stmt() {
 
     ctx_in_ = saved_in;
     expect(tok_rparen);
+    ctx_single_stmt_ = true;
     NodeIndex body = parse_stmt();
+    ctx_single_stmt_ = false;
     tree_.d(result, 3) = body;
     tree_.nodes[result].span.end = prev_end_;
     return result;
@@ -267,11 +285,17 @@ NodeIndex Parser::parse_for_rest(NodeIndex init, bool init_is_decl, bool is_awai
     }
     if (at(tok_of)) {
         advance();
+        if (!is_await && !init_is_decl && init != NodeNull) {
+            Span s = tree_.span(init);
+            if (tree_.kind(init) == NK_IDENT_REF && source_eq(s.start, s.end, "async")) {
+                error("'for (async of ...)' is ambiguous with 'for await'");
+            }
+        }
         if (!init_is_decl && init != NodeNull) {
             init = expr_to_binding(init);
             cover_has_init_name_ = false;
         }
-        NodeIndex right = parse_expr();
+        NodeIndex right = parse_expr(Prec::Assign);
         uint32_t flags = is_await ? NF::Await : 0;
         return tree_.alloc(NK_FOR_OF_STMT, cur_span(), init, right, flags);
     }
@@ -294,7 +318,9 @@ NodeIndex Parser::parse_while_stmt() {
     expect(tok_lparen);
     NodeIndex test = parse_expr();
     expect(tok_rparen);
+    ctx_single_stmt_ = true;
     NodeIndex body = parse_stmt();
+    ctx_single_stmt_ = false;
     return tree_.alloc(NK_WHILE_STMT, span_from(start), test, body);
 }
 
@@ -317,7 +343,9 @@ NodeIndex Parser::parse_with_stmt() {
     expect(tok_lparen);
     NodeIndex obj = parse_expr();
     expect(tok_rparen);
+    ctx_single_stmt_ = true;
     NodeIndex body = parse_stmt();
+    ctx_single_stmt_ = false;
     return tree_.alloc(NK_WITH_STMT, span_from(start), obj, body);
 }
 
@@ -419,6 +447,10 @@ NodeIndex Parser::parse_var_decl() {
     else if (at(tok_const)) kind = VarConst;
     advance();
 
+    if (ctx_single_stmt_ && (kind == VarLet || kind == VarConst)) {
+        error("lexical declaration cannot appear in a single-statement context");
+    }
+
     auto cp = static_cast<uint32_t>(scratch_a_.size());
     do {
         uint32_t decl_start = current_.start;
@@ -429,6 +461,10 @@ NodeIndex Parser::parse_var_decl() {
         }
         NodeIndex declarator = tree_.alloc(NK_VAR_DECLARATOR, span_from(decl_start),
                                            id, init);
+        if (kind == VarConst && init == NodeNull) {
+            error_at(tree_.span(declarator),
+                "missing initializer in const declaration");
+        }
         scratch_a_.push_back(declarator);
     } while (eat(tok_comma));
 

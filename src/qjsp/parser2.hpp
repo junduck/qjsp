@@ -24,6 +24,7 @@ private:
     bool ctx_yield_ = false;
     bool ctx_await_ = false;
     bool ctx_return_ = false;
+    bool ctx_single_stmt_ = false;
     bool cover_has_init_name_ = false;
     bool in_cover_ = false;
 
