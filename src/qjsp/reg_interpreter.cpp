@@ -10,6 +10,7 @@
 #include "qjsp/regexp.hpp"
 #include "qjsp/shape.hpp"
 #include "qjsp/string.hpp"
+#include "qjsp/utils.hpp"
 #include "qjsp/varref.hpp"
 #include <cassert>
 #include <cmath>
@@ -376,18 +377,35 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
       break;
     }
 
+      // TODO: GET/SETELEM -> virtual dispatch
+
     case RegOp::GETELEM: {
       Value &obj = regs[i.b()];
       Value &key = regs[i.c()];
-      if (key.is_int32() && obj.is_object()) {
+      if (obj.is_object()) {
         auto *o = obj.as<Object>();
         if (o && o->clsid == Builtin::array) {
-          auto *arr = static_cast<ArrayObject *>(o);
-          int idx   = key.as_int32();
-          if (idx >= 0 && static_cast<size_t>(idx) < arr->elements.size())
-            regs[i.a()] = arr->elements[static_cast<size_t>(idx)];
-          else
+          auto *arr    = static_cast<ArrayObject *>(o);
+          uint32_t idx = 0;
+          if (key.is_int32()) {
+            int ki = key.as_int32();
+            if (ki >= 0)
+              idx = static_cast<uint32_t>(ki);
+            else {
+              regs[i.a()] = Value::undefined_();
+              break;
+            }
+          } else if (key.is_string()) {
+            idx = string_to_index(key.as<StrPrim>()->view());
+            if (is_sentinel(idx)) {
+              regs[i.a()] = Value::undefined_();
+              break;
+            }
+          } else {
             regs[i.a()] = Value::undefined_();
+            break;
+          }
+          regs[i.a()] = idx < arr->elements.size() ? arr->elements[idx] : Value::undefined_();
           break;
         }
       }
@@ -406,7 +424,30 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
     case RegOp::SETELEM: {
       Value &obj = regs[i.a()];
       Value &key = regs[i.b()];
-      Atom atom  = kAtomNull;
+      Value &val = regs[i.c()];
+      if (obj.is_object()) {
+        auto *o = obj.as<Object>();
+        if (o && o->clsid == Builtin::array) {
+          auto *arr    = static_cast<ArrayObject *>(o);
+          uint32_t idx = 0;
+          if (key.is_int32()) {
+            int ki = key.as_int32();
+            if (ki >= 0)
+              idx = static_cast<uint32_t>(ki);
+            else
+              break;
+          } else if (key.is_string()) {
+            idx = string_to_index(key.as<StrPrim>()->view());
+            if (is_sentinel(idx))
+              break;
+          } else {
+            break;
+          }
+          arr->set_elem(idx, val);
+          break;
+        }
+      }
+      Atom atom = kAtomNull;
       if (key.is_string()) {
         atom = e_->intern(key.as<StrPrim>()->view());
       } else if (key.is_int32()) {
@@ -414,7 +455,7 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
         snprintf(buf, sizeof(buf), "%d", key.as_int32());
         atom = e_->intern(buf);
       }
-      put_field(obj, atom, regs[i.c()]);
+      put_field(obj, atom, val);
       break;
     }
 
