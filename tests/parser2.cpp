@@ -757,3 +757,74 @@ TEST_F(Parser2Fixture, ObjectGetMethodAsProperty) {
     auto prop = tree().extra(props)[0];
     EXPECT_EQ(kind(prop), NK_OBJECT_PROP);
 }
+
+TEST_F(Parser2Fixture, CoverShorthandWithInitInArrow) {
+    auto n = parse("({a = 1}) => a;");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverShorthandWithInitInExprStmtError) {
+    auto n = parse("({a = 1});");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_FALSE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverShorthandWithoutInitOk) {
+    auto n = parse("({a});");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverShorthandInArrowArray) {
+    auto n = parse("([{a = 1}]) => a;");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverForInBinding) {
+    auto n = parse("let x; for (x in [1,2]) {}");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverForOfBinding) {
+    auto n = parse("let x; for (x of [1,2]) {}");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverParenSpreadInArrayOk) {
+    auto n = parse("([...a]);");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverArrowSpreadOk) {
+    auto n = parse("(...a) => a;");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverParenTrailingCommaError) {
+    auto n = parse("(1, );");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_FALSE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverArrowTrailingCommaOk) {
+    auto n = parse("(a, ) => a;");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
+
+TEST_F(Parser2Fixture, CoverShorthandInForOfLet) {
+    auto n = parse("for (let {a = 1} of [{}]) {}");
+    EXPECT_NE(n, NodeNull);
+}
+
+TEST_F(Parser2Fixture, CoverPlainForOf) {
+    auto n = parse("for (let x of [1]) {}");
+    EXPECT_NE(n, NodeNull);
+    EXPECT_TRUE(tree().errors.empty());
+}
