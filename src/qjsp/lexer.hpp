@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <string_view>
 
 namespace qjsp {
 
@@ -57,11 +58,9 @@ struct Token {
   bool ident_has_escape  = false;
   bool ident_is_reserved = false;
 
-  // regexp
-  std::string regexp_body;
-  std::string regexp_flags;
-  uint32_t regexp_body_len  = 0;
-  uint32_t regexp_flags_len = 0;
+  // regexp — verbatim slices of the source buffer
+  std::string_view regexp_body;
+  std::string_view regexp_flags;
 };
 
 // ─── Lexer ──────────────────────────────────────────────────────────────────
@@ -112,8 +111,6 @@ private:
   static bool is_hi_surrogate(uint32_t c);
   static bool is_lo_surrogate(uint32_t c);
   static uint32_t from_surrogate(uint32_t hi, uint32_t lo);
-
-  static void copy_str(std::string &dst, uint32_t &dst_len, const std::string &buf);
 };
 
 // ─── inline constants ───────────────────────────────────────────────────────

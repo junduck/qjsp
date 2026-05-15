@@ -55,8 +55,8 @@ static RegSlot parse_string_literal(RegParseState *ps) {
 
 static RegSlot parse_regexp_literal(RegParseState *ps) {
   // Store pattern + flags in sequential cpool slots; REGEXP reads both from idx, idx+1
-  int ci = ps->cpool_add(StrPrim::create(std::string_view{ps->lexer.token.regexp_body.c_str(), ps->lexer.token.regexp_body_len}));
-  ps->cpool_add(StrPrim::create(std::string_view{ps->lexer.token.regexp_flags.c_str(), ps->lexer.token.regexp_flags_len}));
+  int ci = ps->cpool_add(StrPrim::create(ps->lexer.token.regexp_body));
+  ps->cpool_add(StrPrim::create(ps->lexer.token.regexp_flags));
   int r = ps->alloc_temp();
   ps->emit_iABx(RegOp::REGEXP, static_cast<uint8_t>(r), static_cast<uint16_t>(ci));
   ps->next_token();

@@ -42,11 +42,6 @@ const char *lex_error_message(LexErrorKind k) {
 
 // ─── Character helpers ──────────────────────────────────────────────────────
 
-void Lexer::copy_str(std::string &dst, uint32_t &dst_len, const std::string &buf) {
-  dst_len = static_cast<uint32_t>(buf.size());
-  dst     = buf;
-}
-
 int Lexer::unicode_from_utf8(const uint8_t *p, int max_len, const uint8_t **pp) {
   int c, minc;
   c = *p;
@@ -720,9 +715,53 @@ redo:
 // ─── Identifier parsing ─────────────────────────────────────────────────────
 
 bool Lexer::parse_ident_token(int first_c, bool has_escape) {
-  const uint8_t *p = buf_ptr;
+  const uint8_t *p  = buf_ptr;
   const uint8_t *p1;
-  int c = first_c;
+  int c             = first_c;
+
+  if (!has_escape) {
+    for (;;) {
+      p1 = p;
+      c  = *p1++;
+      if (c == '\\' && *p1 == 'u') {
+        has_escape = true;
+        break;
+      }
+      if (c >= 128) {
+        c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+        if (!unicode_is_id_continue(static_cast<uint32_t>(c)))
+          break;
+      } else if (!unicode_is_id_continue(static_cast<uint32_t>(c))) {
+        break;
+      }
+      p = p1;
+    }
+  }
+
+  if (!has_escape) {
+    auto sv = std::string_view(reinterpret_cast<const char *>(token.ptr),
+                               static_cast<size_t>(p - token.ptr));
+    buf_ptr = p;
+
+    auto it = kKeywordTable.find(sv);
+    if (it != kKeywordTable.end()) {
+      token.kind              = it->second;
+      token.ident_atom        = e_->intern(sv);
+      token.ident_has_escape  = false;
+      token.ident_is_reserved = false;
+      return true;
+    }
+
+    token.ident_atom        = e_->intern(sv);
+    token.ident_has_escape  = false;
+    token.ident_is_reserved = false;
+    token.kind              = TokenKind::Identifier;
+    return true;
+  }
+
+  // Escape path — must allocate
+  p = buf_ptr;
+  c = first_c;
   std::string ident_buf;
 
   for (;;) {
@@ -731,8 +770,7 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
 
     c = *p1++;
     if (c == '\\' && *p1 == 'u') {
-      c          = parse_escape(&p1, true);
-      has_escape = true;
+      c = parse_escape(&p1, true);
     } else if (c >= 128) {
       c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
     }
@@ -743,21 +781,10 @@ bool Lexer::parse_ident_token(int first_c, bool has_escape) {
 
   buf_ptr = p;
 
-  Atom atom               = e_->intern(ident_buf);
-  token.ident_atom        = atom;
-  token.ident_has_escape  = has_escape;
+  token.ident_atom        = e_->intern(ident_buf);
+  token.ident_has_escape  = true;
   token.ident_is_reserved = false;
-
-  // Keyword detection via lookup table (not atom index ranges)
-  if (!has_escape) {
-    auto it = kKeywordTable.find(ident_buf);
-    if (it != kKeywordTable.end()) {
-      token.kind = it->second;
-      return true;
-    }
-  }
-
-  token.kind = TokenKind::Identifier;
+  token.kind              = TokenKind::Identifier;
   return true;
 }
 
@@ -769,8 +796,10 @@ bool Lexer::parse_private_name() {
   p++; // skip '#'
   p1 = p;
   c  = *p1++;
+  bool has_escape = false;
   if (c == '\\' && *p1 == 'u') {
     c = parse_escape(&p1, true);
+    has_escape = true;
   } else if (c >= 128) {
     c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
   }
@@ -778,8 +807,40 @@ bool Lexer::parse_private_name() {
     return fail(LexErrorKind::InvalidPrivateName, p);
 
   p = p1;
+
+  if (!has_escape) {
+    for (;;) {
+      p1 = p;
+      c  = *p1++;
+      if (c == '\\' && *p1 == 'u') {
+        has_escape = true;
+        break;
+      }
+      if (c >= 128) {
+        c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
+        if (!unicode_is_id_continue(static_cast<uint32_t>(c)))
+          break;
+      } else if (!unicode_is_id_continue(static_cast<uint32_t>(c))) {
+        break;
+      }
+      p = p1;
+    }
+  }
+
+  if (!has_escape) {
+    auto sv = std::string_view(reinterpret_cast<const char *>(token.ptr),
+                               static_cast<size_t>(p - token.ptr));
+    buf_ptr = p;
+    token.ident_atom        = e_->intern(sv);
+    token.ident_has_escape  = false;
+    token.ident_is_reserved = false;
+    token.kind              = TokenKind::PrivateName;
+    return true;
+  }
+
   std::string ident_buf;
   ident_buf.push_back('#');
+  p = p1;
   append_utf8(ident_buf, static_cast<unsigned>(c));
 
   for (;;) {
@@ -796,9 +857,9 @@ bool Lexer::parse_private_name() {
     append_utf8(ident_buf, static_cast<unsigned>(c));
   }
 
-  Atom atom               = e_->intern(ident_buf);
-  token.ident_atom        = atom;
-  token.ident_has_escape  = false;
+  buf_ptr = p;
+  token.ident_atom        = e_->intern(ident_buf);
+  token.ident_has_escape  = true;
   token.ident_is_reserved = false;
   token.kind              = TokenKind::PrivateName;
   return true;
@@ -898,7 +959,8 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
   append_utf8(buf, c);
   }
 
-  copy_str(out->str_val, out->str_len, buf);
+  out->str_val = std::move(buf);
+  out->str_len = static_cast<uint32_t>(out->str_val.size());
   out->str_sep = static_cast<int>(c);
   out->kind    = TokenKind::StringLit;
   *pp          = p;
@@ -997,7 +1059,8 @@ bool Lexer::parse_template_part(const uint8_t *p) {
     append_utf8(buf, c);
   }
 
-  copy_str(token.str_val, token.str_len, buf);
+  token.str_val = std::move(buf);
+  token.str_len = static_cast<uint32_t>(token.str_val.size());
   token.str_sep = static_cast<int>(c);
   token.kind    = TokenKind::TemplateLit;
   buf_ptr       = p;
@@ -1009,10 +1072,10 @@ bool Lexer::parse_template_part(const uint8_t *p) {
 bool Lexer::parse_regexp() {
   const uint8_t *p = buf_ptr;
   bool in_class    = false;
-  std::string body, flags;
   uint32_t c;
 
   p++; // skip opening '/'
+  const uint8_t *body_start = p;
 
   for (;;) {
     if (p >= buf_end)
@@ -1028,7 +1091,6 @@ bool Lexer::parse_regexp() {
     else if (c == ']')
       in_class = false;
     else if (c == '\\') {
-      body.push_back('\\');
       c = *p++;
       if (c == '\n' || c == '\r')
         return fail(LexErrorKind::UnterminatedRegex, p - 1);
@@ -1052,10 +1114,12 @@ bool Lexer::parse_regexp() {
         return fail(LexErrorKind::UnterminatedRegex, p - 1);
       p = p_next;
     }
-    body.push_back(static_cast<char>(c));
   }
 
-  // flags
+  const uint8_t *body_end = p - 1; // p points past the closing '/'
+
+  // flags — verbatim source slice
+  const uint8_t *flags_start = p;
   for (;;) {
     const uint8_t *p_next = p;
     c                     = *p_next++;
@@ -1068,12 +1132,13 @@ bool Lexer::parse_regexp() {
     }
     if (!unicode_is_id_continue(c))
       break;
-    flags.push_back(static_cast<char>(c));
     p = p_next;
   }
 
-  copy_str(token.regexp_body, token.regexp_body_len, body);
-  copy_str(token.regexp_flags, token.regexp_flags_len, flags);
+  token.regexp_body  = std::string_view(reinterpret_cast<const char *>(body_start),
+                                        static_cast<size_t>(body_end - body_start));
+  token.regexp_flags = std::string_view(reinterpret_cast<const char *>(flags_start),
+                                        static_cast<size_t>(p - flags_start));
   token.kind = TokenKind::RegexpLit;
   buf_ptr    = p;
   return true;
