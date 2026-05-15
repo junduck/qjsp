@@ -8,6 +8,38 @@
 
 namespace qjsp {
 
+const char *lex_error_message(LexErrorKind k) {
+  switch (k) {
+  case LexErrorKind::None:
+    return "no error";
+  case LexErrorKind::UnterminatedString:
+    return "unterminated string literal";
+  case LexErrorKind::UnterminatedTemplate:
+    return "unterminated template literal";
+  case LexErrorKind::UnterminatedComment:
+    return "unterminated multi-line comment";
+  case LexErrorKind::UnterminatedRegex:
+    return "unterminated regular expression literal";
+  case LexErrorKind::InvalidEscape:
+    return "malformed escape sequence";
+  case LexErrorKind::InvalidHexEscape:
+    return "invalid hexadecimal escape sequence";
+  case LexErrorKind::InvalidUnicodeEscape:
+    return "invalid Unicode escape sequence";
+  case LexErrorKind::InvalidOctalEscape:
+    return "octal escape sequences are not allowed";
+  case LexErrorKind::InvalidUtf8:
+    return "invalid UTF-8 sequence";
+  case LexErrorKind::InvalidNumber:
+    return "invalid number literal";
+  case LexErrorKind::InvalidPrivateName:
+    return "invalid private name";
+  case LexErrorKind::UnexpectedChar:
+    return "unexpected character";
+  }
+  return "unknown error";
+}
+
 // ─── Character helpers ──────────────────────────────────────────────────────
 
 void Lexer::copy_str(std::string &dst, uint32_t &dst_len, const std::string &buf) {
@@ -250,6 +282,7 @@ void Lexer::init(Engine *e_val, const char *filename_val, const uint8_t *source,
   buf_end   = source + source_len;
   last_ptr  = source;
   got_lf    = false;
+  error_    = LexError{};
 }
 
 void Lexer::reset(const uint8_t *source, size_t source_len) {
@@ -259,6 +292,7 @@ void Lexer::reset(const uint8_t *source, size_t source_len) {
   last_ptr  = source;
   got_lf    = false;
   token     = Token{};
+  error_    = LexError{};
 }
 
 // ─── next_token() — the main dispatcher ─────────────────────────────────────
@@ -317,7 +351,7 @@ redo:
       p += 2;
       for (;;) {
         if (*p == '\0' && p >= buf_end)
-          return false;
+          return fail(LexErrorKind::UnterminatedComment, p);
         if (p[0] == '*' && p[1] == '/') {
           p += 2;
           break;
@@ -669,7 +703,7 @@ redo:
           ident_has_escape = false;
           goto has_ident;
         } else
-          return false;
+          return fail(LexErrorKind::UnexpectedChar, p);
       }
     }
   def_token:
@@ -679,6 +713,7 @@ redo:
   }
 
   buf_ptr = p;
+  error_  = LexError{};
   return true;
 }
 
@@ -740,7 +775,7 @@ bool Lexer::parse_private_name() {
     c = unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p1);
   }
   if (!unicode_is_id_start(static_cast<uint32_t>(c)))
-    return false;
+    return fail(LexErrorKind::InvalidPrivateName, p);
 
   p = p1;
   std::string ident_buf;
@@ -824,7 +859,7 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
           } else {
             if (c >= '8' || sep == '`') {
               if (do_throw)
-                return false;
+                return fail(LexErrorKind::InvalidOctalEscape, p);
               goto fail;
             } else
               goto fail;
@@ -834,7 +869,7 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
           c = static_cast<uint32_t>(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next));
           if (c > 0x10FFFF) {
             if (do_throw)
-              return false;
+              return fail(LexErrorKind::InvalidUtf8, p);
             goto fail;
           }
           p = p_next;
@@ -844,7 +879,7 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
           int ret = parse_escape(&p, true);
           if (ret == -1) {
             if (do_throw)
-              return false;
+              return fail(LexErrorKind::InvalidEscape, p);
             goto fail;
           } else if (ret < 0)
             p++;
@@ -856,14 +891,14 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
     } else if (c >= 0x80) {
       const uint8_t *p_next;
       c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
-      if (c > 0x10FFFF) {
-        if (do_throw)
-          return false;
-        goto fail;
-      }
-      p = p_next;
+    if (c > 0x10FFFF) {
+      if (do_throw)
+        return fail(LexErrorKind::InvalidUtf8, p - 1);
+      goto fail;
     }
-    append_utf8(buf, c);
+    p = p_next;
+  }
+  append_utf8(buf, c);
   }
 
   copy_str(out->str_val, out->str_len, buf);
@@ -874,7 +909,7 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
 
 invalid_char:
   if (do_throw)
-    return false;
+    return fail(LexErrorKind::UnterminatedString, p);
 fail:
   return false;
 }
@@ -888,7 +923,7 @@ bool Lexer::parse_template_part(const uint8_t *p) {
 
   for (;;) {
     if (p >= buf_end)
-      return false;
+      return fail(LexErrorKind::UnterminatedTemplate, p);
     c = *p++;
     if (c == '`')
       break;
@@ -898,12 +933,12 @@ bool Lexer::parse_template_part(const uint8_t *p) {
     }
     if (c == '\\') {
       if (p >= buf_end)
-        return false;
+        return fail(LexErrorKind::UnterminatedTemplate, p);
       c = *p;
       switch (c) {
       case '\0':
         if (p >= buf_end)
-          return false;
+          return fail(LexErrorKind::UnterminatedTemplate, p);
         p++;
         c = '\0';
         break;
@@ -927,13 +962,13 @@ bool Lexer::parse_template_part(const uint8_t *p) {
             p++;
             c = '\0';
           } else {
-            return false;
+            return fail(LexErrorKind::InvalidOctalEscape, p);
           }
         } else if (c >= 0x80) {
           const uint8_t *p_next;
           c = static_cast<uint32_t>(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next));
           if (c > 0x10FFFF)
-            return false;
+            return fail(LexErrorKind::InvalidUtf8, p);
           p = p_next;
           if (c == CP_LS || c == CP_PS) {
             c = '\n';
@@ -943,7 +978,7 @@ bool Lexer::parse_template_part(const uint8_t *p) {
         } else {
           int ret = parse_escape(&p, true);
           if (ret == -1)
-            return false;
+            return fail(LexErrorKind::InvalidEscape, p);
           else if (ret < 0)
             p++;
           else
@@ -959,7 +994,7 @@ bool Lexer::parse_template_part(const uint8_t *p) {
       const uint8_t *p_next;
       c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
       if (c > 0x10FFFF)
-        return false;
+        return fail(LexErrorKind::InvalidUtf8, p - 1);
       p = p_next;
     }
     append_utf8(buf, c);
@@ -984,10 +1019,10 @@ bool Lexer::parse_regexp() {
 
   for (;;) {
     if (p >= buf_end)
-      return false;
+      return fail(LexErrorKind::UnterminatedRegex, p);
     c = *p++;
     if (c == '\n' || c == '\r')
-      return false;
+      return fail(LexErrorKind::UnterminatedRegex, p - 1);
     else if (c == '/') {
       if (!in_class)
         break;
@@ -999,25 +1034,25 @@ bool Lexer::parse_regexp() {
       body.push_back('\\');
       c = *p++;
       if (c == '\n' || c == '\r')
-        return false;
+        return fail(LexErrorKind::UnterminatedRegex, p - 1);
       else if (c == '\0' && p >= buf_end)
-        return false;
+        return fail(LexErrorKind::UnterminatedRegex, p - 1);
       else if (c >= 0x80) {
         const uint8_t *p_next;
         c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
         if (c > 0x10FFFF)
-          return false;
+          return fail(LexErrorKind::InvalidUtf8, p - 1);
         p = p_next;
         if (c == CP_LS || c == CP_PS)
-          return false;
+          return fail(LexErrorKind::UnterminatedRegex, p - 1);
       }
     } else if (c >= 0x80) {
       const uint8_t *p_next;
       c = static_cast<uint32_t>(unicode_from_utf8(p - 1, UTF8_CHAR_LEN_MAX, &p_next));
       if (c > 0x10FFFF)
-        return false;
+        return fail(LexErrorKind::InvalidUtf8, p - 1);
       if (c == CP_LS || c == CP_PS)
-        return false;
+        return fail(LexErrorKind::UnterminatedRegex, p - 1);
       p = p_next;
     }
     body.push_back(static_cast<char>(c));
@@ -1031,7 +1066,7 @@ bool Lexer::parse_regexp() {
       c = static_cast<uint32_t>(unicode_from_utf8(p, UTF8_CHAR_LEN_MAX, &p_next));
       if (c > 0x10FFFF) {
         p++;
-        return false;
+        return fail(LexErrorKind::InvalidUtf8, p);
       }
     }
     if (!unicode_is_id_continue(c))
@@ -1064,7 +1099,7 @@ bool Lexer::parse_number(const uint8_t *p) {
     if (p[1] == 'x' || p[1] == 'X') {
       double val = std::strtod(c_str, &end);
       if (end == c_str)
-        return false;
+        return fail(LexErrorKind::InvalidNumber, p);
       token.num_val = val;
       token.kind    = TokenKind::Number;
       buf_ptr       = reinterpret_cast<const uint8_t *>(end);
@@ -1086,7 +1121,7 @@ bool Lexer::parse_number(const uint8_t *p) {
         p++;
       }
       if (!has_digit)
-        return false;
+        return fail(LexErrorKind::InvalidNumber, p);
       token.num_val = static_cast<double>(val);
       token.kind    = TokenKind::Number;
       buf_ptr       = p;
@@ -1106,7 +1141,7 @@ bool Lexer::parse_number(const uint8_t *p) {
         p++;
       }
       if (!has_digit)
-        return false;
+        return fail(LexErrorKind::InvalidNumber, p);
       token.num_val = static_cast<double>(val);
       token.kind    = TokenKind::Number;
       buf_ptr       = p;
@@ -1116,13 +1151,13 @@ bool Lexer::parse_number(const uint8_t *p) {
 
   double val = std::strtod(c_str, &end);
   if (end == c_str)
-    return false;
+    return fail(LexErrorKind::InvalidNumber, p);
 
   auto *next = reinterpret_cast<const uint8_t *>(end);
   const uint8_t *p_next;
   uint32_t nc = static_cast<uint32_t>(unicode_from_utf8(next, UTF8_CHAR_LEN_MAX, &p_next));
   if (val != val || unicode_is_id_continue(nc))
-    return false;
+    return fail(LexErrorKind::InvalidNumber, p);
 
   token.num_val = val;
   token.kind    = TokenKind::Number;

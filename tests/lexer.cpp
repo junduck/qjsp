@@ -274,3 +274,113 @@ TEST_F(LexerFixture, LookaheadArrow) {
   EXPECT_TRUE(lexer.next_token());
   EXPECT_EQ(lexer.token.kind, TokenKind::Arrow);
 }
+
+TEST_F(LexerFixture, ErrorKindUnterminatedString) {
+  init_lexer("\"unterminated");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_TRUE(lexer.error_);
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::UnterminatedString);
+  EXPECT_GT(lexer.error_.offset, 0u);
+}
+
+TEST_F(LexerFixture, ErrorKindUnterminatedComment) {
+  init_lexer("/* never ends");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_TRUE(lexer.error_);
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::UnterminatedComment);
+}
+
+TEST_F(LexerFixture, ErrorKindInvalidNumber) {
+  init_lexer("0o");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_TRUE(lexer.error_);
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidNumber);
+}
+
+TEST_F(LexerFixture, ErrorKindUnexpectedChar) {
+  init_lexer("\x80\x01");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_TRUE(lexer.error_);
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::UnexpectedChar);
+}
+
+TEST_F(LexerFixture, ErrorClearedOnSuccess) {
+  init_lexer("\"bad");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_TRUE(lexer.error_);
+  init_lexer("42");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_FALSE(lexer.error_);
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::None);
+}
+
+// ── Bug-reproduction tests ──────────────────────────────────────────────────
+
+// BUG: "0x" (hex prefix with no digits) should be a syntax error, but strtod
+//      silently parses it as decimal 0, leaving 'x' for the next token.
+TEST_F(LexerFixture, Bug_HexPrefixWithoutDigits_ShouldFail) {
+  init_lexer("0x");
+  bool ok = lexer.next_token();
+  EXPECT_FALSE(ok) << "expected '0x' with no hex digits to fail";
+}
+
+// BUG: "0xg" should be a syntax error — strtod parses just the "0" and
+//      treats 'xg' as the next token.
+TEST_F(LexerFixture, Bug_HexPrefixWithInvalidDigit_ShouldFail) {
+  init_lexer("0xg");
+  bool ok = lexer.next_token();
+  EXPECT_FALSE(ok) << "expected '0xg' to fail";
+}
+
+// BUG: Legacy octal escape \1..\7 in strings is not supported.
+//      "\1" is valid JavaScript (produces U+0001) but the lexer rejects it.
+TEST_F(LexerFixture, Bug_LegacyOctalEscapeInString) {
+  init_lexer("\"\\1\"");
+  bool ok = lexer.next_token();
+  EXPECT_TRUE(ok) << "legacy octal escape \\1 should be accepted in sloppy mode";
+  if (ok) {
+    EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
+    EXPECT_EQ(lexer.token.str_val.size(), 1u);
+    EXPECT_EQ(lexer.token.str_val[0], '\x01');
+  }
+}
+
+// BUG: Numeric separators in decimal numbers are not supported (ES2021).
+//      strtod stops at '_' then the '_' triggers the id_continue check,
+//      causing the entire literal to be rejected instead of parsed as 1000.
+TEST_F(LexerFixture, Bug_NumericSeparatorDecimal) {
+  init_lexer("1_000");
+  bool ok = lexer.next_token();
+  EXPECT_TRUE(ok) << "1_000 should be a valid numeric literal (value 1000)";
+  if (ok) {
+    EXPECT_EQ(lexer.token.kind, TokenKind::Number);
+    EXPECT_DOUBLE_EQ(lexer.token.num_val, 1000.0);
+  }
+}
+
+// Numeric separators in hex literals also unsupported.
+TEST_F(LexerFixture, Bug_NumericSeparatorHex) {
+  init_lexer("0xFF_FF");
+  bool ok = lexer.next_token();
+  EXPECT_TRUE(ok) << "0xFF_FF should be a valid hex literal (value 65535)";
+  if (ok) {
+    EXPECT_EQ(lexer.token.kind, TokenKind::Number);
+    EXPECT_DOUBLE_EQ(lexer.token.num_val, 65535.0);
+  }
+}
+
+// BUG: Legacy octal literals (0-prefixed) are parsed as decimal.
+//      0123 should be octal 83 in sloppy mode (or an error in strict mode),
+//      but the lexer treats it as decimal 123 via strtod.
+TEST_F(LexerFixture, Bug_LegacyOctalLiteral) {
+  init_lexer("077");
+  ASSERT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::Number);
+  // In sloppy mode this should be 63 (0o77), not 77
+  // In strict mode this should be an error
+  // Currently parsed as decimal 77 which is wrong either way
+  // If we accept sloppy mode: EXPECT_DOUBLE_EQ(lexer.token.num_val, 63.0);
+  // For now, at minimum it should NOT be 77:
+  EXPECT_DOUBLE_EQ(lexer.token.num_val, 63.0)
+      << "077 should parse as octal (63) in sloppy mode";
+}

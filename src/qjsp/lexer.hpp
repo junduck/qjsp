@@ -10,6 +10,36 @@ namespace qjsp {
 
 struct Engine;
 
+// ─── Lexer error types ──────────────────────────────────────────────────────
+
+enum class LexErrorKind : uint8_t {
+  None,
+
+  UnterminatedString,
+  UnterminatedTemplate,
+  UnterminatedComment,
+  UnterminatedRegex,
+
+  InvalidEscape,
+  InvalidHexEscape,
+  InvalidUnicodeEscape,
+  InvalidOctalEscape,
+  InvalidUtf8,
+
+  InvalidNumber,
+  InvalidPrivateName,
+  UnexpectedChar,
+};
+
+struct LexError {
+  LexErrorKind kind   = LexErrorKind::None;
+  size_t offset       = 0;
+
+  explicit operator bool() const { return kind != LexErrorKind::None; }
+};
+
+const char *lex_error_message(LexErrorKind k);
+
 struct Token {
   TokenKind kind     = TokenKind::Eof;
   const uint8_t *ptr = nullptr;
@@ -44,6 +74,7 @@ struct Lexer {
   const uint8_t *buf_end   = nullptr;
   const uint8_t *last_ptr  = nullptr;
   Token token;
+  LexError error_;
   bool got_lf              = false;
   bool allow_html_comments = false;
 
@@ -59,6 +90,12 @@ struct Lexer {
   static void skip_shebang(const uint8_t **pp, const uint8_t *buf_end);
 
 private:
+  bool fail(LexErrorKind kind, const uint8_t *ptr) {
+    error_.kind   = kind;
+    error_.offset = static_cast<size_t>(ptr - buf_start);
+    return false;
+  }
+
   bool parse_ident_token(int first_c, bool has_escape);
   bool parse_private_name();
   bool parse_template_part(const uint8_t *p);
