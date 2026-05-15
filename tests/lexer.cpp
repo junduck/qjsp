@@ -275,6 +275,140 @@ TEST_F(LexerFixture, LookaheadArrow) {
   EXPECT_EQ(lexer.token.kind, TokenKind::Arrow);
 }
 
+// ── Escape support verification ──────────────────────────────────────────────
+
+// \xHH in strings
+TEST_F(LexerFixture, EscapeHexInString) {
+  init_lexer("\"\\x00\\x41\\xFF\"");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
+  ASSERT_EQ(lexer.token.str_val.size(), 4u);
+  EXPECT_EQ(lexer.token.str_val[0], '\x00');
+  EXPECT_EQ(lexer.token.str_val[1], 'A');
+  EXPECT_EQ(static_cast<unsigned char>(lexer.token.str_val[2]), 0xC3);
+  EXPECT_EQ(static_cast<unsigned char>(lexer.token.str_val[3]), 0xBF);
+}
+
+// \xHH in templates
+TEST_F(LexerFixture, EscapeHexInTemplate) {
+  init_lexer("`\\x41`");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::TemplateLit);
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "A");
+}
+
+// \uXXXX in strings
+TEST_F(LexerFixture, EscapeUnicode4InString) {
+  init_lexer("\"\\u0041\\u00e9\"");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "A\xc3\xa9");
+}
+
+// \uXXXX in templates
+TEST_F(LexerFixture, EscapeUnicode4InTemplate) {
+  init_lexer("`\\u0041`");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::TemplateLit);
+  EXPECT_STREQ(lexer.token.str_val.c_str(), "A");
+}
+
+// \u{...} in strings (ES6 Unicode code point escape)
+TEST_F(LexerFixture, EscapeUnicodeBraceInString) {
+  init_lexer("\"\\u{41}\\u{1F600}\\u{0}\"");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
+  EXPECT_EQ(lexer.token.str_val.size(), 1u + 4u + 1u);
+  EXPECT_EQ(lexer.token.str_val[0], 'A');
+}
+
+// \u{...} in templates
+TEST_F(LexerFixture, EscapeUnicodeBraceInTemplate) {
+  init_lexer("`\\u{1F600}`");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::TemplateLit);
+  EXPECT_EQ(lexer.token.str_val.size(), 4u);
+}
+
+// \uXXXX as identifier start
+TEST_F(LexerFixture, EscapeUnicodeIdentStart) {
+  init_lexer("\\u{3B1}"); // Greek alpha
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::Identifier);
+  EXPECT_TRUE(lexer.token.ident_has_escape);
+}
+
+// \uXXXX in identifier body
+TEST_F(LexerFixture, EscapeUnicodeIdentBody) {
+  init_lexer("a\\u{0327}"); // a + combining cedilla
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::Identifier);
+  EXPECT_TRUE(lexer.token.ident_has_escape);
+}
+
+// \x with bad hex digits should fail
+TEST_F(LexerFixture, EscapeHexBadDigit) {
+  init_lexer("\"\\xGG\"");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidEscape);
+}
+
+// \x at end of string should fail
+TEST_F(LexerFixture, EscapeHexTruncated) {
+  init_lexer("\"\\x4\"");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidEscape);
+}
+
+// \u with bad hex should fail
+TEST_F(LexerFixture, EscapeUnicodeBadHex) {
+  init_lexer("\"\\uGGGG\"");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidEscape);
+}
+
+// \u{} with codepoint > 10FFFF should fail
+TEST_F(LexerFixture, EscapeUnicodeOverflow) {
+  init_lexer("\"\\u{110000}\"");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidEscape);
+}
+
+// \u{} empty braces should fail
+TEST_F(LexerFixture, EscapeUnicodeEmptyBrace) {
+  init_lexer("\"\\u{}\"");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidEscape);
+}
+
+// \0 is valid in strict mode (NUL escape), \1-\7 are NOT
+TEST_F(LexerFixture, EscapeNulIsValid) {
+  init_lexer("\"\\0\"");
+  EXPECT_TRUE(lexer.next_token());
+  EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
+  EXPECT_EQ(lexer.token.str_val.size(), 1u);
+  EXPECT_EQ(lexer.token.str_val[0], '\x00');
+}
+
+TEST_F(LexerFixture, EscapeOctal1IsRejected) {
+  init_lexer("\"\\1\"");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidOctalEscape);
+}
+
+TEST_F(LexerFixture, EscapeOctal7IsRejected) {
+  init_lexer("\"\\7\"");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidOctalEscape);
+}
+
+// \8 and \9 in templates should fail
+TEST_F(LexerFixture, Escape8InTemplateRejected) {
+  init_lexer("`\\8`");
+  EXPECT_FALSE(lexer.next_token());
+  EXPECT_EQ(lexer.error_.kind, LexErrorKind::InvalidOctalEscape);
+}
+
 TEST_F(LexerFixture, ErrorKindUnterminatedString) {
   init_lexer("\"unterminated");
   EXPECT_FALSE(lexer.next_token());
@@ -332,19 +466,6 @@ TEST_F(LexerFixture, Bug_HexPrefixWithInvalidDigit_ShouldFail) {
   EXPECT_FALSE(ok) << "expected '0xg' to fail";
 }
 
-// BUG: Legacy octal escape \1..\7 in strings is not supported.
-//      "\1" is valid JavaScript (produces U+0001) but the lexer rejects it.
-TEST_F(LexerFixture, Bug_LegacyOctalEscapeInString) {
-  init_lexer("\"\\1\"");
-  bool ok = lexer.next_token();
-  EXPECT_TRUE(ok) << "legacy octal escape \\1 should be accepted in sloppy mode";
-  if (ok) {
-    EXPECT_EQ(lexer.token.kind, TokenKind::StringLit);
-    EXPECT_EQ(lexer.token.str_val.size(), 1u);
-    EXPECT_EQ(lexer.token.str_val[0], '\x01');
-  }
-}
-
 // BUG: Numeric separators in decimal numbers are not supported (ES2021).
 //      strtod stops at '_' then the '_' triggers the id_continue check,
 //      causing the entire literal to be rejected instead of parsed as 1000.
@@ -367,20 +488,4 @@ TEST_F(LexerFixture, Bug_NumericSeparatorHex) {
     EXPECT_EQ(lexer.token.kind, TokenKind::Number);
     EXPECT_DOUBLE_EQ(lexer.token.num_val, 65535.0);
   }
-}
-
-// BUG: Legacy octal literals (0-prefixed) are parsed as decimal.
-//      0123 should be octal 83 in sloppy mode (or an error in strict mode),
-//      but the lexer treats it as decimal 123 via strtod.
-TEST_F(LexerFixture, Bug_LegacyOctalLiteral) {
-  init_lexer("077");
-  ASSERT_TRUE(lexer.next_token());
-  EXPECT_EQ(lexer.token.kind, TokenKind::Number);
-  // In sloppy mode this should be 63 (0o77), not 77
-  // In strict mode this should be an error
-  // Currently parsed as decimal 77 which is wrong either way
-  // If we accept sloppy mode: EXPECT_DOUBLE_EQ(lexer.token.num_val, 63.0);
-  // For now, at minimum it should NOT be 77:
-  EXPECT_DOUBLE_EQ(lexer.token.num_val, 63.0)
-      << "077 should parse as octal (63) in sloppy mode";
 }

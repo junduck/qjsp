@@ -857,12 +857,9 @@ bool Lexer::parse_string(int sep, bool do_throw, const uint8_t *p, Token *out, c
             p++;
             c = '\0';
           } else {
-            if (c >= '8' || sep == '`') {
-              if (do_throw)
-                return fail(LexErrorKind::InvalidOctalEscape, p);
-              goto fail;
-            } else
-              goto fail;
+            if (do_throw)
+              return fail(LexErrorKind::InvalidOctalEscape, p);
+            goto fail;
           }
         } else if (c >= 0x80) {
           const uint8_t *p_next;
@@ -1092,17 +1089,28 @@ bool Lexer::reparse_as_regexp() {
 // ─── Number parsing ─────────────────────────────────────────────────────────
 
 bool Lexer::parse_number(const uint8_t *p) {
-  const char *c_str = reinterpret_cast<const char *>(p);
-  char *end         = nullptr;
-
   if (p[0] == '0') {
     if (p[1] == 'x' || p[1] == 'X') {
-      double val = std::strtod(c_str, &end);
-      if (end == c_str)
+      unsigned long long val = 0;
+      p += 2;
+      bool has_digit = false;
+      for (;;) {
+        if (*p == '_') {
+          p++;
+          continue;
+        }
+        int d = from_hex(*p);
+        if (d < 0)
+          break;
+        val       = val * 16 + static_cast<unsigned long long>(d);
+        has_digit = true;
+        p++;
+      }
+      if (!has_digit)
         return fail(LexErrorKind::InvalidNumber, p);
-      token.num_val = val;
+      token.num_val = static_cast<double>(val);
       token.kind    = TokenKind::Number;
-      buf_ptr       = reinterpret_cast<const uint8_t *>(end);
+      buf_ptr       = p;
       return true;
     }
     if (p[1] == 'o' || p[1] == 'O') {
@@ -1149,15 +1157,64 @@ bool Lexer::parse_number(const uint8_t *p) {
     }
   }
 
-  double val = std::strtod(c_str, &end);
-  if (end == c_str)
-    return fail(LexErrorKind::InvalidNumber, p);
+  const uint8_t *start = p;
+  bool has_sep = false;
+  char buf[128];
+  size_t len = 0;
+  for (;;) {
+    uint8_t c = *p;
+    if (c == '_') {
+      has_sep = true;
+      p++;
+      continue;
+    }
+    if (len < sizeof(buf) - 1)
+      buf[len] = static_cast<char>(c);
+    if ((c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' ||
+        c == '+' || c == '-') {
+      p++;
+      len++;
+      continue;
+    }
+    break;
+  }
+  buf[len] = '\0';
 
-  auto *next = reinterpret_cast<const uint8_t *>(end);
+  if (has_sep) {
+    if (len >= sizeof(buf) - 1)
+      return fail(LexErrorKind::InvalidNumber, start);
+    if (buf[0] == '_' || buf[len - 1] == '_')
+      return fail(LexErrorKind::InvalidNumber, start);
+    for (size_t i = 0; i + 1 < len; i++) {
+      if (buf[i] == '_' && buf[i + 1] == '_')
+        return fail(LexErrorKind::InvalidNumber, start);
+    }
+  }
+
+  char *end = nullptr;
+  double val = std::strtod(buf, &end);
+  if (end == buf)
+    return fail(LexErrorKind::InvalidNumber, start);
+
+  size_t consumed = static_cast<size_t>(end - buf);
+  const uint8_t *after = start;
+  size_t raw = 0;
+  while (raw < consumed) {
+    if (*after == '_')
+      after++;
+    else {
+      after++;
+      raw++;
+    }
+  }
+  if (*after == '_')
+    return fail(LexErrorKind::InvalidNumber, after);
+
+  auto *next = after;
   const uint8_t *p_next;
   uint32_t nc = static_cast<uint32_t>(unicode_from_utf8(next, UTF8_CHAR_LEN_MAX, &p_next));
   if (val != val || unicode_is_id_continue(nc))
-    return fail(LexErrorKind::InvalidNumber, p);
+    return fail(LexErrorKind::InvalidNumber, start);
 
   token.num_val = val;
   token.kind    = TokenKind::Number;
