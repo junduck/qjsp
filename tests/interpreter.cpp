@@ -131,6 +131,30 @@ TEST_F(RegInterpFixture, RegExpLiteral) {
   EXPECT_EQ(v.as_int32(), 42);
 }
 
+TEST_F(RegInterpFixture, RegExpTestMatch) {
+  Value v = eval("/abc/.test('abc');");
+  EXPECT_TRUE(v.is_bool());
+  EXPECT_TRUE(v.as_bool());
+}
+
+TEST_F(RegInterpFixture, RegExpTestNoMatch) {
+  Value v = eval("/abc/.test('xyz');");
+  EXPECT_TRUE(v.is_bool());
+  EXPECT_FALSE(v.as_bool());
+}
+
+TEST_F(RegInterpFixture, RegExpTestCaseInsensitive) {
+  Value v = eval("/abc/i.test('ABC');");
+  EXPECT_TRUE(v.is_bool());
+  EXPECT_TRUE(v.as_bool());
+}
+
+TEST_F(RegInterpFixture, RegExpTestAssign) {
+  Value v1 = eval("var r = /a/; r.test('a');");
+  EXPECT_TRUE(v1.is_bool()) << "tag=" << v1.tag_prefix();
+  EXPECT_TRUE(v1.as_bool());
+}
+
 TEST_F(RegInterpFixture, ArrayPush) {
   Value v = eval("var a=[]; a.push(1); a[0];");
   EXPECT_TRUE(v.is_int32());
@@ -616,4 +640,10 @@ TEST_F(RegInterpFixture, BugModDoubleTruncation) {
   Value v = eval("5.5 % 2;");
   ASSERT_TRUE(v.is_double());
   EXPECT_DOUBLE_EQ(v.as_double(), 1.5);
+}
+
+TEST_F(RegInterpFixture, VarMethodCall) {
+  Value v = eval("var a = []; a.push(1);");
+  EXPECT_TRUE(v.is_int32()) << "tag=" << v.tag_prefix();
+  EXPECT_EQ(v.as_int32(), 1);
 }

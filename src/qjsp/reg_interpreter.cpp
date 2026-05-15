@@ -150,7 +150,6 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
       break;
 
     case RegOp::LOADNIL:
-      // R[A]..R[A+B] = undefined
       for (int r = i.a(); r <= i.a() + i.b(); r++)
         regs[r] = Value::undefined_();
       break;
