@@ -86,7 +86,7 @@ bool Engine::init_atoms() {
     if (!s)
       return false;
     auto atom = static_cast<Atom>(atom_table.size());
-    atom_table.emplace_back(std::unique_ptr<StrPrim>{s}, false);
+    atom_table.emplace_back(StrPrimPtr{s}, false);
     atom_map.emplace(s->view(), atom);
     known.emplace_back(atom);
   }
@@ -97,7 +97,7 @@ bool Engine::init_atoms() {
     if (!s)
       return false;
     auto atom = static_cast<Atom>(atom_table.size());
-    atom_table.emplace_back(std::unique_ptr<StrPrim>{s}, true);
+    atom_table.emplace_back(StrPrimPtr{s}, true);
     known.emplace_back(atom);
   }
 
@@ -111,7 +111,7 @@ Atom Engine::intern(std::string_view sv) {
     return it->second;
   auto *s  = alloc_string(sv);
   auto idx = static_cast<Atom>(atom_table.size());
-  atom_table.emplace_back(std::unique_ptr<StrPrim>{s}, false);
+  atom_table.emplace_back(StrPrimPtr{s}, false);
   atom_map.emplace(s->view(), idx);
   return idx;
 }
@@ -119,7 +119,7 @@ Atom Engine::intern(std::string_view sv) {
 Atom Engine::create_symbol(std::string_view desc) {
   Atom idx = static_cast<Atom>(atom_table.size());
   auto *s  = !desc.empty() ? alloc_string(desc) : nullptr;
-  atom_table.emplace_back(std::unique_ptr<StrPrim>{s}, true);
+  atom_table.emplace_back(StrPrimPtr{s}, true);
   return idx;
 }
 

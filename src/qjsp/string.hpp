@@ -4,6 +4,7 @@
 #include "value.hpp"
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string_view>
 
 namespace qjsp {
@@ -25,5 +26,11 @@ struct StrPrim : RefCounted {
   std::string_view view() const { return {data, len()}; }
   char operator[](size_t i) const { return data[i]; }
 };
+
+struct StrPrimDeleter {
+  void operator()(StrPrim *p) const;
+};
+
+using StrPrimPtr = std::unique_ptr<StrPrim, StrPrimDeleter>;
 
 } // namespace qjsp

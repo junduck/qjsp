@@ -26,4 +26,6 @@ int StrPrim::compare(const StrPrim *a, const StrPrim *b) {
   return static_cast<int>(a->len()) - static_cast<int>(b->len());
 }
 
+void StrPrimDeleter::operator()(StrPrim *p) const { ::operator delete(p); }
+
 } // namespace qjsp

@@ -46,7 +46,7 @@ constexpr inline size_t kGcThresholdInit = 8;
 struct Engine {
   // ── atom table (was Runtime) ─────────────────────────────────────────────
   struct AtomTable {
-    std::unique_ptr<StrPrim> atom;
+    StrPrimPtr atom;
     bool is_symbol;
   };
   std::vector<AtomTable> atom_table;
