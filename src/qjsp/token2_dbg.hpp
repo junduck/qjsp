@@ -1,0 +1,137 @@
+#pragma once
+
+#include "qjsp/token2.hpp"
+
+namespace qjsp {
+
+inline const char *token_name(TokenTag t) {
+    switch (static_cast<uint32_t>(t) & 0xFF) {
+    case 0:   return "eof";
+    case 1:   return "numeric";
+    case 2:   return "hex";
+    case 3:   return "octal";
+    case 4:   return "binary";
+    case 5:   return "regexp";
+    case 6:   return "template_full";
+    case 7:   return "template_head";
+    case 8:   return "template_mid";
+    case 9:   return "template_tail";
+    case 10:  return "bigint";
+    case 11:  return "string";
+    case 12:  return "hashbang";
+    case 13:  return "null";
+    case 14:  return "true";
+    case 15:  return "false";
+    case 16:  return "minus";
+    case 17:  return "star";
+    case 18:  return "slash";
+    case 19:  return "percent";
+    case 20:  return "pow";
+    case 21:  return "assign";
+    case 22:  return "plus_assign";
+    case 23:  return "minus_assign";
+    case 24:  return "star_assign";
+    case 25:  return "slash_assign";
+    case 26:  return "pct_assign";
+    case 27:  return "pow_assign";
+    case 28:  return "inc";
+    case 29:  return "dec";
+    case 30:  return "eq";
+    case 31:  return "neq";
+    case 32:  return "seq";
+    case 33:  return "sneq";
+    case 34:  return "lt";
+    case 35:  return "gt";
+    case 36:  return "lte";
+    case 37:  return "gte";
+    case 38:  return "instanceof";
+    case 39:  return "in";
+    case 40:  return "land";
+    case 41:  return "lor";
+    case 42:  return "nullish";
+    case 43:  return "bang";
+    case 44:  return "band";
+    case 45:  return "bor";
+    case 46:  return "bxor";
+    case 47:  return "bnot";
+    case 48:  return "shl";
+    case 49:  return "sar";
+    case 50:  return "shr";
+    case 51:  return "band_assign";
+    case 52:  return "bor_assign";
+    case 53:  return "bxor_assign";
+    case 54:  return "shl_assign";
+    case 55:  return "sar_assign";
+    case 56:  return "shr_assign";
+    case 57:  return "nullish_assign";
+    case 58:  return "land_assign";
+    case 59:  return "lor_assign";
+    case 60:  return "opt_chain";
+    case 61:  return "lparen";
+    case 62:  return "rparen";
+    case 63:  return "lbrace";
+    case 64:  return "rbrace";
+    case 65:  return "lbrack";
+    case 66:  return "rbrack";
+    case 67:  return "semi";
+    case 68:  return "comma";
+    case 69:  return "dot";
+    case 70:  return "spread";
+    case 71:  return "arrow";
+    case 72:  return "question";
+    case 73:  return "colon";
+    case 80:  return "if";
+    case 81:  return "else";
+    case 82:  return "switch";
+    case 83:  return "case";
+    case 84:  return "default";
+    case 85:  return "for";
+    case 86:  return "while";
+    case 87:  return "do";
+    case 88:  return "break";
+    case 89:  return "continue";
+    case 90:  return "function";
+    case 91:  return "return";
+    case 92:  return "var";
+    case 93:  return "const";
+    case 94:  return "class";
+    case 95:  return "extends";
+    case 96:  return "super";
+    case 97:  return "try";
+    case 98:  return "catch";
+    case 99:  return "finally";
+    case 100: return "throw";
+    case 101: return "new";
+    case 102: return "this";
+    case 103: return "typeof";
+    case 104: return "delete";
+    case 105: return "void";
+    case 106: return "with";
+    case 107: return "debugger";
+    case 108: return "enum";
+    case 109: return "export";
+    case 110: return "import";
+    case 120: return "let";
+    case 121: return "static";
+    case 122: return "yield";
+    case 123: return "await";
+    case 124: return "implements";
+    case 125: return "interface";
+    case 126: return "package";
+    case 127: return "private";
+    case 128: return "protected";
+    case 129: return "public";
+    case 140: return "of";
+    case 141: return "async";
+    case 142: return "from";
+    case 143: return "as";
+    case 144: return "get";
+    case 145: return "set";
+    case 146: return "constructor";
+    case 150: return "ident";
+    case 151: return "private_ident";
+    default:  return "unknown_token";
+    }
+}
+
+} // namespace qjsp

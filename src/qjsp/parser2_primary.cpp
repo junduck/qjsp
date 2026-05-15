@@ -140,13 +140,11 @@ NodeIndex Parser::parse_object_expr() {
     uint32_t start = current_.start;
     expect(tok_lbrace);
     auto cp = static_cast<uint32_t>(scratch_a_.size());
-    fprintf(stderr, "DBG obj: start=%u cp=%u\n", start, cp);
     while (!at(tok_rbrace) && !at(tok_eof)) {
         uint32_t prop_start = current_.start;
         uint32_t flags = 0;
         NodeIndex key = NodeNull;
         uint32_t method_kind = MethodInit;
-        fprintf(stderr, "DBG obj loop: cur tag=%u start=%u\n", current_.tag & 0xFF, current_.start);
 
         if (at(tok_spread)) {
             advance();
@@ -163,22 +161,17 @@ NodeIndex Parser::parse_object_expr() {
             advance();
         } else if (at(tok_get) || at(tok_set)) {
             Token gs_tok = current_;
-            fprintf(stderr, "DBG obj: get/set at %u, next tag=%u\n", gs_tok.start, current_.tag & 0xFF);
             advance();
-            fprintf(stderr, "DBG obj: after advance, cur tag=%u start=%u\n", current_.tag & 0xFF, current_.start);
             if (at(tok_colon) || at(tok_comma) || at(tok_rbrace) || at(tok_assign)) {
                 key = tree_.alloc(NK_IDENT_REF, {gs_tok.start, gs_tok.end});
-                fprintf(stderr, "DBG obj: get/set as key (colon/comma/brace/assign), key=%u\n", key);
             } else if (is_ident_like() || at(tok_string) || at(tok_lbrack) || tag_is_numeric(current_.tag)) {
                 method_kind = (gs_tok.tag == tok_get) ? MethodGet : MethodSet;
-                fprintf(stderr, "DBG obj: get/set as method_kind=%u\n", method_kind);
             } else {
                 key = tree_.alloc(NK_IDENT_REF, {gs_tok.start, gs_tok.end});
                 flags |= NF::Shorthand;
                 NodeIndex value = tree_.alloc(NK_IDENT_REF, {gs_tok.start, gs_tok.end});
                 NodeIndex prop = tree_.alloc(NK_OBJECT_PROP, span_from(prop_start),
                                              key, value, flags);
-                fprintf(stderr, "DBG obj: get/set shorthand prop=%u kind=%u\n", prop, kind(prop));
                 scratch_a_.push_back(prop);
                 if (at(tok_comma)) { advance(); continue; }
                 if (!at(tok_rbrace)) expect(tok_comma);
@@ -187,7 +180,6 @@ NodeIndex Parser::parse_object_expr() {
         }
 
         if (key == NodeNull) {
-            fprintf(stderr, "DBG obj: key is null, parsing key, cur tag=%u\n", current_.tag & 0xFF);
             if (at(tok_lbrack)) {
                 flags |= NF::Computed;
                 advance();
@@ -197,16 +189,12 @@ NodeIndex Parser::parse_object_expr() {
                 Token key_tok = current_;
                 advance();
                 key = tree_.alloc(NK_IDENT_REF, {key_tok.start, prev_end_});
-                fprintf(stderr, "DBG obj: parsed ident key=%u\n", key);
             } else {
                 error("expected property name");
                 advance();
                 continue;
             }
         }
-
-        fprintf(stderr, "DBG obj: key=%u, cur tag=%u start=%u, at_lparen=%d at_colon=%d\n",
-                key, current_.tag & 0xFF, current_.start, at(tok_lparen), at(tok_colon));
 
         if (at(tok_lparen)) {
             uint32_t fn_flags = NF::IsExpr;
@@ -238,7 +226,6 @@ NodeIndex Parser::parse_object_expr() {
 
         if (at(tok_colon)) {
             advance();
-            fprintf(stderr, "DBG obj: consumed colon, cur tag=%u\n", current_.tag & 0xFF);
         } else if (flags & NF::Computed) {
             error("expected ':' or '('");
             continue;
@@ -260,20 +247,15 @@ NodeIndex Parser::parse_object_expr() {
         } else {
             value = parse_expr(Prec::Assign);
         }
-        fprintf(stderr, "DBG obj: parsed value=%u kind=%u\n", value, kind(value));
 
         NodeIndex prop = tree_.alloc(NK_OBJECT_PROP, span_from(prop_start),
                                      key, value, flags);
-        fprintf(stderr, "DBG obj: prop=%u kind=%u, pushing to scratch_a_[%zu]\n", prop, kind(prop), scratch_a_.size());
         scratch_a_.push_back(prop);
         if (!at(tok_rbrace)) expect(tok_comma);
     }
     IndexRange props = flush_scratch(scratch_a_, cp);
-    fprintf(stderr, "DBG obj: props range start=%u len=%u, scratch_a_ size=%zu\n", props.start, props.len, scratch_a_.size());
     expect(tok_rbrace);
-    NodeIndex result = tree_.alloc(NK_OBJECT_EXPR, span_from(start), props.start, props.len);
-    fprintf(stderr, "DBG obj: result=%u kind=%u d0=%u d1=%u\n", result, kind(result), tree_.d(result, 0), tree_.d(result, 1));
-    return result;
+    return tree_.alloc(NK_OBJECT_EXPR, span_from(start), props.start, props.len);
 }
 
 NodeIndex Parser::parse_paren_or_arrow() {
