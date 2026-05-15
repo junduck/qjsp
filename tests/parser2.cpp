@@ -750,8 +750,9 @@ TEST_F(Parser2Fixture, ClassStaticProperty) {
 TEST_F(Parser2Fixture, ObjectGetMethodAsProperty) {
     auto n = parse("({ get: 1 });");
     auto body = tree().range(n, 0);
-    auto expr_stmt = tree().extra(body)[0];
-    auto obj = tree().d(expr_stmt, 0);
+    auto stmt = tree().extra(body)[0];
+    auto paren = tree().d(stmt, 0);
+    auto obj = tree().d(paren, 0);
     auto props = tree().range(obj, 0);
     auto prop = tree().extra(props)[0];
     EXPECT_EQ(kind(prop), NK_OBJECT_PROP);
