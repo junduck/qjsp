@@ -572,11 +572,6 @@ TEST_F(RegInterpFixture, ArrayStringIndexZero) {
 
 TEST_F(RegInterpFixture, BugModDoubleTruncation) {
   Value v = eval("5.5 % 2;");
-  // Bug: mod_values truncates doubles to int32, so 5.5 becomes 5, giving 5%2=1 instead of fmod(5.5,2)=1.5
-  // Correct result should be double(1.5); confirm the bug by checking we get int32(1)
-  ASSERT_TRUE(v.is_int32());
-  EXPECT_EQ(v.as_int32(), 1);
-  // When fixed, this should become:
-  // ASSERT_TRUE(v.is_double());
-  // EXPECT_DOUBLE_EQ(v.as_double(), 1.5);
+  ASSERT_TRUE(v.is_double());
+  EXPECT_DOUBLE_EQ(v.as_double(), 1.5);
 }

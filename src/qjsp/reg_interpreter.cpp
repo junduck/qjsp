@@ -74,11 +74,15 @@ static Value div_values(Value l, Value r) {
 }
 
 static Value mod_values(Value l, Value r) {
-  int32_t lv = l.is_int32() ? l.as_int32() : static_cast<int32_t>(l.as_double());
-  int32_t rv = r.is_int32() ? r.as_int32() : static_cast<int32_t>(r.as_double());
-  if (rv != 0)
-    return Value::int32(lv % rv);
-  return Value::float64(NAN);
+  if (l.is_int32() && r.is_int32()) {
+    int32_t rv = r.as_int32();
+    if (rv != 0)
+      return Value::int32(l.as_int32() % rv);
+    return Value::float64(NAN);
+  }
+  double lv = l.is_int32() ? static_cast<double>(l.as_int32()) : l.as_double();
+  double rv = r.is_int32() ? static_cast<double>(r.as_int32()) : r.as_double();
+  return Value::float64(std::fmod(lv, rv));
 }
 
 // ─── Field access ───────────────────────────────────────────────────────────
