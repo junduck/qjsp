@@ -2,17 +2,10 @@
 
 #include "qjsp/token2.hpp"
 #include <cstdint>
-#include <vector>
 
 namespace qjsp {
 
 struct Engine;
-
-struct Comment {
-    uint32_t start;
-    uint32_t end;
-    bool is_block;
-};
 
 struct LexerHashbang {
     uint32_t start = 0;
@@ -25,9 +18,11 @@ struct Lexer2 {
     uint32_t       cur_ = 0;
     uint8_t        flags_ = 0;
     bool           is_module_ = true;
-    std::vector<Comment> comments;
     LexerHashbang hashbang;
 
+    // Source must be NUL-terminated: src_[len_] == '\0'.  All hot paths
+    // elide bounds checks against len_ by relying on the NUL sentinel
+    // (kIdentStart['\0'] == false, kIdentCont['\0'] == false, etc.).
     void init(const uint8_t *source, uint32_t source_len, bool is_module = true);
 
     Token next_token();

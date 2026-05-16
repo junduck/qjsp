@@ -53,16 +53,14 @@ void Lexer2::init(const uint8_t *source, uint32_t source_len, bool is_module) {
     cur_ = 0;
     flags_ = 0;
     is_module_ = is_module;
-    comments.clear();
     hashbang = {0, 0};
+    skip_hashbang();
 }
 
 // ─── Peek ────────────────────────────────────────────────────────────────────
 
 inline uint8_t Lexer2::peek(uint32_t offset) const {
-    uint32_t idx = cur_ + offset;
-    if (idx >= len_) return 0;
-    return src_[idx];
+    return src_[cur_ + offset];
 }
 
 inline Token Lexer2::make(TokenTag tag, uint32_t start, uint32_t end) const {
@@ -72,10 +70,10 @@ inline Token Lexer2::make(TokenTag tag, uint32_t start, uint32_t end) const {
 // ─── Hashbang ────────────────────────────────────────────────────────────────
 
 void Lexer2::skip_hashbang() {
-    if (cur_ + 1 < len_ && src_[cur_] == '#' && src_[cur_ + 1] == '!') {
+    if (src_[cur_] == '#' && src_[cur_ + 1] == '!') {
         uint32_t start = cur_;
         cur_ += 2;
-        while (cur_ < len_) {
+        while (src_[cur_] != 0) {
             uint8_t c = src_[cur_];
             if (c == '\n' || c == '\r') break;
             if (c >= 0x80) {
@@ -97,12 +95,12 @@ void Lexer2::skip_hashbang() {
 // and InvalidEscape as appropriate. Returns true if the escape was valid.
 
 void Lexer2::skip_escape() {
-    if (cur_ >= len_) { flags_ |= TF::InvalidEscape; return; }
+    if (src_[cur_] == 0) { flags_ |= TF::InvalidEscape; return; }
     uint8_t c = src_[cur_];
     switch (c) {
     case '\n':
         cur_++;
-        if (cur_ < len_ && src_[cur_] == '\r') cur_++;
+        if (src_[cur_] == '\r') cur_++;
         break;
     case '\r':
         cur_++;
@@ -110,12 +108,12 @@ void Lexer2::skip_escape() {
     case '0': case '1': case '2': case '3':
     case '4': case '5': case '6': case '7':
         cur_++;
-        if (cur_ < len_ && src_[cur_] >= '0' && src_[cur_] <= '7') cur_++;
-        if (cur_ < len_ && src_[cur_] >= '0' && src_[cur_] <= '7') cur_++;
+        if (src_[cur_] >= '0' && src_[cur_] <= '7') cur_++;
+        if (src_[cur_] >= '0' && src_[cur_] <= '7') cur_++;
         break;
     case 'x': case 'X':
         cur_++;
-        if (cur_ + 2 <= len_ && std::isxdigit(src_[cur_]) && std::isxdigit(src_[cur_ + 1])) {
+        if (std::isxdigit(src_[cur_]) && std::isxdigit(src_[cur_ + 1])) {
             cur_ += 2;
         } else {
             flags_ |= TF::InvalidEscape;
@@ -123,26 +121,25 @@ void Lexer2::skip_escape() {
         break;
     case 'u':
         cur_++;
-        if (cur_ < len_ && src_[cur_] == '{') {
+        if (src_[cur_] == '{') {
             cur_++;
             bool found = false;
-            while (cur_ < len_ && src_[cur_] != '}') {
+            while (src_[cur_] != 0 && src_[cur_] != '}') {
                 if (!std::isxdigit(src_[cur_]) && src_[cur_] != '_') {
                     flags_ |= TF::InvalidEscape;
                 }
                 cur_++;
                 found = true;
             }
-            if (cur_ < len_) cur_++;
+            if (src_[cur_] != 0) cur_++;
             if (!found) flags_ |= TF::InvalidEscape;
         } else {
-            if (cur_ + 4 <= len_ &&
-                std::isxdigit(src_[cur_]) && std::isxdigit(src_[cur_ + 1]) &&
+            if (std::isxdigit(src_[cur_]) && std::isxdigit(src_[cur_ + 1]) &&
                 std::isxdigit(src_[cur_ + 2]) && std::isxdigit(src_[cur_ + 3])) {
                 cur_ += 4;
             } else {
                 flags_ |= TF::InvalidEscape;
-                cur_ += (cur_ + 4 <= len_) ? 4 : (len_ - cur_);
+                cur_ += 4;
             }
         }
         break;
@@ -268,7 +265,7 @@ uint32_t Lexer2::decode_utf8(const uint8_t *p, uint32_t max_len, uint32_t &cp) {
 // ─── Whitespace and comment skip ─────────────────────────────────────────────
 
 void Lexer2::skip_ws_and_comments() {
-    while (cur_ < len_) {
+    while (src_[cur_] != 0) {
         uint8_t c = src_[cur_];
         switch (c) {
         case ' ': case '\t': case '\f': case '\v':
@@ -281,13 +278,12 @@ void Lexer2::skip_ws_and_comments() {
         case '\r':
             flags_ |= TF::NewlineBefore;
             cur_++;
-            if (cur_ < len_ && src_[cur_] == '\n') cur_++;
+            if (src_[cur_] == '\n') cur_++;
             break;
         case '/':
-            if (cur_ + 1 < len_ && src_[cur_ + 1] == '/') {
-                uint32_t cs = cur_;
+            if (src_[cur_ + 1] == '/') {
                 cur_ += 2;
-                while (cur_ < len_) {
+                while (src_[cur_] != 0) {
                     uint8_t ch = src_[cur_];
                     if (ch == '\n' || ch == '\r') break;
                     if (ch >= 0x80) {
@@ -299,13 +295,11 @@ void Lexer2::skip_ws_and_comments() {
                         cur_++;
                     }
                 }
-                comments.push_back({cs, cur_, false});
                 break;
             }
-            if (cur_ + 1 < len_ && src_[cur_ + 1] == '*') {
-                uint32_t cs = cur_;
+            if (src_[cur_ + 1] == '*') {
                 cur_ += 2;
-                while (cur_ + 1 < len_) {
+                while (src_[cur_] != 0) {
                     if (src_[cur_] == '*' && src_[cur_ + 1] == '/') { cur_ += 2; break; }
                     if (src_[cur_] == '\n' || src_[cur_] == '\r') flags_ |= TF::NewlineBefore;
                     if (src_[cur_] >= 0x80) {
@@ -317,7 +311,6 @@ void Lexer2::skip_ws_and_comments() {
                         cur_++;
                     }
                 }
-                comments.push_back({cs, cur_, true});
                 break;
             }
             return;
@@ -344,10 +337,9 @@ void Lexer2::skip_ws_and_comments() {
 
 Token Lexer2::next_token() {
     flags_ = 0;
-    if (cur_ == 0) skip_hashbang();
     skip_ws_and_comments();
 
-    if (cur_ >= len_) return make(tok_eof, cur_, cur_);
+    if (src_[cur_] == 0) return make(tok_eof, cur_, cur_);
 
     uint8_t c = src_[cur_];
     uint32_t start = cur_;
@@ -355,8 +347,8 @@ Token Lexer2::next_token() {
     // Fast path: ASCII identifier/keyword
     if (kIdentStart[c]) {
         uint32_t pos = cur_ + 1;
-        while (pos < len_ && kIdentCont[src_[pos]]) pos++;
-        if (pos >= len_ || (src_[pos] != '\\' && src_[pos] < 0x80)) {
+        while (kIdentCont[src_[pos]]) pos++;
+        if (src_[pos] == 0 || (src_[pos] != '\\' && src_[pos] < 0x80)) {
             cur_ = pos;
             TokenTag tag = classify_keyword(src_ + start, pos - start);
             return make(tag, start, pos);
@@ -393,29 +385,27 @@ Token Lexer2::next_token() {
         return scan_template_part();
     }
 
-    // Punctuation & operators
-    if (c == '#' && cur_ + 1 < len_ && (kIdentStart[src_[cur_ + 1]] || src_[cur_ + 1] == '\\')) {
+    // Private identifier
+    if (c == '#' && (kIdentStart[src_[cur_ + 1]] || src_[cur_ + 1] == '\\')) {
         cur_++; // skip '#'
-        // Fast path ASCII
         if (src_[cur_] < 0x80 && kIdentStart[src_[cur_]]) {
             cur_++;
-            while (cur_ < len_ && kIdentCont[src_[cur_]]) cur_++;
+            while (kIdentCont[src_[cur_]]) cur_++;
         } else {
-            // Slow path: just advance past the identifier characters
             if (src_[cur_] >= 0x80) {
                 uint32_t cp;
                 cur_ += decode_utf8(src_ + cur_, len_ - cur_, cp);
             } else if (src_[cur_] == '\\' && peek(1) == 'u') {
                 cur_ += 2;
-                if (cur_ < len_ && src_[cur_] == '{') {
+                if (src_[cur_] == '{') {
                     cur_++;
-                    while (cur_ < len_ && src_[cur_] != '}') cur_++;
-                    if (cur_ < len_) cur_++;
+                    while (src_[cur_] != 0 && src_[cur_] != '}') cur_++;
+                    if (src_[cur_] != 0) cur_++;
                 } else {
-                    if (cur_ + 4 <= len_) cur_ += 4;
+                    cur_ += 4;
                 }
             }
-            while (cur_ < len_) {
+            while (src_[cur_] != 0) {
                 if (kIdentCont[src_[cur_]] && src_[cur_] < 0x80) { cur_++; continue; }
                 if (src_[cur_] >= 0x80) {
                     uint32_t cp;
@@ -436,17 +426,15 @@ Token Lexer2::next_token() {
 Token Lexer2::scan_ident_or_keyword() {
     uint32_t start = cur_;
 
-    // Consume first character
     if (src_[cur_] == '\\' && peek(1) == 'u') {
-        // \u{XXXX} or \uXXXX — skip for now, just advance past it
         flags_ |= TF::HasEscape;
         cur_ += 2;
-        if (cur_ < len_ && src_[cur_] == '{') {
+        if (src_[cur_] == '{') {
             cur_++;
-            while (cur_ < len_ && src_[cur_] != '}') cur_++;
-            if (cur_ < len_) cur_++; // skip '}'
+            while (src_[cur_] != 0 && src_[cur_] != '}') cur_++;
+            if (src_[cur_] != 0) cur_++;
         } else {
-            cur_ += 4; // \uXXXX
+            cur_ += 4;
         }
     } else if (src_[cur_] >= 0x80) {
         uint32_t cp;
@@ -455,8 +443,7 @@ Token Lexer2::scan_ident_or_keyword() {
         cur_++;
     }
 
-    // Consume continuation characters
-    while (cur_ < len_) {
+    while (src_[cur_] != 0) {
         if (kIdentCont[src_[cur_]] && src_[cur_] < 0x80) {
             cur_++;
             continue;
@@ -464,10 +451,10 @@ Token Lexer2::scan_ident_or_keyword() {
         if (src_[cur_] == '\\' && peek(1) == 'u') {
             flags_ |= TF::HasEscape;
             cur_ += 2;
-            if (cur_ < len_ && src_[cur_] == '{') {
+            if (src_[cur_] == '{') {
                 cur_++;
-                while (cur_ < len_ && src_[cur_] != '}') cur_++;
-                if (cur_ < len_) cur_++;
+                while (src_[cur_] != 0 && src_[cur_] != '}') cur_++;
+                if (src_[cur_] != 0) cur_++;
             } else {
                 cur_ += 4;
             }
@@ -484,7 +471,6 @@ Token Lexer2::scan_ident_or_keyword() {
         break;
     }
 
-    // Keyword classification — only for pure ASCII, no escapes
     TokenTag tag = tok_ident;
     if (!(flags_ & TF::HasEscape)) {
         tag = classify_keyword(src_ + start, cur_ - start);
@@ -503,19 +489,19 @@ Token Lexer2::scan_number() {
         if (c1 == 'x' || c1 == 'X') {
             cur_ += 2;
             uint32_t body_start = cur_;
-            while (cur_ < len_ && (std::isxdigit(src_[cur_]) || src_[cur_] == '_')) cur_++;
+            while (std::isxdigit(src_[cur_]) || src_[cur_] == '_') cur_++;
             return make(cur_ == body_start ? tok_numeric : tok_hex, start, cur_);
         }
         if (c1 == 'o' || c1 == 'O') {
             cur_ += 2;
             uint32_t body_start = cur_;
-            while (cur_ < len_ && ((src_[cur_] >= '0' && src_[cur_] <= '7') || src_[cur_] == '_')) cur_++;
+            while ((src_[cur_] >= '0' && src_[cur_] <= '7') || src_[cur_] == '_') cur_++;
             return make(cur_ == body_start ? tok_numeric : tok_octal, start, cur_);
         }
         if (c1 == 'b' || c1 == 'B') {
             cur_ += 2;
             uint32_t body_start = cur_;
-            while (cur_ < len_ && ((src_[cur_] == '0' || src_[cur_] == '1') || src_[cur_] == '_')) cur_++;
+            while ((src_[cur_] == '0' || src_[cur_] == '1') || src_[cur_] == '_') cur_++;
             return make(cur_ == body_start ? tok_numeric : tok_binary, start, cur_);
         }
     }
@@ -523,24 +509,24 @@ Token Lexer2::scan_number() {
     bool has_dot = false;
     bool has_exp = false;
 
-    while (cur_ < len_ && (std::isdigit(src_[cur_]) || src_[cur_] == '_')) cur_++;
+    while (std::isdigit(src_[cur_]) || src_[cur_] == '_') cur_++;
 
-    if (cur_ < len_ && src_[cur_] == '.') {
+    if (src_[cur_] == '.') {
         has_dot = true;
         cur_++;
-        while (cur_ < len_ && (std::isdigit(src_[cur_]) || src_[cur_] == '_')) cur_++;
+        while (std::isdigit(src_[cur_]) || src_[cur_] == '_') cur_++;
     }
 
-    if (cur_ < len_ && (src_[cur_] == 'e' || src_[cur_] == 'E')) {
+    if (src_[cur_] == 'e' || src_[cur_] == 'E') {
         has_exp = true;
         cur_++;
-        if (cur_ < len_ && (src_[cur_] == '+' || src_[cur_] == '-')) cur_++;
+        if (src_[cur_] == '+' || src_[cur_] == '-') cur_++;
         uint32_t exp_start = cur_;
-        while (cur_ < len_ && (std::isdigit(src_[cur_]) || src_[cur_] == '_')) cur_++;
+        while (std::isdigit(src_[cur_]) || src_[cur_] == '_') cur_++;
         if (cur_ == exp_start) return make(tok_numeric, start, cur_);
     }
 
-    if (cur_ < len_ && src_[cur_] == 'n') {
+    if (src_[cur_] == 'n') {
         if (has_dot || has_exp) return make(tok_numeric, start, cur_);
         cur_++;
         return make(tok_bigint, start, cur_);
@@ -556,7 +542,7 @@ Token Lexer2::scan_string() {
     uint8_t quote = src_[cur_];
     cur_++;
 
-    while (cur_ < len_) {
+    while (src_[cur_] != 0) {
         uint8_t c = src_[cur_];
         if (c == quote) {
             cur_++;
@@ -586,24 +572,24 @@ Token Lexer2::scan_template_part() {
     uint32_t start = cur_;
     cur_++;
 
-    while (cur_ < len_) {
+    while (src_[cur_] != 0) {
         uint8_t c = src_[cur_];
         if (c == '`') {
             cur_++;
             return make(tok_template_full, start, cur_);
         }
-        if (c == '\\' && cur_ + 1 < len_) {
+        if (c == '\\') {
             flags_ |= TF::HasEscape;
             cur_++;
             skip_escape();
             continue;
         }
-        if (c == '$' && cur_ + 1 < len_ && src_[cur_ + 1] == '{') {
+        if (c == '$' && src_[cur_ + 1] == '{') {
             cur_ += 2;
             return make(tok_template_head, start, cur_);
         }
         if (c == '\r') {
-            if (cur_ + 1 < len_ && src_[cur_ + 1] == '\n') cur_++;
+            if (src_[cur_ + 1] == '\n') cur_++;
             cur_++;
             continue;
         }
@@ -622,24 +608,24 @@ Token Lexer2::rescan_template(uint32_t rbrace_start) {
     cur_ = rbrace_start + 1;
     uint32_t start = rbrace_start;
 
-    while (cur_ < len_) {
+    while (src_[cur_] != 0) {
         uint8_t c = src_[cur_];
         if (c == '`') {
             cur_++;
             return make(tok_template_tail, start, cur_);
         }
-        if (c == '\\' && cur_ + 1 < len_) {
+        if (c == '\\') {
             flags_ |= TF::HasEscape;
             cur_++;
             skip_escape();
             continue;
         }
-        if (c == '$' && cur_ + 1 < len_ && src_[cur_ + 1] == '{') {
+        if (c == '$' && src_[cur_ + 1] == '{') {
             cur_ += 2;
             return make(tok_template_mid, start, cur_);
         }
         if (c == '\r') {
-            if (cur_ + 1 < len_ && src_[cur_ + 1] == '\n') cur_++;
+            if (src_[cur_ + 1] == '\n') cur_++;
             cur_++;
             continue;
         }
@@ -661,7 +647,7 @@ Token Lexer2::scan_regex() {
     cur_++; // skip '/'
 
     bool in_class = false;
-    while (cur_ < len_) {
+    while (src_[cur_] != 0) {
         uint8_t c = src_[cur_];
         if (c == '\\') {
             cur_ += 2;
@@ -672,7 +658,7 @@ Token Lexer2::scan_regex() {
         if (c == '/' && !in_class) {
             cur_++;
             uint32_t seen = 0;
-            while (cur_ < len_ && std::isalpha(src_[cur_])) {
+            while (std::isalpha(src_[cur_])) {
                 uint8_t f = src_[cur_];
                 if (f != 'g' && f != 'i' && f != 'm' && f != 's' && f != 'u' && f != 'y' && f != 'd' && f != 'v') {
                     break;
@@ -683,7 +669,6 @@ Token Lexer2::scan_regex() {
                 cur_++;
             }
             if ((seen & (1u << ('u' - 'a'))) && (seen & (1u << ('v' - 'a')))) {
-                // u and v are mutually exclusive — accept both, downstream can error
             }
             return make(tok_regexp, start, cur_);
         }
