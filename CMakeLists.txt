@@ -62,6 +62,7 @@ add_library(qjsp
   src/qjsp/reg_parser_emit.cpp
   src/qjsp/reg_parser_expr.cpp
   src/qjsp/reg_parser_stmt.cpp
+  src/qjsp/binding.cpp
   src/qjsp/ast_emit.cpp
   src/qjsp/eval_ast.cpp
   src/qjsp/reg_parser_lower.cpp

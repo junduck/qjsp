@@ -1,6 +1,7 @@
 #pragma once
 
 #include "qjsp/ast.hpp"
+#include "qjsp/binding.hpp"
 #include "qjsp/bytecode.hpp"
 #include "qjsp/reg_opcode.hpp"
 #include "qjsp/reg_opcode_info.hpp"
@@ -11,20 +12,6 @@
 namespace qjsp {
 
 struct Engine;
-
-// ─── Scope variable info ────────────────────────────────────────────────────
-
-struct EmitVar {
-    Atom name;
-    int reg_index;
-    int scope_level;
-    int scope_next;
-    bool is_const;
-    bool is_lexical;
-    bool is_captured;
-    bool is_arg;
-    int upval_idx;
-};
 
 // ─── Label / patch ──────────────────────────────────────────────────────────
 
@@ -75,15 +62,11 @@ private:
     std::vector<Value> cpool_;
 
     // ── Register allocator ──────────────────────────────────────────────
-    int arg_count_ = 0;
-    int var_count_ = 0;
     int next_temp_ = 0;
     int max_temp_ = 0;
 
     int this_reg() const { return 0; }
-    int arg_reg(int i) const { return 1 + i; }
-    int var_reg(int i) const { return 1 + arg_count_ + i; }
-    int first_temp() const { return 1 + arg_count_ + var_count_; }
+    int first_temp() const { return bindings_.frame_regs(); }
 
     int alloc_temp() {
         int r = next_temp_++;
@@ -95,14 +78,8 @@ private:
         if (r + 1 > max_temp_) max_temp_ = r + 1;
     }
 
-    // ── Scope / variables ───────────────────────────────────────────────
-    std::vector<EmitVar> vars_;
-    int scope_level_ = -1;
-    int scope_first_ = -1;
-
-    // ── Closures ────────────────────────────────────────────────────────
-    std::vector<ClosureVar> closure_vars_;
-    uint16_t next_upval_ = 0;
+    // ── Binding table ───────────────────────────────────────────────────
+    BindingTable bindings_;
 
     // ── Break/continue stack ────────────────────────────────────────────
     std::vector<EmitBreakTarget> break_stack_;
@@ -162,16 +139,11 @@ private:
     }
 
     // ── Variable resolution ─────────────────────────────────────────────
-
-    int find_var(Atom name);
-    int find_arg(Atom name);
-    int add_var(Atom name, bool is_arg = false);
-    int resolve_upval(Atom name);
-    int capture_var(EmitVar &v);
+    // All variable lookups go through bindings_.lookup() / lookup_captured()
 
     // ── Scope management ────────────────────────────────────────────────
-
-    int scope_first_lexical(int scope);
+    // scope_level_ tracks emission-time scope nesting (no-op currently, for future PushScope)
+    int scope_level_ = -1;
     void push_scope();
     void pop_scope();
 

@@ -65,76 +65,9 @@ Atom AstEmitter::atom_for_str(std::string_view sv) const {
 }
 
 // ─── Variable resolution ────────────────────────────────────────────────────
-
-int AstEmitter::find_var(Atom name) {
-    for (int i = static_cast<int>(vars_.size()); i-- > 0;) {
-        if (vars_[i].name == name && !vars_[i].is_arg)
-            return i;
-    }
-    return find_arg(name);
-}
-
-int AstEmitter::find_arg(Atom name) {
-    for (int i = static_cast<int>(vars_.size()); i-- > 0;) {
-        if (vars_[i].name == name && vars_[i].is_arg)
-            return i;
-    }
-    return -1;
-}
-
-int AstEmitter::add_var(Atom name, bool is_arg) {
-    EmitVar v{};
-    v.name = name;
-    v.is_arg = is_arg;
-    int idx;
-    if (is_arg) {
-        idx = static_cast<int>(vars_.size());
-        v.reg_index = arg_reg(idx);
-    } else {
-        idx = static_cast<int>(vars_.size());
-        v.reg_index = var_reg(idx - arg_count_);
-    }
-    vars_.push_back(v);
-    int min_temp = first_temp();
-    if (next_temp_ < min_temp) next_temp_ = min_temp;
-    if (max_temp_ < min_temp) max_temp_ = min_temp;
-    return idx;
-}
-
-int AstEmitter::capture_var(EmitVar &v) {
-    if (!v.is_captured) {
-        v.is_captured = true;
-        v.upval_idx = next_upval_++;
-    }
-    return v.upval_idx;
-}
-
-int AstEmitter::resolve_upval(Atom name) {
-    AstEmitter *fd = this;
-    while (fd) {
-        for (int i = 0; i < static_cast<int>(fd->vars_.size()); i++) {
-            auto &ev = fd->vars_[i];
-            if (ev.name == name) {
-                if (fd == this) return -1;
-                fd->capture_var(ev);
-                for (int j = 0; j < static_cast<int>(closure_vars_.size()); j++) {
-                    if (closure_vars_[j].var_name == name)
-                        return j;
-                }
-                ClosureVar cv{};
-                cv.var_name = name;
-                cv.var_idx = static_cast<uint16_t>(i);
-                cv.set_closure_type(ev.is_arg ? ClosureType::arg : ClosureType::local);
-                cv.set_is_const(ev.is_const);
-                cv.set_is_lexical(ev.is_lexical);
-                closure_vars_.push_back(cv);
-                return static_cast<int>(closure_vars_.size()) - 1;
-            }
-        }
-        fd = fd->parent_;
-    }
-    return -1;
-}
+//
+// All variable lookups go through bindings_.lookup() or bindings_.lookup_captured().
+// The BindingTable is built during scope analysis and sealed before emission.
 
 // ─── Scope management ───────────────────────────────────────────────────────
 
@@ -169,16 +102,10 @@ void AstEmitter::collect_declarator(NodeIndex decl_node, uint32_t kind) {
 
     if (k == NK_IDENT_REF || k == NK_BINDING_IDENT) {
         Atom name = atom_for_span(tree_.span(id));
-        int vi = find_var(name);
-        if (vi < 0) {
-            int idx = add_var(name);
-            auto &v = vars_[static_cast<size_t>(idx)];
-            if (kind == VarLet) {
-                v.is_lexical = true;
-            } else if (kind == VarConst) {
-                v.is_lexical = true;
-                v.is_const = true;
-            }
+        switch (kind) {
+        case VarVar:   bindings_.add_var(name);   break;
+        case VarLet:   bindings_.add_let(name);   break;
+        case VarConst: bindings_.add_const(name); break;
         }
     }
 }
@@ -201,20 +128,18 @@ void AstEmitter::collect_vars(NodeIndex node, bool is_var) {
         NodeIndex id = n.data[0];
         if (id != NodeNull) {
             Atom name = atom_for_span(tree_.span(id));
-            int vi = find_var(name);
-            if (vi < 0) {
-                int idx = add_var(name);
-                vars_[idx].is_lexical = false;
-            }
+            bindings_.add_function(name);
         }
         break;
     }
     case NK_PROGRAM:
     case NK_BLOCK_STMT:
     case NK_FUNCTION_BODY: {
+        bindings_.begin_scope();
         auto range = tree_.range(node, 0);
         for (uint32_t i = 0; i < range.len; i++)
             collect_vars(tree_.extras[range.start + i], is_var);
+        bindings_.end_scope();
         break;
     }
     case NK_IF_STMT: {
@@ -245,11 +170,13 @@ void AstEmitter::collect_vars(NodeIndex node, bool is_var) {
         if (n.data[0] != NodeNull) collect_vars(n.data[0], is_var);
         if (n.data[1] != NodeNull) {
             Node &catch_node = tree_.nodes[n.data[1]];
+            bindings_.begin_scope();
             if (catch_node.data[0] != NodeNull) {
                 collect_vars(catch_node.data[0], is_var);
             }
             if (catch_node.data[1] != NodeNull)
                 collect_vars(catch_node.data[1], is_var);
+            bindings_.end_scope();
         }
         if (n.data[2] != NodeNull) collect_vars(n.data[2], is_var);
         break;
@@ -261,9 +188,11 @@ void AstEmitter::collect_vars(NodeIndex node, bool is_var) {
         break;
     }
     case NK_SWITCH_CASE: {
+        bindings_.begin_scope();
         auto range = tree_.range(node, 0);
         for (uint32_t i = 0; i < range.len; i++)
             collect_vars(tree_.extras[range.start + i], is_var);
+        bindings_.end_scope();
         break;
     }
     case NK_EXPR_STMT: {
@@ -276,6 +205,7 @@ void AstEmitter::collect_vars(NodeIndex node, bool is_var) {
 
 void AstEmitter::analyze_scope(NodeIndex body) {
     collect_vars(body, false);
+    bindings_.seal();
 }
 
 // ─── Freeze into Bytecode ───────────────────────────────────────────────────
@@ -296,37 +226,37 @@ Bytecode *AstEmitter::freeze() {
     for (uint32_t i = 0; i < b->cpool_count; i++)
         b->cpool[i] = std::move(cpool_[i]);
 
-    b->arg_count = static_cast<uint16_t>(arg_count_);
+    b->arg_count = static_cast<uint16_t>(bindings_.arg_count());
     b->var_count = 0;
-    int total_defs = static_cast<int>(vars_.size());
+    int total_defs = bindings_.entry_count();
     if (total_defs > 0) {
         b->vardefs = std::make_unique<BytecodeVarDef[]>(total_defs);
         b->var_count = static_cast<uint16_t>(total_defs);
         for (int i = 0; i < total_defs; i++) {
-            auto &ev = vars_[i];
+            auto &bd = bindings_.entries()[i];
             auto &vd = b->vardefs[i];
-            vd.var_name = ev.name;
+            vd.var_name = bd.name;
             vd.scope_next = -1;
             vd.flags = 0;
-            vd.set_is_const(ev.is_const);
-            vd.set_is_lexical(ev.is_lexical);
-            vd.set_is_captured(ev.is_captured);
-            vd.var_ref_idx = static_cast<uint16_t>(ev.upval_idx >= 0 ? ev.upval_idx : 0);
+            vd.set_is_const(is_const_kind(bd.kind));
+            vd.set_is_lexical(is_lexical_kind(bd.kind));
+            vd.set_is_captured(false);  // upvalues handled via closure_vars
+            vd.var_ref_idx = 0;
         }
     }
 
-    b->closure_var_count = static_cast<uint32_t>(closure_vars_.size());
+    b->closure_var_count = static_cast<uint32_t>(bindings_.closure_vars().size());
     if (b->closure_var_count > 0) {
         b->closure_var = std::make_unique<ClosureVar[]>(b->closure_var_count);
         for (uint32_t i = 0; i < b->closure_var_count; i++)
-            b->closure_var[i] = closure_vars_[i];
+            b->closure_var[i] = bindings_.closure_vars()[i];
     }
 
     b->func_name = func_name_;
     b->reg_count = static_cast<uint16_t>(max_temp_);
     b->stack_size = b->reg_count;
-    b->var_ref_count = static_cast<uint16_t>(next_upval_);
-    b->defined_arg_count = static_cast<uint16_t>(arg_count_);
+    b->var_ref_count = static_cast<uint16_t>(bindings_.upvalue_count());
+    b->defined_arg_count = static_cast<uint16_t>(bindings_.arg_count());
     b->flags1 |= 0x01; // has_prototype
 
     return b;
@@ -340,7 +270,6 @@ Bytecode *AstEmitter::emit_program(NodeIndex root) {
 
     analyze_scope(root);
 
-    var_count_ = static_cast<int>(vars_.size()) - arg_count_;
     next_temp_ = first_temp();
     max_temp_ = next_temp_;
 
@@ -379,20 +308,14 @@ Bytecode *AstEmitter::emit_function(NodeIndex func_node, bool is_expr) {
                 NodeIndex pname = tree_.nodes[param].data[0];
                 if (pname != NodeNull) {
                     Atom name = atom_for_span(tree_.span(pname));
-                    add_var(name, true);
+                    bindings_.add_argument(name);
                 }
             }
         }
     }
 
-    arg_count_ = 0;
-    for (auto &v : vars_) {
-        if (v.is_arg) arg_count_++;
-    }
-
     analyze_scope(body_node);
 
-    var_count_ = static_cast<int>(vars_.size()) - arg_count_;
     next_temp_ = first_temp();
     max_temp_ = next_temp_;
 
@@ -451,10 +374,10 @@ void AstEmitter::emit_stmt(NodeIndex node) {
         NodeIndex id = n.data[0];
         if (id != NodeNull) {
             Atom name = atom_for_span(tree_.span(id));
-            int vi = find_var(name);
-            if (vi >= 0) {
+            if (bindings_.has(name)) {
                 auto child = std::make_unique<AstEmitter>(e_, tree_, source_, source_len_);
                 child->parent_ = this;
+                child->bindings_.parent_table = &this->bindings_;
                 Bytecode *bc = child->emit_function(node, false);
                 bc->func_name = name;
 
@@ -559,8 +482,8 @@ void AstEmitter::emit_for_in_stmt(NodeIndex node) {
     free_temp(); // obj
 
     Atom var_name = atom_for_span(tree_.span(left));
-    int vi = find_var(var_name);
-    int key_reg = (vi >= 0) ? vars_[vi].reg_index : alloc_temp();
+    const Binding *b = bindings_.lookup(var_name);
+    int key_reg = b ? b->slot : alloc_temp();
     int more_reg = alloc_temp();
 
     int loop_lbl = new_label();
@@ -581,7 +504,7 @@ void AstEmitter::emit_for_in_stmt(NodeIndex node) {
 
     free_temp(); // more_reg
     free_temp(); // iter_reg
-    if (vi < 0) free_temp();
+    if (!b) free_temp();
 }
 
 void AstEmitter::emit_for_of_stmt(NodeIndex node) {
@@ -596,8 +519,8 @@ void AstEmitter::emit_for_of_stmt(NodeIndex node) {
     free_temp(); // iterable
 
     Atom var_name = atom_for_span(tree_.span(n.data[0]));
-    int vi = find_var(var_name);
-    int target_reg = (vi >= 0) ? vars_[vi].reg_index : alloc_temp();
+    const Binding *b = bindings_.lookup(var_name);
+    int target_reg = b ? b->slot : alloc_temp();
 
     int loop_lbl = new_label();
     int body_lbl = new_label();
@@ -620,7 +543,7 @@ void AstEmitter::emit_for_of_stmt(NodeIndex node) {
     free_temp(); // val_reg
     free_temp(); // more_reg
     free_temp(); // iter_reg
-    if (vi < 0) free_temp();
+    if (!b) free_temp();
 }
 
 void AstEmitter::emit_while_stmt(NodeIndex node) {
@@ -928,29 +851,18 @@ int AstEmitter::emit_this_expr() {
 int AstEmitter::emit_ident_ref(NodeIndex node) {
     Atom name = atom_for_span(tree_.span(node));
 
-    // Local vars
-    for (int i = static_cast<int>(vars_.size()); i-- > 0;) {
-        if (vars_[i].name == name && !vars_[i].is_arg) {
-            int r = alloc_temp();
-            emit_iABC(RegOp::MOVE, u8(r), u8(vars_[i].reg_index), 0);
-            return r;
-        }
-    }
-    // Args
-    for (int i = static_cast<int>(vars_.size()); i-- > 0;) {
-        if (vars_[i].name == name && vars_[i].is_arg) {
-            int r = alloc_temp();
-            emit_iABC(RegOp::MOVE, u8(r), u8(vars_[i].reg_index), 0);
-            return r;
-        }
-    }
-    // Upvalue
-    int uv = resolve_upval(name);
-    if (uv >= 0) {
+    // Resolve via binding table — walks local + parent chains for upvalues
+    const Binding *b = bindings_.lookup_captured(name);
+    if (b) {
         int r = alloc_temp();
-        emit_iABC(RegOp::GETUPVAL, u8(r), u8(uv), 0);
+        if (b->kind == BindKind::Upvalue) {
+            emit_iABC(RegOp::GETUPVAL, u8(r), u8(b->slot), 0);
+        } else {
+            emit_iABC(RegOp::MOVE, u8(r), u8(b->slot), 0);
+        }
         return r;
     }
+
     // Global: GETFIELD on this (R[0])
     int r = alloc_temp();
     int ci = cpool_add(e_->atom_to_value(name));
@@ -1323,6 +1235,7 @@ int AstEmitter::emit_object_expr(NodeIndex node) {
 int AstEmitter::emit_func_expr(NodeIndex node) {
     auto child = std::make_unique<AstEmitter>(e_, tree_, source_, source_len_);
     child->parent_ = this;
+    child->bindings_.parent_table = &this->bindings_;
     Bytecode *bc = child->emit_function(node, true);
 
     int placeholder = cpool_add(Value::bytecode(nullptr));
@@ -1438,24 +1351,13 @@ void AstEmitter::emit_store(NodeIndex target, int value_reg) {
 
     if (k == NK_IDENT_REF || k == NK_BINDING_IDENT) {
         Atom name = atom_for_span(tree_.span(target));
-        // Local vars
-        for (int i = static_cast<int>(vars_.size()); i-- > 0;) {
-            if (vars_[i].name == name && !vars_[i].is_arg) {
-                emit_iABC(RegOp::MOVE, u8(vars_[i].reg_index), u8(value_reg), 0);
-                return;
+        const Binding *b = bindings_.lookup_captured(name);
+        if (b) {
+            if (b->kind == BindKind::Upvalue) {
+                emit_iABC(RegOp::SETUPVAL, u8(value_reg), u8(b->slot), 0);
+            } else {
+                emit_iABC(RegOp::MOVE, u8(b->slot), u8(value_reg), 0);
             }
-        }
-        // Args
-        for (int i = static_cast<int>(vars_.size()); i-- > 0;) {
-            if (vars_[i].name == name && vars_[i].is_arg) {
-                emit_iABC(RegOp::MOVE, u8(vars_[i].reg_index), u8(value_reg), 0);
-                return;
-            }
-        }
-        // Upvalue
-        int uv = resolve_upval(name);
-        if (uv >= 0) {
-            emit_iABC(RegOp::SETUPVAL, u8(value_reg), u8(uv), 0);
             return;
         }
         // Global: SETFIELD on this (R[0])
