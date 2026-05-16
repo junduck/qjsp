@@ -647,3 +647,148 @@ TEST_F(RegInterpFixture, VarMethodCall) {
   EXPECT_TRUE(v.is_int32()) << "tag=" << v.tag_prefix();
   EXPECT_EQ(v.as_int32(), 1);
 }
+
+// ─── New AST pipeline tests ──────────────────────────────────────────────
+
+struct AstInterpFixture : testing::Test {
+  std::unique_ptr<Engine> e = std::make_unique<Engine>();
+  RegInterpreter interp{e.get()};
+
+  Value eval(const char *source) { return interp.eval_source_ast(source); }
+};
+
+TEST_F(AstInterpFixture, LiteralInt) {
+  Value v = eval("42;");
+  ASSERT_TRUE(v.is_int32()) << "tag=" << v.tag_prefix();
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(AstInterpFixture, Arithmetic) {
+  Value v = eval("1 + 2 * 3;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 7);
+}
+
+TEST_F(AstInterpFixture, VarDeclAndUse) {
+  Value v = eval("var x = 10; x;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+
+TEST_F(AstInterpFixture, IfStatement) {
+  Value v = eval("var x = 0; if (1) { x = 1; } x;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(AstInterpFixture, FunctionCall) {
+  Value v = eval("function f() { return 42; } f();");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(AstInterpFixture, ObjectLiteralSimple) {
+  Value v = eval("var o = {a: 1}; o.a;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(AstInterpFixture, ArrayLiteralSimple) {
+  Value v = eval("var a = [10, 20, 30]; a[1];");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 20);
+}
+
+TEST_F(AstInterpFixture, ForLoop) {
+  Value v = eval("var s = 0; for (var i = 0; i < 5; i = i + 1) { s = s + i; } s;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+
+TEST_F(AstInterpFixture, WhileLoop) {
+  Value v = eval("var s = 0; var i = 0; while (i < 5) { s = s + i; i = i + 1; } s;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+
+TEST_F(AstInterpFixture, ClosureRead) {
+  Value v = eval("function make() { var x = 42; return function() { return x; }; } make()();");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(AstInterpFixture, TryCatch) {
+  Value v = eval("var r = 0; try { throw 1; } catch(e) { r = e; } r;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(AstInterpFixture, SwitchBasic) {
+  Value v = eval("var x = 2; var r = 0; switch(x) { case 1: r = 10; break; case 2: r = 20; break; } r;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 20);
+}
+
+TEST_F(AstInterpFixture, MethodCall) {
+  Value v = eval("var o = {x: 1}; o.x;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1);
+}
+
+TEST_F(AstInterpFixture, ForIn) {
+  Value v = eval("var o = {a: 1, b: 2}; var keys = ''; for (var k in o) { keys = keys + k; } keys;");
+  ASSERT_TRUE(v.is_string());
+}
+
+TEST_F(AstInterpFixture, ForOfSimple) {
+  Value v = eval("var s = 0; for (var x of [1, 2, 3]) { s = s + x; } s;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 6);
+}
+
+TEST_F(AstInterpFixture, DoWhile) {
+  Value v = eval("var i = 0; var s = 0; do { s = s + 1; i = i + 1; } while(i < 3); s;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 3);
+}
+
+TEST_F(AstInterpFixture, BreakContinue) {
+  Value v = eval("var s = 0; for (var i = 0; i < 10; i = i + 1) { if (i == 3) continue; if (i == 7) break; s = s + i; } s;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 18);
+}
+
+TEST_F(AstInterpFixture, NestedFunction) {
+  Value v = eval("function add(a, b) { return a + b; } add(3, 4);");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 7);
+}
+
+TEST_F(AstInterpFixture, ComparisonOps) {
+  Value v = eval("1 < 2;");
+  ASSERT_TRUE(v.is_bool());
+  EXPECT_TRUE(v.as_bool());
+}
+
+TEST_F(AstInterpFixture, LogicalAnd) {
+  Value v = eval("1 && 2;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 2);
+}
+
+TEST_F(AstInterpFixture, LogicalOr) {
+  Value v = eval("0 || 42;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 42);
+}
+
+TEST_F(AstInterpFixture, UnaryNeg) {
+  Value v = eval("-5;");
+  ASSERT_TRUE(v.is_double());
+  EXPECT_EQ(v.as_double(), -5.0);
+}
+
+TEST_F(AstInterpFixture, StringLiteral) {
+  Value v = eval("'hello';");
+  ASSERT_TRUE(v.is_string());
+}

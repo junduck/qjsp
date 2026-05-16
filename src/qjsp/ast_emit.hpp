@@ -104,15 +104,13 @@ private:
     std::vector<ClosureVar> closure_vars_;
     uint16_t next_upval_ = 0;
 
-    // ── Child functions ─────────────────────────────────────────────────
-    std::vector<Bytecode *> children_;
-
     // ── Break/continue stack ────────────────────────────────────────────
     std::vector<EmitBreakTarget> break_stack_;
 
     // ── Function metadata ───────────────────────────────────────────────
     Atom func_name_ = kAtomNull;
     bool is_expr_ = false;
+    int eval_ret_reg_ = -1; // for top-level eval: last expr stmt → this reg
 
     // ── Instruction emission ────────────────────────────────────────────
 

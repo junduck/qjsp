@@ -497,9 +497,16 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
       break;
     }
 
-    case RegOp::APPEND:
-      // Placeholder
+    case RegOp::APPEND: {
+      Value &obj = regs[i.a()];
+      Value &val = regs[i.b()];
+      if (obj.is_object()) {
+        auto *o = obj.as<Object>();
+        if (o && o->clsid == Builtin::array)
+          static_cast<ArrayObject *>(o)->elements.push_back(val);
+      }
       break;
+    }
 
       // ── spread ──────────────────────────────────────────────────────────────
 

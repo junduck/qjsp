@@ -19,6 +19,7 @@ public:
   Value eval(Bytecode *b);
   Value call_bytecode(Bytecode *b, Value this_obj, int argc, const Value *argv, VarRef **upvals);
   Value eval_source(const char *source, const char *filename = "<eval>");
+  Value eval_source_ast(const char *source, const char *filename = "<eval>");
 
 private:
   Engine *e_;
