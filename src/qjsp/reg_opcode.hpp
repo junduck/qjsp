@@ -103,6 +103,7 @@ enum class RegOp : uint8_t {
   IS_FALSE,
   IS_TRUE,
   IS_UNDEF,
+  IS_NULLISH,
 
   // ── object (7) ────────────────────────────────────────────────────────
   NEWOBJ,
@@ -127,7 +128,7 @@ enum class RegOp : uint8_t {
   SETPROTO,
   TOOBJECT,
 
-  // ── call / return (6) ─────────────────────────────────────────────────
+  // ── call / return (10) ────────────────────────────────────────────────
   CALL,
   CALL_M,
   CTOR,

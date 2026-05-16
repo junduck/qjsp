@@ -348,6 +348,11 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
         ip += i.sbx();
       break;
 
+    case RegOp::IS_NULLISH:
+      if (regs[i.a()].is_null_or_undef())
+        ip += i.sbx();
+      break;
+
       // ── object ──────────────────────────────────────────────────────────────
 
     case RegOp::NEWOBJ: {
@@ -731,8 +736,9 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
     }
 
     case RegOp::CATCH:
-      // Record catch frame: exc_reg = A, target = bx (absolute instr index)
-      catch_stack_.push_back({static_cast<int>(i.a()), static_cast<int>(i.bx()), b});
+      catch_stack_.push_back({static_cast<int>(i.a()),
+                              static_cast<int>((ip - reinterpret_cast<const Instruction *>(b->byte_code_buf.get())) + i.sbx()),
+                              b});
       break;
 
     case RegOp::UNCATCH:

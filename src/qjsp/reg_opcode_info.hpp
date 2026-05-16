@@ -59,6 +59,7 @@ inline constexpr RegOpInfo kRegOpInfo[] = {
     {"IS_FALSE", InstrFmt::AsBx},
     {"IS_TRUE", InstrFmt::AsBx},
     {"IS_UNDEF", InstrFmt::AsBx},
+    {"IS_NULLISH", InstrFmt::AsBx},
 
     // ── object (7) ──────────────────────────────────────────────────────────
     {"NEWOBJ", InstrFmt::ABx},
@@ -91,7 +92,7 @@ inline constexpr RegOpInfo kRegOpInfo[] = {
     {"RETURN", InstrFmt::ABC},
     {"RETURN0", InstrFmt::ABx},
     {"THROW", InstrFmt::ABC},
-    {"CATCH", InstrFmt::ABx}, //  A=exc_reg, Bx=catch_pc (patched)
+    {"CATCH", InstrFmt::AsBx}, //  A=exc_reg, sbx=relative offset to catch handler
     {"UNCATCH", InstrFmt::ABx},
     {"GOSUB", InstrFmt::AsBx}, //  A unused, sbx=relative offset
     {"RET", InstrFmt::ABx},
