@@ -153,7 +153,7 @@ namespace NF {
     constexpr uint32_t ExprBody = 1u << 3;
 }
 
-enum VarKind : uint32_t { VarVar, VarLet, VarConst };
+enum AstVarKind : uint32_t { VarVar, VarLet, VarConst };
 
 enum MethodKind : uint32_t { MethodInit, MethodGet, MethodSet, MethodCtor };
 
@@ -193,7 +193,7 @@ struct Node {
 //  NK_CATCH_CLAUSE       param      body
 //  NK_DEBUGGER_STMT      (plain node)
 //  NK_EMPTY_STMT         (plain node)
-//  NK_VAR_DECL            decls.st  decls.len  kind                        range(0)=decls; d2=VarKind
+//  NK_VAR_DECL            decls.st  decls.len  kind                        range(0)=decls; d2=AstVarKind
 //  NK_VAR_DECLARATOR     id         init
 //  NK_FUNCTION           id         params     body       flags             flags: Async/Gen/IsExpr
 //  NK_FUNCTION_BODY       body.st   body.len                                range(0)
