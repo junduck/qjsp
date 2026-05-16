@@ -154,11 +154,16 @@ NodeIndex Parser::parse_block() {
     expect(tok_lbrace);
     auto cp = static_cast<uint32_t>(scratch_stmts_.size());
 
+    bool saved_single = ctx_single_stmt_;
+    ctx_single_stmt_ = false;
+
     while (!at(tok_rbrace) && !at(tok_eof)) {
         NodeIndex s = parse_stmt();
         if (s != NodeNull) scratch_stmts_.push_back(s);
         else advance();
     }
+
+    ctx_single_stmt_ = saved_single;
 
     IndexRange body = flush_scratch(scratch_stmts_, cp);
     expect(tok_rbrace);
@@ -492,6 +497,10 @@ NodeIndex Parser::parse_import_decl() {
 
     auto cp = static_cast<uint32_t>(scratch_a_.size());
 
+    if (is_ident_like() && source_eq(current_.start, current_.end, "defer")) {
+        advance();
+    }
+
     if (at(tok_star)) {
         advance();
         expect(tok_as);
@@ -638,17 +647,17 @@ NodeIndex Parser::parse_export_default() {
 
     if (at(tok_function)) {
         advance();
-        decl = parse_function(false);
+        decl = parse_function(true);
     } else if (at(tok_async) && !has_newline_before()) {
         advance();
         if (at(tok_function)) {
             advance();
-            decl = parse_function(false, true);
+            decl = parse_function(true, true);
             tree_.d(decl, 3) |= NF::Async;
         }
     } else if (at(tok_class)) {
         advance();
-        decl = parse_class(false);
+        decl = parse_class(true);
     } else {
         decl = parse_expr(Prec::Assign);
         eat_semi();
