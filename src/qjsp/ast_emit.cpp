@@ -815,7 +815,36 @@ void AstEmitter::emit_expr(NodeIndex node, int dst) {
 
 void AstEmitter::emit_numeric_lit(NodeIndex node, int dst) {
     auto sv = src_slice(tree_.span(node));
-    double val = std::strtod(sv.data(), nullptr);
+
+    // Strip underscore separators
+    char buf[128];
+    int len = 0;
+    for (size_t i = 0; i < sv.size() && len < 127; i++)
+        if (sv[i] != '_') buf[len++] = sv[i];
+    buf[len] = '\0';
+
+    double val;
+    int radix = 10;
+    const char *body = buf;
+    int body_len = len;
+
+    if (len >= 2 && buf[0] == '0') {
+        if (buf[1] == 'x' || buf[1] == 'X') { radix = 16; body = buf + 2; body_len -= 2; }
+        else if (buf[1] == 'o' || buf[1] == 'O') { radix = 8; body = buf + 2; body_len -= 2; }
+        else if (buf[1] == 'b' || buf[1] == 'B') { radix = 2; body = buf + 2; body_len -= 2; }
+    }
+
+    if (radix == 10 && body_len == 0) {
+        val = 0;
+    } else if (radix != 10) {
+        char *end;
+        uint64_t u = std::strtoull(body, &end, radix);
+        val = static_cast<double>(u);
+    } else {
+        char *end;
+        val = std::strtod(body, &end);
+    }
+
     int32_t iv = static_cast<int32_t>(val);
     if (val == static_cast<double>(iv) && iv >= -32768 && iv <= 32767) {
         emit_iAsBx(RegOp::LOADINT, u8(dst), s16(iv));
