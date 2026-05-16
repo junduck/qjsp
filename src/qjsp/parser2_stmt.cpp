@@ -258,7 +258,7 @@ NodeIndex Parser::parse_for_stmt() {
     bool init_is_decl = false;
 
     if (at(tok_var) || at(tok_let) || at(tok_const)) {
-        init = parse_var_decl();
+        init = parse_var_decl(false);
         init_is_decl = true;
     } else if (!at(tok_semi)) {
         init = parse_expr();
@@ -445,7 +445,7 @@ NodeIndex Parser::parse_empty_stmt() {
     return tree_.alloc(NK_EMPTY_STMT, span_from(start));
 }
 
-NodeIndex Parser::parse_var_decl() {
+NodeIndex Parser::parse_var_decl(bool eat_semi_) {
     uint32_t start = current_.start;
     uint32_t kind = VarVar;
     if (at(tok_let)) kind = VarLet;
@@ -469,7 +469,7 @@ NodeIndex Parser::parse_var_decl() {
         scratch_a_.push_back(declarator);
     } while (eat(tok_comma));
 
-    if (!at(tok_rparen) && !at(tok_in) && !at(tok_of)) eat_semi();
+    if (eat_semi_ && !at(tok_rparen) && !at(tok_in) && !at(tok_of)) eat_semi();
 
     IndexRange decls = flush_scratch(scratch_a_, cp);
     return tree_.alloc(NK_VAR_DECL, span_from(start), decls.start, decls.len, kind);

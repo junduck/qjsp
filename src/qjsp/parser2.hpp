@@ -85,7 +85,7 @@ private:
     NodeIndex parse_throw_stmt();
     NodeIndex parse_debugger_stmt();
     NodeIndex parse_empty_stmt();
-    NodeIndex parse_var_decl();
+    NodeIndex parse_var_decl(bool eat_semi_ = true);
 
     // ─── Functions / classes ───────────────────────────────────────────────
     NodeIndex parse_function(bool is_expr, bool is_async = false);
