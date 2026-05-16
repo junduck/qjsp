@@ -170,6 +170,20 @@ NodeIndex Parser::parse_class_element(bool is_static) {
         }
     }
 
+    if (at(tok_async)) {
+        if (is_ident_like() || at(tok_lbrack) || at(tok_string) || tag_is_numeric(current_.tag)) {
+            flags |= NF::Async;
+            advance();
+            if (at(tok_star)) {
+                flags |= NF::Generator;
+                advance();
+            }
+        }
+    } else if (at(tok_star)) {
+        flags |= NF::Generator;
+        advance();
+    }
+
     NodeIndex key = NodeNull;
     if (at(tok_lbrack)) {
         flags |= NF::Computed;
@@ -186,7 +200,7 @@ NodeIndex Parser::parse_class_element(bool is_static) {
     }
 
     if (at(tok_lparen)) {
-        NodeIndex value = parse_function(true);
+        NodeIndex value = parse_function(true, flags & NF::Async);
         flags |= method_kind;
         return tree_.alloc(NK_METHOD_DEF, span_from(start), key, value, flags);
     }

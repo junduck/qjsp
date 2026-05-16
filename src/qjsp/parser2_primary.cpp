@@ -163,9 +163,25 @@ NodeIndex Parser::parse_object_expr() {
         }
 
         bool is_generator = false;
+        bool is_async = false;
         if (at(tok_star)) {
             is_generator = true;
             advance();
+        } else if (at(tok_async)) {
+            Token async_tok = current_;
+            uint32_t saved_cursor = lexer_.cursor();
+            advance();
+            if (at(tok_star)) {
+                is_async = true;
+                is_generator = true;
+                advance();
+            } else if (at(tok_lparen) || (is_ident_like() && !current_.has_newline_before())) {
+                is_async = true;
+            } else {
+                lexer_.set_cursor(saved_cursor);
+                current_ = async_tok;
+            }
+            if (is_async) method_kind = MethodAsync;
         } else if (at(tok_get) || at(tok_set)) {
             Token gs_tok = current_;
             advance();
@@ -206,12 +222,13 @@ NodeIndex Parser::parse_object_expr() {
         if (at(tok_lparen)) {
             uint32_t fn_flags = NF::IsExpr;
             if (is_generator) fn_flags |= NF::Generator;
+            if (is_async) fn_flags |= NF::Async;
             NodeIndex params = parse_formal_params();
             bool saved_yield = ctx_yield_;
             bool saved_await = ctx_await_;
             bool saved_return = ctx_return_;
             ctx_yield_ = is_generator;
-            ctx_await_ = false;
+            ctx_await_ = is_async;
             ctx_return_ = true;
             NodeIndex body = parse_function_body();
             ctx_yield_ = saved_yield;
@@ -226,7 +243,7 @@ NodeIndex Parser::parse_object_expr() {
             continue;
         }
 
-        if (method_kind != MethodInit || is_generator) {
+        if (method_kind != MethodInit || is_generator || is_async) {
             error("expected '(' for method definition");
             continue;
         }

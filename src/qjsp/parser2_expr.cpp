@@ -387,7 +387,12 @@ NodeIndex Parser::parse_prefix() {
         }
         NodeIndex callee = parse_expr(Prec::New);
         IndexRange args = {0, 0};
-        if (at(tok_lparen)) {
+        // If parse_expr consumed a call (e.g. new (X)(Y) where (Y) was eaten as a call),
+        // unwrap: (X)(Y) → callee=(X), args=(Y)
+        if (tree_.kind(callee) == NK_CALL_EXPR) {
+            args = tree_.range(callee, 1);
+            callee = tree_.d(callee, 0);
+        } else if (at(tok_lparen)) {
             advance();
             auto cp = static_cast<uint32_t>(scratch_a_.size());
             if (!at(tok_rparen)) {

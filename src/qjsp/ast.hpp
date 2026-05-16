@@ -155,7 +155,7 @@ namespace NF {
 
 enum AstVarKind : uint32_t { VarVar, VarLet, VarConst };
 
-enum MethodKind : uint32_t { MethodInit, MethodGet, MethodSet, MethodCtor };
+enum MethodKind : uint32_t { MethodInit, MethodGet, MethodSet, MethodCtor, MethodAsync };
 
 struct Node {
     NodeKind kind;
