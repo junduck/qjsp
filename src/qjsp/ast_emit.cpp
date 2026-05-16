@@ -294,7 +294,7 @@ Bytecode *AstEmitter::freeze() {
     b->cpool_count = static_cast<uint32_t>(cpool_.size());
     b->cpool = std::make_unique<Value[]>(b->cpool_count);
     for (uint32_t i = 0; i < b->cpool_count; i++)
-        b->cpool[i] = cpool_[i];
+        b->cpool[i] = std::move(cpool_[i]);
 
     b->arg_count = static_cast<uint16_t>(arg_count_);
     b->var_count = 0;
