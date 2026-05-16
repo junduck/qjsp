@@ -106,7 +106,7 @@ NodeIndex Parser::parse_class(bool is_expr) {
     uint32_t flags = is_expr ? NF::IsExpr : 0;
 
     NodeIndex id = NodeNull;
-    if (is_ident_like()) {
+    if (is_ident_like() && !at(tok_extends)) {
         id = tree_.alloc(NK_BINDING_IDENT, cur_span());
         advance();
     } else if (!is_expr) {
