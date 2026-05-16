@@ -256,6 +256,11 @@ NodeIndex Parser::parse_binding_pattern() {
                 rest = parse_binding();
                 break;
             }
+            if (at(tok_comma)) {
+                scratch_a_.push_back(NodeNull);
+                advance();
+                continue;
+            }
             NodeIndex elem = parse_binding();
             if (eat(tok_assign)) {
                 NodeIndex init = parse_expr(Prec::Assign);
