@@ -100,10 +100,10 @@ void Lexer2::skip_escape() {
     switch (c) {
     case '\n':
         cur_++;
-        if (src_[cur_] == '\r') cur_++;
         break;
     case '\r':
         cur_++;
+        if (src_[cur_] == '\n') cur_++;
         break;
     case '0': case '1': case '2': case '3':
     case '4': case '5': case '6': case '7':
