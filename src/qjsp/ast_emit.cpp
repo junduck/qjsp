@@ -350,7 +350,7 @@ void AstEmitter::emit_stmt(NodeIndex node) {
         emit_iABx(RegOp::LOADK, u8(r), u16(ci));
         if (eval_ret_reg_ >= 0)
             emit_iABC(RegOp::MOVE, u8(eval_ret_reg_), u8(r), 0);
-        free_temp();
+        free_temp(r);
         break;
     }
     case NK_BLOCK_STMT:    emit_block_stmt(node); break;
@@ -385,7 +385,7 @@ void AstEmitter::emit_stmt(NodeIndex node) {
                 int r = alloc_temp();
                 emit_iABx(RegOp::FCLOSURE, u8(r), u16(placeholder));
                 emit_store(id, r);
-                free_temp();
+                free_temp(r);
 
                 // Replace placeholder
                 for (int i = 0; i < static_cast<int>(cpool_.size()); i++) {
@@ -406,10 +406,11 @@ void AstEmitter::emit_stmt(NodeIndex node) {
 
 void AstEmitter::emit_expr_stmt(NodeIndex node) {
     Node &n = tree_.nodes[node];
-    int r = emit_expr(n.data[0]);
-    if (eval_ret_reg_ >= 0 && r >= 0)
+    int r = alloc_temp();
+    emit_expr(n.data[0], r);
+    if (eval_ret_reg_ >= 0)
         emit_iABC(RegOp::MOVE, u8(eval_ret_reg_), u8(r), 0);
-    if (r >= 0) free_temp();
+    free_temp(r);
 }
 
 void AstEmitter::emit_block_stmt(NodeIndex node) {
@@ -421,10 +422,11 @@ void AstEmitter::emit_block_stmt(NodeIndex node) {
 
 void AstEmitter::emit_if_stmt(NodeIndex node) {
     Node &n = tree_.nodes[node];
-    int cond = emit_expr(n.data[0]);
+    int cond = alloc_temp();
+    emit_expr(n.data[0], cond);
     int else_lbl = new_label();
     emit_jump(RegOp::IS_FALSE, else_lbl, u8(cond));
-    free_temp();
+    free_temp(cond);
 
     emit_stmt(n.data[1]);
 
@@ -451,9 +453,10 @@ void AstEmitter::emit_for_stmt(NodeIndex node) {
     bind_label(test_lbl);
 
     if (n.data[1] != NodeNull) {
-        int cond = emit_expr(n.data[1]);
+        int cond = alloc_temp();
+        emit_expr(n.data[1], cond);
         emit_jump(RegOp::IS_FALSE, break_lbl, u8(cond));
-        free_temp();
+        free_temp(cond);
     }
 
     push_break(break_lbl, cont_lbl);
@@ -463,8 +466,9 @@ void AstEmitter::emit_for_stmt(NodeIndex node) {
     bind_label(cont_lbl);
 
     if (n.data[2] != NodeNull) {
-        int upd = emit_expr(n.data[2]);
-        if (upd >= 0) free_temp();
+        int upd = alloc_temp();
+        emit_expr(n.data[2], upd);
+        free_temp(upd);
     }
 
     emit_jump(RegOp::JMP, test_lbl, 0);
@@ -476,15 +480,17 @@ void AstEmitter::emit_for_in_stmt(NodeIndex node) {
     Node &n = tree_.nodes[node];
     NodeIndex left = n.data[0];
 
-    int obj_reg = emit_expr(n.data[1]);
     int iter_reg = alloc_temp();
+    int more_reg = alloc_temp();
+
+    int obj_reg = alloc_temp();
+    emit_expr(n.data[1], obj_reg);
     emit_iABC(RegOp::FOR_IN_START, u8(iter_reg), u8(obj_reg), 0);
-    free_temp(); // obj
+    free_temp(obj_reg);  // LIFO ✓
 
     Atom var_name = atom_for_span(tree_.span(left));
     const Binding *b = bindings_.lookup(var_name);
     int key_reg = b ? b->slot : alloc_temp();
-    int more_reg = alloc_temp();
 
     int loop_lbl = new_label();
     int body_lbl = new_label();
@@ -502,21 +508,22 @@ void AstEmitter::emit_for_in_stmt(NodeIndex node) {
     bind_label(break_lbl);
     pop_break();
 
-    free_temp(); // more_reg
-    free_temp(); // iter_reg
-    if (!b) free_temp();
+    if (!b) free_temp(key_reg);
+    free_temp(more_reg);
+    free_temp(iter_reg);
 }
 
 void AstEmitter::emit_for_of_stmt(NodeIndex node) {
     Node &n = tree_.nodes[node];
 
-    int iterable_reg = emit_expr(n.data[1]);
     int iter_reg = alloc_temp();
     int more_reg = alloc_temp();
     int val_reg = alloc_temp();
 
+    int iterable_reg = alloc_temp();
+    emit_expr(n.data[1], iterable_reg);
     emit_iABC(RegOp::FOR_OF_START, u8(iter_reg), u8(iterable_reg), 0);
-    free_temp(); // iterable
+    free_temp(iterable_reg);  // LIFO ✓
 
     Atom var_name = atom_for_span(tree_.span(n.data[0]));
     const Binding *b = bindings_.lookup(var_name);
@@ -540,10 +547,10 @@ void AstEmitter::emit_for_of_stmt(NodeIndex node) {
     bind_label(break_lbl);
     pop_break();
 
-    free_temp(); // val_reg
-    free_temp(); // more_reg
-    free_temp(); // iter_reg
-    if (!b) free_temp();
+    if (!b) free_temp(target_reg);
+    free_temp(val_reg);
+    free_temp(more_reg);
+    free_temp(iter_reg);
 }
 
 void AstEmitter::emit_while_stmt(NodeIndex node) {
@@ -553,9 +560,10 @@ void AstEmitter::emit_while_stmt(NodeIndex node) {
     push_break(break_lbl, cont_lbl);
 
     bind_label(cont_lbl);
-    int cond = emit_expr(n.data[0]);
+    int cond = alloc_temp();
+    emit_expr(n.data[0], cond);
     emit_jump(RegOp::IS_FALSE, break_lbl, u8(cond));
-    free_temp();
+    free_temp(cond);
 
     emit_stmt(n.data[1]);
     emit_jump(RegOp::JMP, cont_lbl, 0);
@@ -574,9 +582,10 @@ void AstEmitter::emit_do_while_stmt(NodeIndex node) {
     emit_stmt(n.data[1]);
 
     bind_label(cont_lbl);
-    int cond = emit_expr(n.data[0]);
+    int cond = alloc_temp();
+    emit_expr(n.data[0], cond);
     emit_jump(RegOp::IS_TRUE, body_lbl, u8(cond));
-    free_temp();
+    free_temp(cond);
     bind_label(break_lbl);
     pop_break();
 }
@@ -584,9 +593,10 @@ void AstEmitter::emit_do_while_stmt(NodeIndex node) {
 void AstEmitter::emit_return_stmt(NodeIndex node) {
     Node &n = tree_.nodes[node];
     if (n.data[0] != NodeNull) {
-        int r = emit_expr(n.data[0]);
+        int r = alloc_temp();
+        emit_expr(n.data[0], r);
         emit_iABC(RegOp::RETURN, u8(r), 0, 0);
-        free_temp();
+        free_temp(r);
     } else {
         emit_iABx(RegOp::RETURN0, 0, 0);
     }
@@ -594,9 +604,10 @@ void AstEmitter::emit_return_stmt(NodeIndex node) {
 
 void AstEmitter::emit_throw_stmt(NodeIndex node) {
     Node &n = tree_.nodes[node];
-    int r = emit_expr(n.data[0]);
+    int r = alloc_temp();
+    emit_expr(n.data[0], r);
     emit_iABC(RegOp::THROW, u8(r), 0, 0);
-    free_temp();
+    free_temp(r);
 }
 
 void AstEmitter::emit_try_stmt(NodeIndex node) {
@@ -661,9 +672,10 @@ void AstEmitter::emit_var_decl(NodeIndex node) {
         NodeIndex init = d.data[1];
 
         if (init != NodeNull && id != NodeNull) {
-            int val = emit_expr(init);
+            int val = alloc_temp();
+            emit_expr(init, val);
             emit_store(id, val);
-            free_temp();
+            free_temp(val);
         }
     }
 }
@@ -700,7 +712,8 @@ void AstEmitter::emit_labeled_stmt(NodeIndex node) {
 
 void AstEmitter::emit_switch_stmt(NodeIndex node) {
     Node &n = tree_.nodes[node];
-    int disc = emit_expr(n.data[2]);
+    int disc = alloc_temp();
+    emit_expr(n.data[2], disc);
 
     auto cases_range = tree_.range(node, 0);
     int end_lbl = new_label();
@@ -742,17 +755,18 @@ void AstEmitter::emit_switch_stmt(NodeIndex node) {
     bind_label(chain_lbl);
     for (auto &c : cases) {
         if (c.has_test) {
-            int test_val = emit_expr(c.test_node);
+            int test_val = alloc_temp();
+            emit_expr(c.test_node, test_val);
             emit_iABC(RegOp::SEQ, u8(test_val), u8(disc), u8(test_val));
             emit_jump(RegOp::IS_TRUE, c.body_lbl, u8(test_val));
-            free_temp();
+            free_temp(test_val);
         } else {
             emit_jump(RegOp::JMP, c.body_lbl, 0);
         }
     }
     emit_jump(RegOp::JMP, end_lbl, 0);
 
-    free_temp(); // disc
+    free_temp(disc);
 
     bind_label(end_lbl);
     pop_break();
@@ -762,145 +776,122 @@ void AstEmitter::emit_switch_stmt(NodeIndex node) {
 //  Expression emitters
 // ═══════════════════════════════════════════════════════════════════════════
 
-int AstEmitter::emit_expr(NodeIndex node) {
+void AstEmitter::emit_expr(NodeIndex node, int dst) {
     if (node == NodeNull) {
-        int r = alloc_temp();
-        emit_iABx(RegOp::LOADUNDEF, u8(r), 0);
-        return r;
+        emit_iABx(RegOp::LOADUNDEF, u8(dst), 0);
+        return;
     }
     Node &n = tree_.nodes[node];
     switch (n.kind) {
-    case NK_NUMERIC_LIT:   return emit_numeric_lit(node);
-    case NK_STRING_LIT:    return emit_string_lit(node);
-    case NK_BOOL_LIT:      return emit_bool_lit(node);
-    case NK_NULL_LIT:      return emit_null_lit();
-    case NK_IDENT_REF:     return emit_ident_ref(node);
-    case NK_THIS_EXPR:     return emit_this_expr();
-    case NK_BINARY_EXPR:   return emit_binary_expr(node);
-    case NK_LOGICAL_EXPR:  return emit_logical_expr(node);
-    case NK_UNARY_EXPR:    return emit_unary_expr(node);
-    case NK_UPDATE_EXPR:   return emit_update_expr(node);
-    case NK_ASSIGNMENT_EXPR: return emit_assignment_expr(node);
-    case NK_CONDITIONAL_EXPR: return emit_conditional_expr(node);
-    case NK_SEQUENCE_EXPR: return emit_sequence_expr(node);
-    case NK_MEMBER_EXPR:   return emit_member_expr(node);
-    case NK_CALL_EXPR:     return emit_call_expr(node);
-    case NK_NEW_EXPR:      return emit_new_expr(node);
-    case NK_ARRAY_EXPR:    return emit_array_expr(node);
-    case NK_OBJECT_EXPR:   return emit_object_expr(node);
-    case NK_FUNCTION:      return emit_func_expr(node);
-    case NK_ARROW_FUNCTION: return emit_arrow_func(node);
-    case NK_PAREN_EXPR:    return emit_paren_expr(node);
-    case NK_TEMPLATE_LIT:  return emit_template_lit(node);
-    case NK_AWAIT_EXPR:    return emit_expr(n.data[0]);
-    case NK_YIELD_EXPR:    return emit_expr(n.data[0]);
-    default: {
-        int r = alloc_temp();
-        emit_iABx(RegOp::LOADUNDEF, u8(r), 0);
-        return r;
-    }
+    case NK_NUMERIC_LIT:   emit_numeric_lit(node, dst); break;
+    case NK_STRING_LIT:    emit_string_lit(node, dst); break;
+    case NK_BOOL_LIT:      emit_bool_lit(node, dst); break;
+    case NK_NULL_LIT:      emit_null_lit(dst); break;
+    case NK_IDENT_REF:     emit_ident_ref(node, dst); break;
+    case NK_THIS_EXPR:     emit_this_expr(dst); break;
+    case NK_BINARY_EXPR:   emit_binary_expr(node, dst); break;
+    case NK_LOGICAL_EXPR:  emit_logical_expr(node, dst); break;
+    case NK_UNARY_EXPR:    emit_unary_expr(node, dst); break;
+    case NK_UPDATE_EXPR:   emit_update_expr(node, dst); break;
+    case NK_ASSIGNMENT_EXPR: emit_assignment_expr(node, dst); break;
+    case NK_CONDITIONAL_EXPR: emit_conditional_expr(node, dst); break;
+    case NK_SEQUENCE_EXPR: emit_sequence_expr(node, dst); break;
+    case NK_MEMBER_EXPR:   emit_member_expr(node, dst); break;
+    case NK_CALL_EXPR:     emit_call_expr(node, dst); break;
+    case NK_NEW_EXPR:      emit_new_expr(node, dst); break;
+    case NK_ARRAY_EXPR:    emit_array_expr(node, dst); break;
+    case NK_OBJECT_EXPR:   emit_object_expr(node, dst); break;
+    case NK_FUNCTION:      emit_func_expr(node, dst); break;
+    case NK_ARROW_FUNCTION: emit_arrow_func(node, dst); break;
+    case NK_PAREN_EXPR:    emit_paren_expr(node, dst); break;
+    case NK_TEMPLATE_LIT:  emit_template_lit(node, dst); break;
+    case NK_AWAIT_EXPR:    emit_expr(n.data[0], dst); break;
+    case NK_YIELD_EXPR:    emit_expr(n.data[0], dst); break;
+    default:               emit_iABx(RegOp::LOADUNDEF, u8(dst), 0); break;
     }
 }
 
 // ─── Literals ───────────────────────────────────────────────────────────────
 
-int AstEmitter::emit_numeric_lit(NodeIndex node) {
+void AstEmitter::emit_numeric_lit(NodeIndex node, int dst) {
     auto sv = src_slice(tree_.span(node));
     double val = std::strtod(sv.data(), nullptr);
     int32_t iv = static_cast<int32_t>(val);
-    int r = alloc_temp();
     if (val == static_cast<double>(iv) && iv >= -32768 && iv <= 32767) {
-        emit_iAsBx(RegOp::LOADINT, u8(r), s16(iv));
+        emit_iAsBx(RegOp::LOADINT, u8(dst), s16(iv));
     } else {
         int ci = cpool_add(Value::float64(val));
-        emit_iABx(RegOp::LOADK, u8(r), u16(ci));
+        emit_iABx(RegOp::LOADK, u8(dst), u16(ci));
     }
-    return r;
 }
 
-int AstEmitter::emit_string_lit(NodeIndex node) {
+void AstEmitter::emit_string_lit(NodeIndex node, int dst) {
     auto sv = src_slice(tree_.span(node));
-    if (sv.size() >= 2 && (sv.front() == '"' || sv.front() == '\'')) {
+    if (sv.size() >= 2 && (sv.front() == '"' || sv.front() == '\''))
         sv = sv.substr(1, sv.size() - 2);
-    }
     int ci = cpool_add(StrPrim::create(sv));
-    int r = alloc_temp();
-    emit_iABx(RegOp::LOADK, u8(r), u16(ci));
-    return r;
+    emit_iABx(RegOp::LOADK, u8(dst), u16(ci));
 }
 
-int AstEmitter::emit_bool_lit(NodeIndex node) {
-    int r = alloc_temp();
+void AstEmitter::emit_bool_lit(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
-    emit_iABx(n.data[0] ? RegOp::LOADTRUE : RegOp::LOADFALSE, u8(r), 0);
-    return r;
+    emit_iABx(n.data[0] ? RegOp::LOADTRUE : RegOp::LOADFALSE, u8(dst), 0);
 }
 
-int AstEmitter::emit_null_lit() {
-    int r = alloc_temp();
-    emit_iABx(RegOp::LOADNULL, u8(r), 0);
-    return r;
+void AstEmitter::emit_null_lit(int dst) {
+    emit_iABx(RegOp::LOADNULL, u8(dst), 0);
 }
 
-int AstEmitter::emit_this_expr() {
-    int r = alloc_temp();
-    emit_iABC(RegOp::MOVE, u8(r), 0, 0);
-    return r;
+void AstEmitter::emit_this_expr(int dst) {
+    emit_iABC(RegOp::MOVE, u8(dst), 0, 0);
 }
 
-int AstEmitter::emit_ident_ref(NodeIndex node) {
+void AstEmitter::emit_ident_ref(NodeIndex node, int dst) {
     Atom name = atom_for_span(tree_.span(node));
-
-    // Resolve via binding table — walks local + parent chains for upvalues
     const Binding *b = bindings_.lookup_captured(name);
     if (b) {
-        int r = alloc_temp();
-        if (b->kind == BindKind::Upvalue) {
-            emit_iABC(RegOp::GETUPVAL, u8(r), u8(b->slot), 0);
-        } else {
-            emit_iABC(RegOp::MOVE, u8(r), u8(b->slot), 0);
-        }
-        return r;
+        if (b->kind == BindKind::Upvalue)
+            emit_iABC(RegOp::GETUPVAL, u8(dst), u8(b->slot), 0);
+        else
+            emit_iABC(RegOp::MOVE, u8(dst), u8(b->slot), 0);
+        return;
     }
-
-    // Global: GETFIELD on this (R[0])
-    int r = alloc_temp();
     int ci = cpool_add(e_->atom_to_value(name));
-    emit_iABC(RegOp::GETFIELD, u8(r), 0, u8(ci));
-    return r;
+    emit_iABC(RegOp::GETFIELD, u8(dst), 0, u8(ci));
 }
 
 // ─── Binary expression ─────────────────────────────────────────────────────
 
-int AstEmitter::emit_binary_expr(NodeIndex node) {
+void AstEmitter::emit_binary_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
     auto bop = static_cast<BinOp>(n.data[2]);
 
     if (bop == BinInstanceof) {
-        int obj = emit_expr(n.data[0]);
-        int ctor = emit_expr(n.data[1]);
-        emit_iABC(RegOp::INSTANCEOF, u8(obj), u8(obj), u8(ctor));
-        free_temp(); // ctor
-        return obj;
+        emit_expr(n.data[0], dst);           // obj → dst
+        int ctor = alloc_temp();
+        emit_expr(n.data[1], ctor);
+        emit_iABC(RegOp::INSTANCEOF, u8(dst), u8(dst), u8(ctor));
+        free_temp(ctor);
+        return;
     }
 
-    int left = emit_expr(n.data[0]);
-    int right = emit_expr(n.data[1]);
+    emit_expr(n.data[0], dst);               // left → dst
+    int right = alloc_temp();
+    emit_expr(n.data[1], right);
     RegOp rop = binop_to_reg(bop);
-    emit_iABC(rop, u8(left), u8(left), u8(right));
-    free_temp(); // right
-    return left;
+    emit_iABC(rop, u8(dst), u8(dst), u8(right));
+    free_temp(right);
 }
 
 // ─── Logical expression ────────────────────────────────────────────────────
 
-int AstEmitter::emit_logical_expr(NodeIndex node) {
+void AstEmitter::emit_logical_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
     auto lop = static_cast<LogOp>(n.data[2]);
 
-    int left = emit_expr(n.data[0]);
-    int end_lbl = new_label();
+    emit_expr(n.data[0], dst);          // left → dst
 
+    int end_lbl = new_label();
     RegOp jump_op;
     switch (lop) {
     case LogAnd:     jump_op = RegOp::IS_FALSE; break;
@@ -908,106 +899,110 @@ int AstEmitter::emit_logical_expr(NodeIndex node) {
     case LogNullish: jump_op = RegOp::IS_NULLISH; break;
     default:         jump_op = RegOp::IS_FALSE; break;
     }
+    emit_jump(jump_op, end_lbl, u8(dst));
 
-    emit_jump(jump_op, end_lbl, u8(left));
-    free_temp();
-
-    int right = emit_expr(n.data[1]);
-    emit_iABC(RegOp::MOVE, u8(left), u8(right), 0);
-    free_temp();
+    int right = alloc_temp();
+    emit_expr(n.data[1], right);
+    emit_iABC(RegOp::MOVE, u8(dst), u8(right), 0);
+    free_temp(right);
 
     bind_label(end_lbl);
-    return left;
 }
 
 // ─── Unary expression ──────────────────────────────────────────────────────
 
-int AstEmitter::emit_unary_expr(NodeIndex node) {
+void AstEmitter::emit_unary_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
     auto uop = static_cast<UnOp>(n.data[1]);
 
     if (uop == UnVoid) {
-        int arg = emit_expr(n.data[0]);
-        free_temp();
-        int r = alloc_temp();
-        emit_iABx(RegOp::LOADUNDEF, u8(r), 0);
-        return r;
+        int arg = alloc_temp();
+        emit_expr(n.data[0], arg);
+        free_temp(arg); // evaluate for side effects, discard
+        emit_iABx(RegOp::LOADUNDEF, u8(dst), 0);
+        return;
     }
     if (uop == UnDelete) {
-        int arg = emit_expr(n.data[0]);
-        free_temp();
-        int r = alloc_temp();
-        emit_iABx(RegOp::LOADTRUE, u8(r), 0);
-        return r;
+        int arg = alloc_temp();
+        emit_expr(n.data[0], arg);
+        free_temp(arg); // discard
+        emit_iABx(RegOp::LOADTRUE, u8(dst), 0);
+        return;
     }
     if (uop == UnPlus) {
-        return emit_expr(n.data[0]);
+        emit_expr(n.data[0], dst);      // identity
+        return;
     }
 
-    int arg = emit_expr(n.data[0]);
+    emit_expr(n.data[0], dst);           // operand → dst
     RegOp opc;
     switch (uop) {
     case UnMinus:  opc = RegOp::NEG; break;
     case UnBang:   opc = RegOp::LNOT; break;
     case UnTilde:  opc = RegOp::BNOT; break;
     case UnTypeof: opc = RegOp::TYPEOF; break;
-    default:       return arg;
+    default:       return;
     }
-    emit_iABC(opc, u8(arg), u8(arg), 0);
-    return arg;
+    emit_iABC(opc, u8(dst), u8(dst), 0);
 }
 
 // ─── Update expression (++, --) ────────────────────────────────────────────
 
-int AstEmitter::emit_update_expr(NodeIndex node) {
+void AstEmitter::emit_update_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
     auto uop = static_cast<UpdOp>(n.data[1]);
     bool prefix = (n.data[2] & NF::Prefix) != 0;
     RegOp opc = (uop == UpdInc) ? RegOp::INC : RegOp::DEC;
-
     NodeIndex arg = n.data[0];
 
-    if (prefix) {
-        int old_val = emit_load(arg);
-        emit_iABC(opc, u8(old_val), u8(old_val), 0);
-        emit_store(arg, old_val);
-        return old_val;
-    }
+    int old_val = alloc_temp();
+    emit_load(arg, old_val);            // load → old_val
 
-    int old_val = emit_load(arg);
-    int new_val = alloc_temp();
-    emit_iABC(opc, u8(new_val), u8(old_val), 0);
-    emit_store(arg, new_val);
-    free_temp(); // new_val
-    return old_val;
+    if (prefix) {
+        emit_iABC(opc, u8(old_val), u8(old_val), 0);  // old_val = op(old_val)
+        emit_store(arg, old_val);
+        emit_iABC(RegOp::MOVE, u8(dst), u8(old_val), 0); // dst = new value
+    } else {
+        int new_val = alloc_temp();
+        emit_iABC(opc, u8(new_val), u8(old_val), 0);  // new_val = op(old_val)
+        emit_store(arg, new_val);
+        emit_iABC(RegOp::MOVE, u8(dst), u8(old_val), 0); // dst = old value
+        free_temp(new_val);
+    }
+    free_temp(old_val);
 }
 
 // ─── Assignment expression ─────────────────────────────────────────────────
 
-int AstEmitter::emit_assignment_expr(NodeIndex node) {
+void AstEmitter::emit_assignment_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
     auto aop = static_cast<AsgnOp>(n.data[2]);
     NodeIndex left = n.data[0];
     NodeIndex right = n.data[1];
 
     if (aop == AsgnAssign) {
-        int val = emit_expr(right);
-        emit_store(left, val);
-        return val;
+        emit_expr(right, dst);            // rhs → dst
+        emit_store(left, dst);
+        return;
     }
 
     RegOp cbop = compound_binop(aop);
     if (cbop != RegOp::NOP) {
-        int rhs = emit_expr(right);
-        int lhs = emit_load(left);
+        int rhs = alloc_temp();
+        emit_expr(right, rhs);
+        int lhs = alloc_temp();
+        emit_load(left, lhs);
         emit_iABC(cbop, u8(lhs), u8(lhs), u8(rhs));
         emit_store(left, lhs);
-        free_temp(); // rhs
-        return lhs;
+        emit_iABC(RegOp::MOVE, u8(dst), u8(lhs), 0);
+        free_temp(rhs);
+        free_temp(lhs);
+        return;
     }
 
     // Logical assignment: ??=, &&=, ||=
-    int lhs = emit_load(left);
+    int lhs = alloc_temp();
+    emit_load(left, lhs);
     int end_lbl = new_label();
     RegOp jump_op;
     switch (aop) {
@@ -1016,190 +1011,180 @@ int AstEmitter::emit_assignment_expr(NodeIndex node) {
     case AsgnLor:     jump_op = RegOp::IS_TRUE; break;
     default:          jump_op = RegOp::IS_FALSE; break;
     }
-
     emit_jump(jump_op, end_lbl, u8(lhs));
-    free_temp(); // lhs
 
-    int rhs = emit_expr(right);
-    emit_store(left, rhs);
+    emit_expr(right, lhs);               // rhs → lhs (overwrite)
+    emit_store(left, lhs);
+
     bind_label(end_lbl);
-
-    // We need to return a value. After the jump path, lhs was freed and
-    // rhs is the current top. After the fall-through, rhs is the top.
-    // Re-allocate to get a clean top.
-    int result = alloc_temp();
-    // At this point either lhs or rhs holds the value, but we lost lhs's reg.
-    // The result of logical assignment is the value that was stored.
-    // We need to re-read it. Simplest: MOVE from rhs (which holds the stored value).
-    // But on the short-circuit path, rhs was never emitted...
-    // Just re-load the lhs value.
-    emit_iABC(RegOp::MOVE, u8(result), u8(rhs), 0);
-    return result;
+    emit_iABC(RegOp::MOVE, u8(dst), u8(lhs), 0);
+    free_temp(lhs);
 }
 
 // ─── Conditional expression (ternary) ──────────────────────────────────────
 
-int AstEmitter::emit_conditional_expr(NodeIndex node) {
+void AstEmitter::emit_conditional_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
-    int cond = emit_expr(n.data[0]);
+    emit_expr(n.data[0], dst);          // condition → dst
     int else_lbl = new_label();
     int end_lbl = new_label();
 
-    emit_jump(RegOp::IS_FALSE, else_lbl, u8(cond));
+    emit_jump(RegOp::IS_FALSE, else_lbl, u8(dst));
 
-    int then_val = emit_expr(n.data[1]);
-    emit_iABC(RegOp::MOVE, u8(cond), u8(then_val), 0);
-    free_temp(); // then_val
+    int then_val = alloc_temp();
+    emit_expr(n.data[1], then_val);
+    emit_iABC(RegOp::MOVE, u8(dst), u8(then_val), 0);
+    free_temp(then_val);
     emit_jump(RegOp::JMP, end_lbl, 0);
 
     bind_label(else_lbl);
-    int else_val = emit_expr(n.data[2]);
-    emit_iABC(RegOp::MOVE, u8(cond), u8(else_val), 0);
-    free_temp(); // else_val
+    int else_val = alloc_temp();
+    emit_expr(n.data[2], else_val);
+    emit_iABC(RegOp::MOVE, u8(dst), u8(else_val), 0);
+    free_temp(else_val);
 
     bind_label(end_lbl);
-    return cond;
 }
 
 // ─── Sequence expression ───────────────────────────────────────────────────
 
-int AstEmitter::emit_sequence_expr(NodeIndex node) {
+void AstEmitter::emit_sequence_expr(NodeIndex node, int dst) {
     auto range = tree_.range(node, 0);
-    int last = -1;
     for (uint32_t i = 0; i < range.len; i++) {
-        if (last >= 0) free_temp();
-        last = emit_expr(tree_.extras[range.start + i]);
+        if (i + 1 < range.len) {
+            int tmp = alloc_temp();         // intermediate: evaluate for side effects
+            emit_expr(tree_.extras[range.start + i], tmp);
+            free_temp(tmp);
+        } else {
+            emit_expr(tree_.extras[range.start + i], dst);  // last → dst
+        }
     }
-    return last;
 }
 
 // ─── Member expression ─────────────────────────────────────────────────────
 
-int AstEmitter::emit_member_expr(NodeIndex node) {
+void AstEmitter::emit_member_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
-    int obj = emit_expr(n.data[0]);
     uint32_t flags = n.data[2];
     bool computed = (flags & NF::Computed) != 0;
     bool optional = (flags & NF::Optional) != 0;
 
+    emit_expr(n.data[0], dst);           // object → dst
+
     if (optional) {
         int end_lbl = new_label();
-        emit_jump(RegOp::IS_NULLISH, end_lbl, u8(obj));
+        emit_jump(RegOp::IS_NULLISH, end_lbl, u8(dst));
         if (computed) {
-            int prop = emit_expr(n.data[1]);
-            emit_iABC(RegOp::GETELEM, u8(obj), u8(obj), u8(prop));
-            free_temp(); // prop
+            int prop = alloc_temp();
+            emit_expr(n.data[1], prop);
+            emit_iABC(RegOp::GETELEM, u8(dst), u8(dst), u8(prop));
+            free_temp(prop);
         } else {
             Atom prop_name = atom_for_span(tree_.span(n.data[1]));
             int ci = cpool_add(e_->atom_to_value(prop_name));
-            emit_iABC(RegOp::GETFIELD, u8(obj), u8(obj), u8(ci));
+            emit_iABC(RegOp::GETFIELD, u8(dst), u8(dst), u8(ci));
         }
         bind_label(end_lbl);
-        return obj;
+        return;
     }
 
     if (computed) {
-        int prop = emit_expr(n.data[1]);
-        emit_iABC(RegOp::GETELEM, u8(obj), u8(obj), u8(prop));
-        free_temp(); // prop
+        int prop = alloc_temp();
+        emit_expr(n.data[1], prop);
+        emit_iABC(RegOp::GETELEM, u8(dst), u8(dst), u8(prop));
+        free_temp(prop);
     } else {
         Atom prop_name = atom_for_span(tree_.span(n.data[1]));
         int ci = cpool_add(e_->atom_to_value(prop_name));
-        emit_iABC(RegOp::GETFIELD, u8(obj), u8(obj), u8(ci));
+        emit_iABC(RegOp::GETFIELD, u8(dst), u8(dst), u8(ci));
     }
-    return obj;
 }
 
 // ─── Call expression ────────────────────────────────────────────────────────
 
-int AstEmitter::emit_call_expr(NodeIndex node) {
+void AstEmitter::emit_call_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
     NodeIndex callee = n.data[0];
     auto args_range = tree_.range(node, 1);
     bool is_method = (callee != NodeNull && tree_.kind(callee) == NK_MEMBER_EXPR);
 
-    int func_reg = emit_expr(callee);
+    int func_reg = alloc_temp();
+    emit_expr(callee, func_reg);
 
+    int this_reg = -1;
     if (is_method) {
-        int this_reg = alloc_temp();
-        // Re-emit the object part of the member expr for 'this'
-        // The member expr has left=object at data[0]
+        this_reg = alloc_temp();
         Node &mem = tree_.nodes[callee];
-        int obj = emit_expr(mem.data[0]);
-        emit_iABC(RegOp::MOVE, u8(this_reg), u8(obj), 0);
-        free_temp(); // obj
+        emit_expr(mem.data[0], this_reg);
     }
 
+    int arg_base = next_temp_;
     int argc = 0;
     for (uint32_t i = 0; i < args_range.len; i++) {
-        emit_expr(tree_.extras[args_range.start + i]);
+        int arg_reg = alloc_temp();
+        emit_expr(tree_.extras[args_range.start + i], arg_reg);
         argc++;
     }
 
-    // Free all temps: argc args + 1 func + (is_method ? 1 this : 0)
-    int total_free = argc + 1 + (is_method ? 1 : 0);
-    for (int i = 0; i < total_free; i++)
-        free_temp();
+    // Free in LIFO: args (reverse), optional this, func
+    for (int i = next_temp_ - 1; i >= arg_base; i--) free_temp(i);
+    if (is_method) free_temp(this_reg);
+    free_temp(func_reg);
 
-    int ret = alloc_temp();
     if (is_method)
-        emit_iABC(RegOp::CALL_M, u8(ret), u8(func_reg), u8(argc));
+        emit_iABC(RegOp::CALL_M, u8(dst), u8(func_reg), u8(argc));
     else
-        emit_iABC(RegOp::CALL, u8(ret), u8(func_reg), u8(argc));
-
-    return ret;
+        emit_iABC(RegOp::CALL, u8(dst), u8(func_reg), u8(argc));
 }
 
 // ─── New expression ────────────────────────────────────────────────────────
 
-int AstEmitter::emit_new_expr(NodeIndex node) {
+void AstEmitter::emit_new_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
     NodeIndex callee = n.data[0];
     auto args_range = tree_.range(node, 1);
 
-    int callee_reg = emit_expr(callee);
+    int callee_reg = alloc_temp();
+    emit_expr(callee, callee_reg);
 
-    for (uint32_t i = 0; i < args_range.len; i++)
-        emit_expr(tree_.extras[args_range.start + i]);
+    int arg_base = next_temp_;
+    for (uint32_t i = 0; i < args_range.len; i++) {
+        int arg_reg = alloc_temp();
+        emit_expr(tree_.extras[args_range.start + i], arg_reg);
+    }
 
-    int total_free = static_cast<int>(args_range.len) + 1;
-    for (int i = 0; i < total_free; i++)
-        free_temp();
+    // Free in LIFO: args (reverse), callee
+    for (int i = next_temp_ - 1; i >= arg_base; i--) free_temp(i);
+    free_temp(callee_reg);
 
-    int ret = alloc_temp();
-    emit_iABC(RegOp::CTOR, u8(ret), u8(callee_reg), u8(args_range.len));
-    return ret;
+    int argc = static_cast<int>(args_range.len);
+    emit_iABC(RegOp::CTOR, u8(dst), u8(callee_reg), u8(argc));
 }
 
 // ─── Array expression ──────────────────────────────────────────────────────
 
-int AstEmitter::emit_array_expr(NodeIndex node) {
+void AstEmitter::emit_array_expr(NodeIndex node, int dst) {
     auto range = tree_.range(node, 0);
-    int arr = alloc_temp();
-    emit_iABC(RegOp::NEWARR, u8(arr), 0, 0);
+    emit_iABC(RegOp::NEWARR, u8(dst), 0, 0);
 
     for (uint32_t i = 0; i < range.len; i++) {
         NodeIndex elem = tree_.extras[range.start + i];
         if (elem == NodeNull) continue;
-        if (tree_.kind(elem) == NK_SPREAD) {
-            int val = emit_expr(tree_.nodes[elem].data[0]);
-            emit_iABC(RegOp::APPEND, u8(arr), u8(val), 0);
-            free_temp();
-        } else {
-            int val = emit_expr(elem);
-            emit_iABC(RegOp::APPEND, u8(arr), u8(val), 0);
-            free_temp();
-        }
+        int val = alloc_temp();
+        if (tree_.kind(elem) == NK_SPREAD)
+            emit_expr(tree_.nodes[elem].data[0], val);
+        else
+            emit_expr(elem, val);
+        emit_iABC(RegOp::APPEND, u8(dst), u8(val), 0);
+        free_temp(val);
     }
-    return arr;
 }
 
 // ─── Object expression ─────────────────────────────────────────────────────
 
-int AstEmitter::emit_object_expr(NodeIndex node) {
+void AstEmitter::emit_object_expr(NodeIndex node, int dst) {
     auto range = tree_.range(node, 0);
-    int obj = alloc_temp();
-    emit_iABx(RegOp::NEWOBJ, u8(obj), 0);
+    emit_iABx(RegOp::NEWOBJ, u8(dst), 0);
 
     for (uint32_t i = 0; i < range.len; i++) {
         NodeIndex prop = tree_.extras[range.start + i];
@@ -1209,40 +1194,39 @@ int AstEmitter::emit_object_expr(NodeIndex node) {
         bool shorthand = (flags & NF::Shorthand) != 0;
 
         if (computed) {
-            int key = emit_expr(pn.data[0]);
-            int val = emit_expr(pn.data[1]);
-            emit_iABC(RegOp::DEFINE_ELEM, u8(obj), u8(key), u8(val));
-            free_temp(); // val
-            free_temp(); // key
+            int key = alloc_temp();
+            emit_expr(pn.data[0], key);
+            int val = alloc_temp();
+            emit_expr(pn.data[1], val);
+            emit_iABC(RegOp::DEFINE_ELEM, u8(dst), u8(key), u8(val));
+            free_temp(val);
+            free_temp(key);
         } else {
             Atom key_name;
-            if (shorthand) {
+            if (shorthand)
                 key_name = atom_for_span(tree_.span(pn.data[1]));
-            } else {
+            else
                 key_name = atom_for_span(tree_.span(pn.data[0]));
-            }
             int ci = cpool_add(e_->atom_to_value(key_name));
-            int val = emit_expr(pn.data[1]);
-            emit_iABC(RegOp::DEFINE_FIELD, u8(obj), u8(ci), u8(val));
-            free_temp(); // val
+            int val = alloc_temp();
+            emit_expr(pn.data[1], val);
+            emit_iABC(RegOp::DEFINE_FIELD, u8(dst), u8(ci), u8(val));
+            free_temp(val);
         }
     }
-    return obj;
 }
 
 // ─── Function expression ───────────────────────────────────────────────────
 
-int AstEmitter::emit_func_expr(NodeIndex node) {
+void AstEmitter::emit_func_expr(NodeIndex node, int dst) {
     auto child = std::make_unique<AstEmitter>(e_, tree_, source_, source_len_);
     child->parent_ = this;
     child->bindings_.parent_table = &this->bindings_;
     Bytecode *bc = child->emit_function(node, true);
 
     int placeholder = cpool_add(Value::bytecode(nullptr));
-    int r = alloc_temp();
-    emit_iABx(RegOp::FCLOSURE, u8(r), u16(placeholder));
+    emit_iABx(RegOp::FCLOSURE, u8(dst), u16(placeholder));
 
-    // Replace placeholder with actual bytecode
     for (int i = 0; i < static_cast<int>(cpool_.size()); i++) {
         if (cpool_[i].is_bytecode() && cpool_[i].as<Bytecode>() == nullptr) {
             cpool_[i] = Value::bytecode(bc);
@@ -1250,95 +1234,68 @@ int AstEmitter::emit_func_expr(NodeIndex node) {
         }
     }
     child.release();
-    return r;
 }
 
 // ─── Arrow function ────────────────────────────────────────────────────────
 
-int AstEmitter::emit_arrow_func(NodeIndex node) {
+void AstEmitter::emit_arrow_func(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
-    NodeIndex params = n.data[0];
-    NodeIndex body = n.data[1];
-    uint32_t flags = n.data[2];
-    bool is_expr_body = (flags & NF::ExprBody) != 0;
-
-    // Create a synthetic NK_FUNCTION node to reuse emit_function
     Span sp = tree_.span(node);
     NodeIndex func_node = tree_.alloc(NK_FUNCTION, sp,
-        NodeNull, params, body, flags);
-
-    return emit_func_expr(func_node);
+        n.data[0], n.data[1], n.data[2]);
+    emit_func_expr(func_node, dst);
 }
 
 // ─── Paren expression ──────────────────────────────────────────────────────
 
-int AstEmitter::emit_paren_expr(NodeIndex node) {
+void AstEmitter::emit_paren_expr(NodeIndex node, int dst) {
     Node &n = tree_.nodes[node];
-    return emit_expr(n.data[0]);
+    emit_expr(n.data[0], dst);
 }
 
 // ─── Template literal ──────────────────────────────────────────────────────
 
-int AstEmitter::emit_template_lit(NodeIndex node) {
-    Node &n = tree_.nodes[node];
+void AstEmitter::emit_template_lit(NodeIndex node, int dst) {
     auto quasis_range = tree_.range(node, 0);
     auto exprs_range = tree_.range(node, 2);
 
     if (exprs_range.len == 0) {
-        // Single quasi — just a string
-        // The first quasi has the full template content
         if (quasis_range.len > 0) {
             NodeIndex q = tree_.extras[quasis_range.start];
             Span qsp = tree_.span(q);
             auto sv = src_slice(qsp);
             int ci = cpool_add(StrPrim::create(sv));
-            int r = alloc_temp();
-            emit_iABx(RegOp::LOADK, u8(r), u16(ci));
-            return r;
+            emit_iABx(RegOp::LOADK, u8(dst), u16(ci));
+        } else {
+            emit_iABx(RegOp::LOADNULL, u8(dst), 0);
         }
-        int r = alloc_temp();
-        emit_iABx(RegOp::LOADNULL, u8(r), 0);
-        return r;
+        return;
     }
 
-    // Build string concatenation: start with first quasi, then + expr + quasi ...
-    int result = -1;
+    // First quasi → dst
+    NodeIndex q = tree_.extras[quasis_range.start];
+    Span qsp = tree_.span(q);
+    int ci = cpool_add(StrPrim::create(src_slice(qsp)));
+    emit_iABx(RegOp::LOADK, u8(dst), u16(ci));
+
     for (uint32_t i = 0; i < exprs_range.len; i++) {
-        if (i == 0) {
-            // First quasi
-            NodeIndex q = tree_.extras[quasis_range.start];
-            Span qsp = tree_.span(q);
-            auto sv = src_slice(qsp);
-            int ci = cpool_add(StrPrim::create(sv));
-            result = alloc_temp();
-            emit_iABx(RegOp::LOADK, u8(result), u16(ci));
-        }
+        int expr_val = alloc_temp();
+        emit_expr(tree_.extras[exprs_range.start + i], expr_val);
+        emit_iABC(RegOp::ADD, u8(dst), u8(dst), u8(expr_val));
+        free_temp(expr_val);
 
-        // Expression
-        int expr_val = emit_expr(tree_.extras[exprs_range.start + i]);
-        emit_iABC(RegOp::ADD, u8(result), u8(result), u8(expr_val));
-        free_temp(); // expr_val
-
-        // Next quasi
         if (i + 1 < quasis_range.len) {
-            NodeIndex q = tree_.extras[quasis_range.start + i + 1];
-            Span qsp = tree_.span(q);
-            auto sv = src_slice(qsp);
+            NodeIndex qn = tree_.extras[quasis_range.start + i + 1];
+            auto sv = src_slice(tree_.span(qn));
             if (!sv.empty()) {
-                int ci = cpool_add(StrPrim::create(sv));
+                ci = cpool_add(StrPrim::create(sv));
                 int quasi_reg = alloc_temp();
                 emit_iABx(RegOp::LOADK, u8(quasi_reg), u16(ci));
-                emit_iABC(RegOp::ADD, u8(result), u8(result), u8(quasi_reg));
-                free_temp();
+                emit_iABC(RegOp::ADD, u8(dst), u8(dst), u8(quasi_reg));
+                free_temp(quasi_reg);
             }
         }
     }
-
-    if (result < 0) {
-        result = alloc_temp();
-        emit_iABx(RegOp::LOADNULL, u8(result), 0);
-    }
-    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1370,37 +1327,38 @@ void AstEmitter::emit_store(NodeIndex target, int value_reg) {
         Node &n = tree_.nodes[target];
         uint32_t flags = n.data[2];
         bool computed = (flags & NF::Computed) != 0;
-        int obj = emit_expr(n.data[0]);
+        int obj = alloc_temp();
+        emit_expr(n.data[0], obj);
         if (computed) {
-            int prop = emit_expr(n.data[1]);
+            int prop = alloc_temp();
+            emit_expr(n.data[1], prop);
             emit_iABC(RegOp::SETELEM, u8(obj), u8(prop), u8(value_reg));
-            free_temp(); // prop
+            free_temp(prop);
         } else {
             Atom prop_name = atom_for_span(tree_.span(n.data[1]));
             int ci = cpool_add(e_->atom_to_value(prop_name));
             emit_iABC(RegOp::SETFIELD, u8(obj), u8(ci), u8(value_reg));
         }
-        free_temp(); // obj
+        free_temp(obj);
         return;
     }
 }
 
-int AstEmitter::emit_load(NodeIndex target) {
+void AstEmitter::emit_load(NodeIndex target, int dst) {
     if (target == NodeNull) {
-        int r = alloc_temp();
-        emit_iABx(RegOp::LOADUNDEF, u8(r), 0);
-        return r;
+        emit_iABx(RegOp::LOADUNDEF, u8(dst), 0);
+        return;
     }
     NodeKind k = tree_.kind(target);
-
     if (k == NK_IDENT_REF || k == NK_BINDING_IDENT) {
-        return emit_ident_ref(target);
+        emit_ident_ref(target, dst);
+        return;
     }
     if (k == NK_MEMBER_EXPR) {
-        return emit_member_expr(target);
+        emit_member_expr(target, dst);
+        return;
     }
-    // Fallback
-    return emit_expr(target);
+    emit_expr(target, dst);
 }
 
 bool AstEmitter::is_member_expr(NodeIndex node) const {

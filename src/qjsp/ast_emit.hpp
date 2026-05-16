@@ -62,6 +62,7 @@ private:
     std::vector<Value> cpool_;
 
     // ── Register allocator ──────────────────────────────────────────────
+
     int next_temp_ = 0;
     int max_temp_ = 0;
 
@@ -73,7 +74,11 @@ private:
         if (next_temp_ > max_temp_) max_temp_ = next_temp_;
         return r;
     }
-    void free_temp() { next_temp_--; }
+    void free_temp(int reg) {
+        assert(reg == next_temp_ - 1 && "free_temp: must free most-recently-allocated register (LIFO)");
+        assert(next_temp_ > first_temp() && "free_temp: too many calls");
+        next_temp_--;
+    }
     void ensure_reg(int r) {
         if (r + 1 > max_temp_) max_temp_ = r + 1;
     }
@@ -175,31 +180,31 @@ private:
     void emit_body(IndexRange stmts);
 
     void emit_stmt(NodeIndex node);
-    int emit_expr(NodeIndex node); // returns result register
+    void emit_expr(NodeIndex node, int dst);  // destination-passing
 
-    // Expression emitters
-    int emit_numeric_lit(NodeIndex node);
-    int emit_string_lit(NodeIndex node);
-    int emit_bool_lit(NodeIndex node);
-    int emit_null_lit();
-    int emit_ident_ref(NodeIndex node);
-    int emit_binary_expr(NodeIndex node);
-    int emit_logical_expr(NodeIndex node);
-    int emit_unary_expr(NodeIndex node);
-    int emit_update_expr(NodeIndex node);
-    int emit_assignment_expr(NodeIndex node);
-    int emit_conditional_expr(NodeIndex node);
-    int emit_sequence_expr(NodeIndex node);
-    int emit_member_expr(NodeIndex node);
-    int emit_call_expr(NodeIndex node);
-    int emit_new_expr(NodeIndex node);
-    int emit_array_expr(NodeIndex node);
-    int emit_object_expr(NodeIndex node);
-    int emit_func_expr(NodeIndex node);
-    int emit_arrow_func(NodeIndex node);
-    int emit_paren_expr(NodeIndex node);
-    int emit_this_expr();
-    int emit_template_lit(NodeIndex node);
+    // Expression emitters — all destination-passing
+    void emit_numeric_lit(NodeIndex node, int dst);
+    void emit_string_lit(NodeIndex node, int dst);
+    void emit_bool_lit(NodeIndex node, int dst);
+    void emit_null_lit(int dst);
+    void emit_ident_ref(NodeIndex node, int dst);
+    void emit_binary_expr(NodeIndex node, int dst);
+    void emit_logical_expr(NodeIndex node, int dst);
+    void emit_unary_expr(NodeIndex node, int dst);
+    void emit_update_expr(NodeIndex node, int dst);
+    void emit_assignment_expr(NodeIndex node, int dst);
+    void emit_conditional_expr(NodeIndex node, int dst);
+    void emit_sequence_expr(NodeIndex node, int dst);
+    void emit_member_expr(NodeIndex node, int dst);
+    void emit_call_expr(NodeIndex node, int dst);
+    void emit_new_expr(NodeIndex node, int dst);
+    void emit_array_expr(NodeIndex node, int dst);
+    void emit_object_expr(NodeIndex node, int dst);
+    void emit_func_expr(NodeIndex node, int dst);
+    void emit_arrow_func(NodeIndex node, int dst);
+    void emit_paren_expr(NodeIndex node, int dst);
+    void emit_this_expr(int dst);
+    void emit_template_lit(NodeIndex node, int dst);
 
     // Statement emitters
     void emit_expr_stmt(NodeIndex node);
@@ -221,7 +226,7 @@ private:
 
     // LValue handling
     void emit_store(NodeIndex target, int value_reg);
-    int emit_load(NodeIndex target);
+    void emit_load(NodeIndex target, int dst);   // destination-passing
     bool is_member_expr(NodeIndex node) const;
 
     // BinOp → RegOp
