@@ -792,3 +792,48 @@ TEST_F(AstInterpFixture, StringLiteral) {
   Value v = eval("'hello';");
   ASSERT_TRUE(v.is_string());
 }
+
+// ─── Numeric literal edge cases ──────────────────────────────────────────
+
+TEST_F(AstInterpFixture, HexLiteral) {
+  Value v = eval("0xFF;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 255);
+}
+
+TEST_F(AstInterpFixture, OctalLiteral) {
+  Value v = eval("0o77;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 63);
+}
+
+TEST_F(AstInterpFixture, BinaryLiteral) {
+  Value v = eval("0b1010;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 10);
+}
+
+TEST_F(AstInterpFixture, NumericSeparator) {
+  Value v = eval("1_000;");
+  ASSERT_TRUE(v.is_int32());
+  EXPECT_EQ(v.as_int32(), 1000);
+}
+
+TEST_F(AstInterpFixture, HexLargeOverflow) {
+  // 0x1FFFFFFFFFFFFFFFF is 17 hex digits → > uint64_t max
+  // strtoull saturates at ULLONG_MAX; fix should use strtod
+  Value v = eval("0x1FFFFFFFFFFFFFFFF;");
+  ASSERT_TRUE(v.is_number());
+  double d = v.as_double();
+  // Expected: ~3.689e19. Saturation value: ~1.845e19
+  EXPECT_GT(d, 2.0e19) << "strtoull saturation detected, value=" << d;
+}
+
+// ─── String escape edge cases ────────────────────────────────────────────
+
+TEST_F(AstInterpFixture, StringEscapeCRLF) {
+  Value v = eval("\"a\\\r\nb\";");
+  // line continuation: \<CRLF> should be skipped, result "ab"
+  ASSERT_TRUE(v.is_string());
+  // TODO: verify string value is "ab" once string extraction works
+}

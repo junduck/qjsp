@@ -243,9 +243,11 @@ NodeIndex Parser::parse_for_stmt() {
     advance();
 
     bool is_await = false;
-    if (at(tok_await) && !has_newline_before()) {
-        if (!ctx_await_) error("'for await' is only valid in async functions or modules");
+    if (ctx_await_ && at(tok_await) && !has_newline_before()) {
         is_await = true;
+        advance();
+    } else if (at(tok_await) && !has_newline_before()) {
+        if (!ctx_await_) error("'for await' is only valid in async functions or modules");
         advance();
     }
 
