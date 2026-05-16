@@ -32,18 +32,12 @@ Bytecode *lower_reg(FunctionDef *fd, Engine *e) {
   for (auto &p : fd->patches) {
     int target   = fd->label_slots[static_cast<size_t>(p.label_id)].pos;
     int current  = p.instr_idx;
-    int offset   = target - current;
     uint32_t raw = fd->instructions[static_cast<size_t>(p.instr_idx)];
     Instruction instr{raw};
-    RegOp op = static_cast<RegOp>(instr.opcode());
-    if (op == RegOp::CATCH) {
-      // CATCH uses absolute target in iABx
-      fd->instructions[static_cast<size_t>(p.instr_idx)] = Instruction::iABx(static_cast<uint8_t>(op), instr.a(), static_cast<uint16_t>(target)).raw;
-    } else {
-      // JMP, IS_FALSE, IS_TRUE, IS_UNDEF: relative offset from _next_ instruction
-      int rel_off                                        = offset - 1;
-      fd->instructions[static_cast<size_t>(p.instr_idx)] = Instruction::iAsBx(static_cast<uint8_t>(op), instr.a(), static_cast<int16_t>(rel_off)).raw;
-    }
+    RegOp op      = static_cast<RegOp>(instr.opcode());
+    int rel_off   = target - current - 1;
+    fd->instructions[static_cast<size_t>(p.instr_idx)] =
+        Instruction::iAsBx(static_cast<uint8_t>(op), instr.a(), static_cast<int16_t>(rel_off)).raw;
   }
 
   // ── Copy instructions ─────────────────────────────────────────────────────

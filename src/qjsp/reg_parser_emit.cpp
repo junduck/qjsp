@@ -40,11 +40,7 @@ int FunctionDef::emit_jump(RegOp op, int label, uint8_t reg_a) {
   if (label < 0)
     return -1;
   label_slots[static_cast<size_t>(label)].ref_count++;
-  if (op == RegOp::CATCH) {
-    emit_iABx(op, reg_a, 0);
-  } else {
-    emit_iAsBx(op, reg_a, 0);
-  }
+  emit_iAsBx(op, reg_a, 0);
   patches.push_back({static_cast<int>(instructions.size()) - 1, label});
   return static_cast<int>(instructions.size()) - 1;
 }
