@@ -80,6 +80,14 @@ NodeIndex Parser::parse_formal_params() {
         if (at(tok_spread)) {
             advance();
             rest = parse_binding();
+            if (eat(tok_assign)) {
+                error("rest parameter may not have a default initializer");
+                parse_expr(Prec::Assign);
+            }
+            if (at(tok_comma)) {
+                error("rest parameter may not be followed by a comma");
+                advance();
+            }
             break;
         }
         uint32_t pstart = current_.start;
@@ -129,6 +137,7 @@ NodeIndex Parser::parse_class_body() {
 
     auto cp = static_cast<uint32_t>(scratch_a_.size());
     while (!at(tok_rbrace) && !at(tok_eof)) {
+        if (eat(tok_semi)) continue;
         bool is_static = false;
         if (at(tok_static) && peek_class_element() != tok_lparen) {
             is_static = true;
@@ -144,6 +153,7 @@ NodeIndex Parser::parse_class_body() {
         }
         NodeIndex elem = parse_class_element(is_static);
         if (elem != NodeNull) scratch_a_.push_back(elem);
+        else if (!at(tok_semi) && !at(tok_rbrace) && !at(tok_eof)) advance();
     }
 
     IndexRange body = flush_scratch(scratch_a_, cp);
@@ -188,7 +198,10 @@ NodeIndex Parser::parse_class_element(bool is_static) {
     if (at(tok_lbrack)) {
         flags |= NF::Computed;
         advance();
+        bool saved_in = ctx_in_;
+        ctx_in_ = true;
         key = parse_expr();
+        ctx_in_ = saved_in;
         expect(tok_rbrack);
     } else if (is_ident_like() || at(tok_string) || tag_is_numeric(current_.tag)) {
         Token key_tok = current_;
@@ -278,19 +291,26 @@ NodeIndex Parser::parse_binding_pattern() {
             if (at(tok_lbrack)) {
                 flags |= NF::Computed;
                 advance();
+                bool saved_in = ctx_in_;
+                ctx_in_ = true;
                 key = parse_expr();
+                ctx_in_ = saved_in;
                 expect(tok_rbrack);
                 expect(tok_colon);
                 value = parse_binding();
-            } else if (is_ident_like()) {
+            } else if (is_ident_like() || at(tok_string) || tag_is_numeric(current_.tag)) {
                 Token id_tok = current_;
+                bool is_shorthand = is_ident_like() && !at(tok_string) && !tag_is_numeric(current_.tag);
                 advance();
                 key = tree_.alloc(NK_IDENT_REF, {id_tok.start, prev_end_});
                 if (eat(tok_colon)) {
                     value = parse_binding();
-                } else {
+                } else if (is_shorthand) {
                     flags |= NF::Shorthand;
                     value = tree_.alloc(NK_BINDING_IDENT, {id_tok.start, id_tok.end});
+                } else {
+                    error("expected property name");
+                    continue;
                 }
             } else {
                 error("expected property name");

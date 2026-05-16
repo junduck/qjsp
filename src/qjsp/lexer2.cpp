@@ -390,8 +390,9 @@ Token Lexer2::next_token() {
         cur_++; // skip '#'
         if (src_[cur_] < 0x80 && kIdentStart[src_[cur_]]) {
             cur_++;
-            while (kIdentCont[src_[cur_]]) cur_++;
-        } else {
+            while (src_[cur_] < 0x80 && kIdentCont[src_[cur_]]) cur_++;
+        }
+        if (src_[cur_] >= 0x80 || (src_[cur_] == '\\' && peek(1) == 'u')) {
             if (src_[cur_] >= 0x80) {
                 uint32_t cp;
                 cur_ += decode_utf8(src_ + cur_, len_ - cur_, cp);

@@ -185,7 +185,7 @@ NodeIndex Parser::parse_object_expr() {
         } else if (at(tok_get) || at(tok_set)) {
             Token gs_tok = current_;
             advance();
-            if (at(tok_colon) || at(tok_comma) || at(tok_rbrace) || at(tok_assign)) {
+            if (at(tok_colon) || at(tok_comma) || at(tok_rbrace) || at(tok_assign) || at(tok_lparen)) {
                 key = tree_.alloc(NK_IDENT_REF, {gs_tok.start, gs_tok.end});
             } else if (is_ident_like() || at(tok_string) || at(tok_lbrack) || tag_is_numeric(current_.tag)) {
                 method_kind = (gs_tok.tag == tok_get) ? MethodGet : MethodSet;
@@ -206,7 +206,10 @@ NodeIndex Parser::parse_object_expr() {
             if (at(tok_lbrack)) {
                 flags |= NF::Computed;
                 advance();
+                bool saved_in = ctx_in_;
+                ctx_in_ = true;
                 key = parse_expr();
+                ctx_in_ = saved_in;
                 expect(tok_rbrack);
             } else if (is_ident_like() || at(tok_string) || tag_is_numeric(current_.tag)) {
                 Token key_tok = current_;

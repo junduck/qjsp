@@ -154,9 +154,11 @@ void Parser::validate_cover_init(NodeIndex n) {
     case NK_UPDATE_EXPR:
     case NK_AWAIT_EXPR:
     case NK_YIELD_EXPR:
-    case NK_SPREAD:
-        validate_cover_init(tree_.d(n, 0));
+    case NK_SPREAD: {
+        NodeIndex arg = tree_.d(n, 0);
+        if (arg != NodeNull) validate_cover_init(arg);
         break;
+    }
     case NK_CALL_EXPR: {
         validate_cover_init(tree_.d(n, 0));
         IndexRange args = tree_.range(n, 1);
@@ -354,6 +356,11 @@ NodeIndex Parser::parse_prefix() {
 
     if (tag == tok_await && ctx_await_) {
         advance();
+        if (current_.tag == tok_semi || current_.tag == tok_rbrace ||
+            current_.tag == tok_rbrack || current_.tag == tok_rparen ||
+            current_.tag == tok_eof || has_newline_before()) {
+            return tree_.alloc(NK_AWAIT_EXPR, span_from(start), NodeNull);
+        }
         NodeIndex arg = parse_expr(Prec::Unary);
         if (current_.tag == tok_pow) {
             error("unparenthesized await expression cannot appear on left of '**'");
@@ -367,6 +374,7 @@ NodeIndex Parser::parse_prefix() {
         if (eat(tok_star)) delegate = NF::Delegate;
         NodeIndex arg = NodeNull;
         if (current_.tag != tok_semi && current_.tag != tok_rbrace &&
+            current_.tag != tok_rbrack && current_.tag != tok_rparen &&
             current_.tag != tok_eof && !has_newline_before()) {
             arg = parse_expr(Prec::Assign);
         }
