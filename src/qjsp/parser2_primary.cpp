@@ -90,9 +90,18 @@ NodeIndex Parser::parse_primary() {
             uint32_t import_end = prev_end_;
             advance();
             Token prop = expect(tok_ident);
-            if (!source_eq(prop.start, prop.end, "meta")) {
-                error("the only valid meta property for 'import' is 'import.meta'");
+            if (source_eq(prop.start, prop.end, "meta")) {
+                return tree_.alloc(NK_META_PROPERTY, {start, prev_end_},
+                                   start, import_end, prop.start, prop.end);
             }
+            if (source_eq(prop.start, prop.end, "source") ||
+                source_eq(prop.start, prop.end, "defer")) {
+                expect(tok_lparen);
+                NodeIndex arg = parse_expr(Prec::Assign);
+                expect(tok_rparen);
+                return tree_.alloc(NK_IMPORT_EXPR, {start, prev_end_}, arg);
+            }
+            error("invalid import meta property");
             return tree_.alloc(NK_META_PROPERTY, {start, prev_end_},
                                start, import_end, prop.start, prop.end);
         }
@@ -464,6 +473,9 @@ NodeIndex Parser::parse_template_lit(Span opener) {
     scratch_a_.push_back(quasi);
 
     scratch_b_.push_back(parse_expr());
+    uint32_t rbrace_pos = current_.start;
+    expect(tok_rbrace);
+    current_ = lexer_.rescan_template(rbrace_pos);
 
     while (true) {
         if (at(tok_template_mid)) {
@@ -472,6 +484,9 @@ NodeIndex Parser::parse_template_lit(Span opener) {
             quasi = tree_.alloc(NK_TEMPLATE_ELEM, {mid_tok.start, mid_tok.end}, 0);
             scratch_a_.push_back(quasi);
             scratch_b_.push_back(parse_expr());
+            rbrace_pos = current_.start;
+            expect(tok_rbrace);
+            current_ = lexer_.rescan_template(rbrace_pos);
         } else if (at(tok_template_tail)) {
             Token tail_tok = current_;
             advance();
@@ -510,7 +525,11 @@ NodeIndex Parser::parse_simple_arrow(NodeIndex param) {
 
 NodeIndex Parser::parse_arrow_body() {
     if (at(tok_lbrace)) {
-        return parse_function_body();
+        bool saved_return = ctx_return_;
+        ctx_return_ = true;
+        NodeIndex body = parse_function_body();
+        ctx_return_ = saved_return;
+        return body;
     }
     NodeIndex expr = parse_expr(Prec::Assign);
     return expr;
