@@ -32,6 +32,24 @@ static Atom cpool_to_atom(Engine *e, Value field_val) {
 }
 
 static Value add_values(Value l, Value r) {
+  if (l.is_string() || r.is_string()) {
+    std::string sl;
+    if (l.is_string()) { auto *s = l.as<StrPrim>(); sl = s ? std::string(s->data, s->len()) : ""; }
+    else if (l.is_int32()) sl = std::to_string(l.as_int32());
+    else if (l.is_double()) sl = std::to_string(l.as_double());
+    else if (l.is_bool()) sl = l.as_bool() ? "true" : "false";
+    else if (l.is_null()) sl = "null";
+    else sl = "undefined";
+
+    std::string sr;
+    if (r.is_string()) { auto *s = r.as<StrPrim>(); sr = s ? std::string(s->data, s->len()) : ""; }
+    else if (r.is_int32()) sr = std::to_string(r.as_int32());
+    else if (r.is_double()) sr = std::to_string(r.as_double());
+    else if (r.is_bool()) sr = r.as_bool() ? "true" : "false";
+    else if (r.is_null()) sr = "null";
+    else sr = "undefined";
+    return StrPrim::create(sl + sr);
+  }
   if (l.is_int32() && r.is_int32()) {
     int64_t result = static_cast<int64_t>(l.as_int32()) + static_cast<int64_t>(r.as_int32());
     if (result >= -2147483648LL && result <= 2147483647LL)
@@ -818,6 +836,50 @@ Value RegInterpreter::run_bytecode(Bytecode *b, Value *regs, VarRef **upvals, st
         if (st.shape && st.current_index < st.shape->size()) {
           Atom atom   = st.shape->entries[st.current_index].atom;
           regs[i.a()] = e_->atom_to_value(atom);
+          st.current_index++;
+          regs[i.c()] = Value::bool_(true);
+        } else {
+          regs[i.a()] = Value::undefined_();
+          regs[i.c()] = Value::bool_(false);
+        }
+      } else {
+        regs[i.a()] = Value::undefined_();
+        regs[i.c()] = Value::bool_(false);
+      }
+      break;
+    }
+
+      // ── iteration (for-of) ─────────────────────────────────────────────
+
+    case RegOp::FOR_OF_START: {
+      // A=iter_reg, B=iterable_reg
+      Value &iterable = regs[i.b()];
+      if (iterable.is_object()) {
+        auto *obj = iterable.as<Object>();
+        if (obj && obj->clsid == Builtin::array) {
+          auto *arr = static_cast<ArrayObject *>(obj);
+          ForOfState st;
+          st.arr           = arr;
+          st.current_index = 0;
+          int token        = static_cast<int>(for_of_states_.size());
+          for_of_states_.push_back(st);
+          regs[i.a()] = Value::int32(token);
+        } else {
+          regs[i.a()] = Value::int32(-1);
+        }
+      } else {
+        regs[i.a()] = Value::int32(-1);
+      }
+      break;
+    }
+
+    case RegOp::FOR_OF_NEXT: {
+      // A=val_reg, B=iter_reg, C=more_reg
+      int token = regs[i.b()].is_int32() ? regs[i.b()].as_int32() : -1;
+      if (token >= 0 && token < static_cast<int>(for_of_states_.size())) {
+        auto &st = for_of_states_[static_cast<size_t>(token)];
+        if (st.arr && st.current_index < st.arr->elements.size()) {
+          regs[i.a()] = st.arr->elements[st.current_index];
           st.current_index++;
           regs[i.c()] = Value::bool_(true);
         } else {

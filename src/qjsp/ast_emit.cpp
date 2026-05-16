@@ -491,6 +491,15 @@ void AstEmitter::emit_for_in_stmt(NodeIndex node) {
     free_temp(obj_reg);  // LIFO ✓
 
     Atom var_name = atom_for_span(tree_.span(left));
+    // left is a NK_VAR_DECL node — get first declarator's binding
+    {
+        auto range = tree_.range(left, 0);
+        if (range.len > 0) {
+            NodeIndex declarator = tree_.extras[range.start];
+            NodeIndex id = tree_.nodes[declarator].data[0];
+            if (id != NodeNull) var_name = atom_for_span(tree_.span(id));
+        }
+    }
     const Binding *b = bindings_.lookup(var_name);
     int key_reg = b ? b->slot : alloc_temp();
 
@@ -525,9 +534,17 @@ void AstEmitter::emit_for_of_stmt(NodeIndex node) {
     int iterable_reg = alloc_temp();
     emit_expr(n.data[1], iterable_reg);
     emit_iABC(RegOp::FOR_OF_START, u8(iter_reg), u8(iterable_reg), 0);
-    free_temp(iterable_reg);  // LIFO ✓
 
     Atom var_name = atom_for_span(tree_.span(n.data[0]));
+    // n.data[0] is a NK_VAR_DECL node — get first declarator's binding
+    {
+        auto range = tree_.range(n.data[0], 0);
+        if (range.len > 0) {
+            NodeIndex declarator = tree_.extras[range.start];
+            NodeIndex id = tree_.nodes[declarator].data[0];
+            if (id != NodeNull) var_name = atom_for_span(tree_.span(id));
+        }
+    }
     const Binding *b = bindings_.lookup(var_name);
     int target_reg = b ? b->slot : alloc_temp();
 
@@ -550,6 +567,7 @@ void AstEmitter::emit_for_of_stmt(NodeIndex node) {
     pop_break();
 
     if (!b) free_temp(target_reg);
+    free_temp(iterable_reg);
     free_temp(val_reg);
     free_temp(more_reg);
     free_temp(iter_reg);
