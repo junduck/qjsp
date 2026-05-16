@@ -3,8 +3,10 @@
 #include "qjsp/reg_opcode_info.hpp"
 #include "qjsp/string.hpp"
 #include <cassert>
-#include <cstring>
+#include <cerrno>
+#include <climits>
 #include <cstdlib>
+#include <cstring>
 
 namespace qjsp {
 
@@ -824,25 +826,32 @@ void AstEmitter::emit_numeric_lit(NodeIndex node, int dst) {
     buf[len] = '\0';
 
     double val;
-    int radix = 10;
-    const char *body = buf;
-    int body_len = len;
 
     if (len >= 2 && buf[0] == '0') {
-        if (buf[1] == 'x' || buf[1] == 'X') { radix = 16; body = buf + 2; body_len -= 2; }
-        else if (buf[1] == 'o' || buf[1] == 'O') { radix = 8; body = buf + 2; body_len -= 2; }
-        else if (buf[1] == 'b' || buf[1] == 'B') { radix = 2; body = buf + 2; body_len -= 2; }
-    }
-
-    if (radix == 10 && body_len == 0) {
-        val = 0;
-    } else if (radix != 10) {
-        char *end;
-        uint64_t u = std::strtoull(body, &end, radix);
-        val = static_cast<double>(u);
+        if (buf[1] == 'x' || buf[1] == 'X') {
+            // strtod handles 0x prefix natively with correct overflow (Infinity)
+            char *end;
+            val = std::strtod(buf, &end);
+        } else if (buf[1] == 'o' || buf[1] == 'O' || buf[1] == 'b' || buf[1] == 'B') {
+            int radix = (buf[1] == 'b' || buf[1] == 'B') ? 2 : 8;
+            errno = 0;
+            char *end;
+            uint64_t u = std::strtoull(buf + 2, &end, radix);
+            if (u == ULLONG_MAX && errno == ERANGE) {
+                // Overflow — compute double iteratively
+                val = 0;
+                for (const char *p = buf + 2; p < end; p++)
+                    val = val * radix + (*p - (radix == 8 && *p >= '8' ? 0 : '0'));
+            } else {
+                val = static_cast<double>(u);
+            }
+        } else {
+            char *end;
+            val = std::strtod(buf, &end);
+        }
     } else {
         char *end;
-        val = std::strtod(body, &end);
+        val = std::strtod(buf, &end);
     }
 
     int32_t iv = static_cast<int32_t>(val);
