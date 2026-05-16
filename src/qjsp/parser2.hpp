@@ -58,7 +58,7 @@ private:
     NodeIndex parse_array_expr();
     NodeIndex parse_object_expr();
     NodeIndex parse_paren_or_arrow();
-    NodeIndex parse_template_lit();
+    NodeIndex parse_template_lit(Span opener);
     NodeIndex parse_simple_arrow(NodeIndex param);
     NodeIndex parse_arrow_body();
     NodeIndex expr_to_binding(NodeIndex expr);

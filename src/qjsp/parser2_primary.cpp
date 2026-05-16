@@ -65,8 +65,9 @@ NodeIndex Parser::parse_primary() {
     }
 
     case tok_template_head: {
+        Span opener = {current_.start, current_.end};
         advance();
-        return parse_template_lit();
+        return parse_template_lit(opener);
     }
 
     case tok_lbrack:
@@ -434,27 +435,28 @@ NodeIndex Parser::build_arrow_params(NodeIndex single) {
     return tree_.alloc(NK_FORMAL_PARAMS, {0, 0}, 0, 0, NodeNull);
 }
 
-NodeIndex Parser::parse_template_lit() {
-    uint32_t start = prev_end_ > 4 ? prev_end_ - 4 : 0;
+NodeIndex Parser::parse_template_lit(Span opener) {
+    uint32_t start = opener.start;
     auto cp_q = static_cast<uint32_t>(scratch_a_.size());
     auto cp_e = static_cast<uint32_t>(scratch_b_.size());
 
-    auto qspan = cur_span();
-    NodeIndex quasi = tree_.alloc(NK_TEMPLATE_ELEM, qspan, 0);
+    NodeIndex quasi = tree_.alloc(NK_TEMPLATE_ELEM, opener, 0);
     scratch_a_.push_back(quasi);
 
     scratch_b_.push_back(parse_expr());
 
     while (true) {
         if (at(tok_template_mid)) {
-            quasi = tree_.alloc(NK_TEMPLATE_ELEM, cur_span(), 0);
-            scratch_a_.push_back(quasi);
+            Token mid_tok = current_;
             advance();
+            quasi = tree_.alloc(NK_TEMPLATE_ELEM, {mid_tok.start, mid_tok.end}, 0);
+            scratch_a_.push_back(quasi);
             scratch_b_.push_back(parse_expr());
         } else if (at(tok_template_tail)) {
-            quasi = tree_.alloc(NK_TEMPLATE_ELEM, cur_span(), NF::Tail);
-            scratch_a_.push_back(quasi);
+            Token tail_tok = current_;
             advance();
+            quasi = tree_.alloc(NK_TEMPLATE_ELEM, {tail_tok.start, tail_tok.end}, NF::Tail);
+            scratch_a_.push_back(quasi);
             break;
         } else {
             error("unterminated template literal");

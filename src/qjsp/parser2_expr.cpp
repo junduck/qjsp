@@ -645,9 +645,10 @@ NodeIndex Parser::parse_infix(uint8_t prec, NodeIndex left) {
     }
 
     if (tag == tok_template_full || tag == tok_template_head) {
+        Span opener = {current_.start, current_.end};
         advance();
-        NodeIndex tpl = parse_template_lit();
-        return tree_.alloc(NK_TAGGED_TEMPLATE, span_from(start), left, tpl);
+        return tree_.alloc(NK_TAGGED_TEMPLATE, span_from(start), left,
+                           parse_template_lit(opener));
     }
 
     error("unexpected token in expression");
