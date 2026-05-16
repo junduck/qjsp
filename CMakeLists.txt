@@ -74,3 +74,6 @@ add_library(qjsp::qjsp ALIAS qjsp)
 
 add_executable(_clangd_tu src/_clangd_tu.cpp)
 target_link_libraries(_clangd_tu PRIVATE qjsp::headers)
+
+add_executable(perf_test tools/perf_test.cpp)
+target_link_libraries(perf_test PRIVATE qjsp::qjsp)
