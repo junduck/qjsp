@@ -491,19 +491,25 @@ Token Lexer2::scan_number() {
             cur_ += 2;
             uint32_t body_start = cur_;
             while (std::isxdigit(src_[cur_]) || src_[cur_] == '_') cur_++;
-            return make(cur_ == body_start ? tok_numeric : tok_hex, start, cur_);
+            if (cur_ == body_start) return make(tok_numeric, start, cur_);
+            if (src_[cur_] == 'n') { cur_++; return make(tok_bigint, start, cur_); }
+            return make(tok_hex, start, cur_);
         }
         if (c1 == 'o' || c1 == 'O') {
             cur_ += 2;
             uint32_t body_start = cur_;
             while ((src_[cur_] >= '0' && src_[cur_] <= '7') || src_[cur_] == '_') cur_++;
-            return make(cur_ == body_start ? tok_numeric : tok_octal, start, cur_);
+            if (cur_ == body_start) return make(tok_numeric, start, cur_);
+            if (src_[cur_] == 'n') { cur_++; return make(tok_bigint, start, cur_); }
+            return make(tok_octal, start, cur_);
         }
         if (c1 == 'b' || c1 == 'B') {
             cur_ += 2;
             uint32_t body_start = cur_;
             while ((src_[cur_] == '0' || src_[cur_] == '1') || src_[cur_] == '_') cur_++;
-            return make(cur_ == body_start ? tok_numeric : tok_binary, start, cur_);
+            if (cur_ == body_start) return make(tok_numeric, start, cur_);
+            if (src_[cur_] == 'n') { cur_++; return make(tok_bigint, start, cur_); }
+            return make(tok_binary, start, cur_);
         }
     }
 
