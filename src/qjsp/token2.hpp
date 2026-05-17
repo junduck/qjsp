@@ -4,6 +4,8 @@
 
 namespace qjsp {
 
+// Adapted from yuku
+
 // ─── Bit masks for packed TokenTag ──────────────────────────────────────────
 
 namespace TM {
@@ -37,31 +39,32 @@ constexpr uint32_t PrecMask   = 0x1Fu;   // 5 bits
 
 enum TokenTag : uint32_t {
     // ── Literals ────────────────────────────────────────────────────────────
-    tok_numeric     = 1  | TM::Numeric,
-    tok_hex         = 2  | TM::Numeric,
-    tok_octal       = 3  | TM::Numeric,
-    tok_binary      = 4  | TM::Numeric,
-    tok_regexp      = 5,
-    tok_template_full = 6 | (17u << TM::PrecShift),
-    tok_template_head = 7 | (17u << TM::PrecShift),
-    tok_template_mid  = 8,
-    tok_template_tail = 9,
-    tok_bigint      = 10 | TM::Numeric,
+    tok_numeric     = 1  | TM::Numeric, // e.g., "123", "45.67"
+    tok_hex         = 2  | TM::Numeric, // e.g., "0xFF", "0x1A"
+    tok_octal       = 3  | TM::Numeric, // e.g., "0o777", "0o12"
+    tok_binary      = 4  | TM::Numeric, // e.g., "0b1010", "0b11"
+    tok_bigint      = 5  | TM::Numeric, // e.g., "123n", "456n"
+    tok_string      = 6,
+    tok_regexp      = 7,                // e.g., "/abc/g", "/[0-9]+/i"
 
-    tok_string      = 11,
-    tok_hashbang    = 12,
+    tok_template_full = 8 | (17u << TM::PrecShift), // e.g., "`hello`"
+    tok_template_head = 9 | (17u << TM::PrecShift), // e.g., "`hello ${"
+    tok_template_mid  = 10,                         // e.g., "} world ${"
+    tok_template_tail = 11,                         // e.g., "} end`"
+    tok_hashbang      = 12,
+
     // ── Keyword literals ────────────────────────────────────────────────────
     tok_null   = 13 | TM::Keyword | TM::Reserved | TM::IdentLike,
     tok_true   = 14 | TM::Keyword | TM::Reserved | TM::IdentLike,
     tok_false  = 15 | TM::Keyword | TM::Reserved | TM::IdentLike,
 
     // ── Arithmetic ──────────────────────────────────────────────────────────
-    tok_plus    = 15 | (12u << TM::PrecShift) | TM::BinaryOp | TM::UnaryOp,
-    tok_minus   = 16 | (12u << TM::PrecShift) | TM::BinaryOp | TM::UnaryOp,
-    tok_star    = 17 | (13u << TM::PrecShift) | TM::BinaryOp,
-    tok_slash   = 18 | (13u << TM::PrecShift) | TM::BinaryOp,
-    tok_percent = 19 | (13u << TM::PrecShift) | TM::BinaryOp,
-    tok_pow     = 20 | (14u << TM::PrecShift) | TM::BinaryOp,
+    tok_plus    = 15 | (11u << TM::PrecShift) | TM::BinaryOp | TM::UnaryOp,
+    tok_minus   = 16 | (11u << TM::PrecShift) | TM::BinaryOp | TM::UnaryOp,
+    tok_star    = 17 | (12u << TM::PrecShift) | TM::BinaryOp,
+    tok_slash   = 18 | (12u << TM::PrecShift) | TM::BinaryOp,
+    tok_percent = 19 | (12u << TM::PrecShift) | TM::BinaryOp,
+    tok_pow     = 20 | (13u << TM::PrecShift) | TM::BinaryOp,
 
     // ── Assignment ──────────────────────────────────────────────────────────
     tok_assign       = 21 | (2u << TM::PrecShift) | TM::AssignOp,
@@ -77,33 +80,33 @@ enum TokenTag : uint32_t {
     tok_dec = 29 | (15u << TM::PrecShift),
 
     // ── Equality ────────────────────────────────────────────────────────────
-    tok_eq   = 30 | (9u << TM::PrecShift) | TM::BinaryOp,
-    tok_neq  = 31 | (9u << TM::PrecShift) | TM::BinaryOp,
-    tok_seq  = 32 | (9u << TM::PrecShift) | TM::BinaryOp,
-    tok_sneq = 33 | (9u << TM::PrecShift) | TM::BinaryOp,
+    tok_eq   = 30 | (8u << TM::PrecShift) | TM::BinaryOp,
+    tok_neq  = 31 | (8u << TM::PrecShift) | TM::BinaryOp,
+    tok_seq  = 32 | (8u << TM::PrecShift) | TM::BinaryOp,
+    tok_sneq = 33 | (8u << TM::PrecShift) | TM::BinaryOp,
 
     // ── Relational ──────────────────────────────────────────────────────────
-    tok_lt         = 34 | (10u << TM::PrecShift) | TM::BinaryOp,
-    tok_gt         = 35 | (10u << TM::PrecShift) | TM::BinaryOp,
-    tok_lte        = 36 | (10u << TM::PrecShift) | TM::BinaryOp,
-    tok_gte        = 37 | (10u << TM::PrecShift) | TM::BinaryOp,
-    tok_instanceof = 38 | (10u << TM::PrecShift) | TM::BinaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
-    tok_in         = 39 | (10u << TM::PrecShift) | TM::BinaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
+    tok_lt         = 34 | (9u << TM::PrecShift) | TM::BinaryOp,
+    tok_gt         = 35 | (9u << TM::PrecShift) | TM::BinaryOp,
+    tok_lte        = 36 | (9u << TM::PrecShift) | TM::BinaryOp,
+    tok_gte        = 37 | (9u << TM::PrecShift) | TM::BinaryOp,
+    tok_instanceof = 38 | (9u << TM::PrecShift) | TM::BinaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
+    tok_in         = 39 | (9u << TM::PrecShift) | TM::BinaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
 
     // ── Logical ─────────────────────────────────────────────────────────────
-    tok_land  = 40 | (4u << TM::PrecShift) | TM::LogicalOp,
-    tok_lor   = 41 | (3u << TM::PrecShift) | TM::LogicalOp,
-    tok_nullish = 42 | (3u << TM::PrecShift) | TM::LogicalOp,
-    tok_bang  = 43 | (15u << TM::PrecShift) | TM::UnaryOp,
+    tok_land    = 40 | (4u << TM::PrecShift) | TM::LogicalOp,
+    tok_lor     = 41 | (3u << TM::PrecShift) | TM::LogicalOp,
+    tok_nullish = 42 | (3u << TM::PrecShift) | TM::LogicalOp, // "??"
+    tok_bang    = 43 | (14u << TM::PrecShift) | TM::UnaryOp,
 
     // ── Bitwise ─────────────────────────────────────────────────────────────
     tok_band  = 44 | (7u << TM::PrecShift) | TM::BinaryOp,
     tok_bor   = 45 | (5u << TM::PrecShift) | TM::BinaryOp,
     tok_bxor  = 46 | (6u << TM::PrecShift) | TM::BinaryOp,
     tok_bnot  = 47 | TM::UnaryOp,
-    tok_shl   = 48 | (11u << TM::PrecShift) | TM::BinaryOp,
-    tok_sar   = 49 | (11u << TM::PrecShift) | TM::BinaryOp,
-    tok_shr   = 50 | (11u << TM::PrecShift) | TM::BinaryOp,
+    tok_shl   = 48 | (10u << TM::PrecShift) | TM::BinaryOp,
+    tok_sar   = 49 | (10u << TM::PrecShift) | TM::BinaryOp,
+    tok_shr   = 50 | (10u << TM::PrecShift) | TM::BinaryOp,
 
     // ── Compound bitwise assignment ─────────────────────────────────────────
     tok_band_assign = 51 | (2u << TM::PrecShift) | TM::AssignOp,
@@ -131,7 +134,7 @@ enum TokenTag : uint32_t {
     tok_dot     = 69 | (17u << TM::PrecShift),
     tok_spread  = 70,
     tok_arrow   = 71 | (2u << TM::PrecShift),
-    tok_question = 72 | (3u << TM::PrecShift),
+    tok_question = 72 | (2u << TM::PrecShift),
     tok_colon   = 73,
 
     // ── Keywords — always reserved ──────────────────────────────────────────
@@ -158,10 +161,10 @@ enum TokenTag : uint32_t {
     tok_throw      = 100 | TM::Keyword | TM::Reserved | TM::IdentLike,
     tok_new        = 101 | TM::Keyword | TM::Reserved | TM::IdentLike,
     tok_this       = 102 | TM::Keyword | TM::Reserved | TM::IdentLike,
-    tok_typeof     = 103 | (15u << TM::PrecShift) | TM::UnaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
-    tok_delete     = 104 | (15u << TM::PrecShift) | TM::UnaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
-    tok_void       = 105 | (15u << TM::PrecShift) | TM::UnaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
-    tok_with       = 106 | TM::Keyword | TM::Reserved | TM::IdentLike,
+    tok_typeof     = 103 | TM::UnaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
+    tok_delete     = 104 | TM::UnaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
+    tok_void       = 105 | TM::UnaryOp | TM::Keyword | TM::Reserved | TM::IdentLike,
+    tok_with       = 106 | TM::Keyword | TM::Reserved | TM::IdentLike, // illegal, strict only
     tok_debugger   = 107 | TM::Keyword | TM::Reserved | TM::IdentLike,
     tok_enum       = 108 | TM::Keyword | TM::Reserved | TM::IdentLike,
     tok_export     = 109 | TM::Keyword | TM::Reserved,
@@ -180,13 +183,14 @@ enum TokenTag : uint32_t {
     tok_public     = 129 | TM::Keyword | TM::Reserved | TM::IdentLike,
 
     // ── Contextual keywords ─────────────────────────────────────────────────
-    tok_of       = 140 | TM::IdentLike,
-    tok_async    = 141 | TM::IdentLike,
-    tok_from     = 142 | TM::IdentLike,
-    tok_as       = 143 | TM::IdentLike,
-    tok_get      = 144 | TM::IdentLike,
-    tok_set      = 145 | TM::IdentLike,
+    tok_of          = 140 | TM::IdentLike,
+    tok_async       = 141 | TM::IdentLike,
+    tok_from        = 142 | TM::IdentLike,
+    tok_as          = 143 | TM::IdentLike,
+    tok_get         = 144 | TM::IdentLike,
+    tok_set         = 145 | TM::IdentLike,
     tok_constructor = 146 | TM::IdentLike,
+    tok_using       = 147 | TM::IdentLike,
 
     // ── Identifier / private ────────────────────────────────────────────────
     tok_ident        = 150 | TM::IdentLike,
@@ -212,25 +216,25 @@ inline bool     tag_is_reserved(TokenTag t)  { return tag_has(t, TM::Reserved); 
 // ─── Precedence constants ────────────────────────────────────────────────────
 
 namespace Prec {
-constexpr uint8_t Lowest  = 0;
-constexpr uint8_t Comma   = 1;
-constexpr uint8_t Assign  = 2;
-constexpr uint8_t Cond    = 3;
-constexpr uint8_t LogOr   = 3;
-constexpr uint8_t LogAnd  = 4;
-constexpr uint8_t BitOr   = 5;
-constexpr uint8_t BitXor  = 6;
-constexpr uint8_t BitAnd  = 7;
-constexpr uint8_t Eq      = 9;
-constexpr uint8_t Rel     = 10;
-constexpr uint8_t Shift   = 11;
-constexpr uint8_t Add     = 12;
-constexpr uint8_t Mul     = 13;
-constexpr uint8_t Exp     = 14;
-constexpr uint8_t Unary   = 15;
-constexpr uint8_t Postfix = 15;
-constexpr uint8_t New     = 16;
-constexpr uint8_t Call    = 17;
+constexpr uint8_t Lowest   = 0;
+constexpr uint8_t Comma    = 1;
+constexpr uint8_t Assign   = 2;
+constexpr uint8_t LogOr    = 3;
+constexpr uint8_t LogAnd   = 4;
+constexpr uint8_t BitOr    = 5;
+constexpr uint8_t BitXor   = 6;
+constexpr uint8_t BitAnd   = 7;
+constexpr uint8_t Eq       = 8;
+constexpr uint8_t Rel      = 9;
+constexpr uint8_t Shift    = 10;
+constexpr uint8_t Add      = 11;
+constexpr uint8_t Mul      = 12;
+constexpr uint8_t Exp      = 13;
+constexpr uint8_t Unary    = 14;
+constexpr uint8_t Postfix  = 15;
+constexpr uint8_t New      = 16;
+constexpr uint8_t Call     = 17;
+constexpr uint8_t Grouping = 18;
 }
 
 // ─── Token flags ─────────────────────────────────────────────────────────────

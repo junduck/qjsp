@@ -78,7 +78,7 @@ NodeIndex Parser::parse_primary() {
 
     case tok_function:
         advance();
-        return parse_function(true);
+        return parse_function_with_flags(NF::IsExpr);
 
     case tok_class:
         advance();
@@ -215,10 +215,10 @@ NodeIndex Parser::parse_object_expr() {
             if (at(tok_lbrack)) {
                 flags |= NF::Computed;
                 advance();
-                bool saved_in = ctx_in_;
-                ctx_in_ = true;
+                uint8_t saved = ctx_.flags;
+                ctx_.set(ParseCtx::In);
                 key = parse_expr();
-                ctx_in_ = saved_in;
+                ctx_.flags = saved;
                 expect(tok_rbrack);
             } else if (is_ident_like() || at(tok_string) || tag_is_numeric(current_.tag)) {
                 Token key_tok = current_;
@@ -236,16 +236,11 @@ NodeIndex Parser::parse_object_expr() {
             if (is_generator) fn_flags |= NF::Generator;
             if (is_async) fn_flags |= NF::Async;
             NodeIndex params = parse_formal_params();
-            bool saved_yield = ctx_yield_;
-            bool saved_await = ctx_await_;
-            bool saved_return = ctx_return_;
-            ctx_yield_ = is_generator;
-            ctx_await_ = is_async;
-            ctx_return_ = true;
+            uint8_t fn_ctx = ParseCtx::Return;
+            if (is_generator) fn_ctx |= ParseCtx::Yield;
+            if (is_async) fn_ctx |= ParseCtx::Await;
+            CtxGuard fn_guard(*this, fn_ctx);
             NodeIndex body = parse_function_body();
-            ctx_yield_ = saved_yield;
-            ctx_await_ = saved_await;
-            ctx_return_ = saved_return;
             NodeIndex fn = tree_.alloc(NK_FUNCTION, span_from(prop_start),
                                        NodeNull, params, body, fn_flags);
             NodeIndex method = tree_.alloc(NK_METHOD_DEF, span_from(prop_start),
@@ -293,7 +288,7 @@ NodeIndex Parser::parse_object_expr() {
         NodeIndex value;
         if (at(tok_function)) {
             advance();
-            value = parse_function(true);
+            value = parse_function_with_flags(NF::IsExpr);
         } else {
             value = parse_expr(Prec::Assign);
         }
@@ -325,10 +320,11 @@ NodeIndex Parser::parse_paren_or_arrow() {
         expect(tok_arrow);
         NodeIndex params = tree_.alloc(NK_FORMAL_PARAMS, span_from(start),
                                        0, 0, NodeNull);
-        bool saved_yield = ctx_yield_;
-        ctx_yield_ = false;
-        NodeIndex body = parse_arrow_body();
-        ctx_yield_ = saved_yield;
+        NodeIndex body;
+        {
+            CtxGuard g(*this, ctx_.flags & ~ParseCtx::Yield);
+            body = parse_arrow_body();
+        }
         uint32_t flags = NF::IsExpr;
         if (tree_.kind(body) != NK_BLOCK_STMT) flags |= NF::ExprBody;
         return tree_.alloc(NK_ARROW_FUNCTION, span_from(start), params, body, flags);
@@ -385,10 +381,11 @@ NodeIndex Parser::parse_paren_or_arrow() {
             params = build_arrow_params(first);
         }
         scratch_cover_.resize(cp);
-        bool saved_yield = ctx_yield_;
-        ctx_yield_ = false;
-        NodeIndex body = parse_arrow_body();
-        ctx_yield_ = saved_yield;
+        NodeIndex body;
+        {
+            CtxGuard g(*this, ctx_.flags & ~ParseCtx::Yield);
+            body = parse_arrow_body();
+        }
         uint32_t flags = NF::IsExpr;
         if (tree_.kind(body) != NK_BLOCK_STMT) flags |= NF::ExprBody;
         return tree_.alloc(NK_ARROW_FUNCTION, span_from(start), params, body, flags);
@@ -513,10 +510,11 @@ NodeIndex Parser::parse_simple_arrow(NodeIndex param) {
     NodeIndex params = tree_.alloc(NK_FORMAL_PARAMS, tree_.span(param),
                                    items.start, items.len, NodeNull);
 
-    bool saved_yield = ctx_yield_;
-    ctx_yield_ = false;
-    NodeIndex body = parse_arrow_body();
-    ctx_yield_ = saved_yield;
+    NodeIndex body;
+    {
+        CtxGuard g(*this, ctx_.flags & ~ParseCtx::Yield);
+        body = parse_arrow_body();
+    }
     uint32_t flags = NF::IsExpr | NF::ExprBody;
     if (tree_.kind(body) == NK_BLOCK_STMT) flags = NF::IsExpr;
     return tree_.alloc(NK_ARROW_FUNCTION, span_from(start),
@@ -525,11 +523,8 @@ NodeIndex Parser::parse_simple_arrow(NodeIndex param) {
 
 NodeIndex Parser::parse_arrow_body() {
     if (at(tok_lbrace)) {
-        bool saved_return = ctx_return_;
-        ctx_return_ = true;
-        NodeIndex body = parse_function_body();
-        ctx_return_ = saved_return;
-        return body;
+        CtxGuard g(*this, ctx_.flags | ParseCtx::Return);
+        return parse_function_body();
     }
     NodeIndex expr = parse_expr(Prec::Assign);
     return expr;

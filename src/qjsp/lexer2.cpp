@@ -193,6 +193,7 @@ TokenTag Lexer2::classify_keyword(const uint8_t *s, uint32_t n) const {
         case 'f': if (s[1]=='a' && s[2]=='l' && s[3]=='s' && s[4]=='e') return tok_false; break;
         case 's': if (s[1]=='u' && s[2]=='p' && s[3]=='e' && s[4]=='r') return tok_super; break;
         case 't': if (s[1]=='h' && s[2]=='r' && s[3]=='o' && s[4]=='w') return tok_throw; break;
+        case 'u': if (s[1]=='s' && s[2]=='i' && s[3]=='n' && s[4]=='g') return tok_using; break;
         case 'w': if (s[1]=='h' && s[2]=='i' && s[3]=='l' && s[4]=='e') return tok_while; break;
         case 'y': if (s[1]=='i' && s[2]=='e' && s[3]=='l' && s[4]=='d') return tok_yield; break;
         }

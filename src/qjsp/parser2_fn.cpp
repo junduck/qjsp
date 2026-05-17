@@ -5,9 +5,14 @@ namespace qjsp {
 // ─── Function parsing ────────────────────────────────────────────────────────
 
 NodeIndex Parser::parse_function(bool is_expr, bool is_async) {
-    uint32_t start = prev_end_;
     uint32_t flags = is_expr ? NF::IsExpr : 0;
     if (is_async) flags |= NF::Async;
+    return parse_function_with_flags(flags);
+}
+
+NodeIndex Parser::parse_function_with_flags(uint32_t pre_flags) {
+    uint32_t start = prev_end_;
+    uint32_t flags = pre_flags;
     if (current_.tag == tok_star) {
         flags |= NF::Generator;
         advance();
@@ -21,24 +26,18 @@ NodeIndex Parser::parse_function(bool is_expr, bool is_async) {
     if (is_ident_like()) {
         id = tree_.alloc(NK_BINDING_IDENT, cur_span());
         advance();
-    } else if (!is_expr) {
+    } else if (!(flags & NF::IsExpr)) {
         error("expected function name");
     }
 
     NodeIndex params = parse_formal_params();
 
-    bool saved_yield = ctx_yield_;
-    bool saved_await = ctx_await_;
-    bool saved_return = ctx_return_;
-    ctx_yield_ = flags & NF::Generator;
-    ctx_await_ = flags & NF::Async;
-    ctx_return_ = true;
+    uint8_t body_ctx = ParseCtx::Return;
+    if (flags & NF::Generator) body_ctx |= ParseCtx::Yield;
+    if (flags & NF::Async) body_ctx |= ParseCtx::Await;
+    CtxGuard guard(*this, body_ctx);
 
     NodeIndex body = parse_function_body();
-
-    ctx_yield_ = saved_yield;
-    ctx_await_ = saved_await;
-    ctx_return_ = saved_return;
 
     return tree_.alloc(NK_FUNCTION, span_from(start), id, params, body, flags);
 }
@@ -198,10 +197,10 @@ NodeIndex Parser::parse_class_element(bool is_static) {
     if (at(tok_lbrack)) {
         flags |= NF::Computed;
         advance();
-        bool saved_in = ctx_in_;
-        ctx_in_ = true;
-        key = parse_expr();
-        ctx_in_ = saved_in;
+        uint8_t saved = ctx_.flags;
+        ctx_.set(ParseCtx::In);
+        NodeIndex key = parse_expr();
+        ctx_.flags = saved;
         expect(tok_rbrack);
     } else if (is_ident_like() || at(tok_string) || tag_is_numeric(current_.tag)) {
         Token key_tok = current_;
@@ -213,7 +212,8 @@ NodeIndex Parser::parse_class_element(bool is_static) {
     }
 
     if (at(tok_lparen)) {
-        NodeIndex value = parse_function(true, flags & NF::Async);
+        uint32_t fn_flags = NF::IsExpr | (flags & (NF::Async | NF::Generator));
+        NodeIndex value = parse_function_with_flags(fn_flags);
         flags |= method_kind;
         return tree_.alloc(NK_METHOD_DEF, span_from(start), key, value, flags);
     }
@@ -296,10 +296,10 @@ NodeIndex Parser::parse_binding_pattern() {
             if (at(tok_lbrack)) {
                 flags |= NF::Computed;
                 advance();
-                bool saved_in = ctx_in_;
-                ctx_in_ = true;
+                uint8_t saved = ctx_.flags;
+                ctx_.set(ParseCtx::In);
                 key = parse_expr();
-                ctx_in_ = saved_in;
+                ctx_.flags = saved;
                 expect(tok_rbrack);
                 expect(tok_colon);
                 value = parse_binding();

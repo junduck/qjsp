@@ -108,6 +108,8 @@ void AstEmitter::collect_declarator(NodeIndex decl_node, uint32_t kind) {
         case VarVar:   bindings_.add_var(name);   break;
         case VarLet:   bindings_.add_let(name);   break;
         case VarConst: bindings_.add_const(name); break;
+        case VarUsing:      bindings_.add_let(name); break;
+        case VarAwaitUsing: bindings_.add_let(name); break;
         }
     }
 }

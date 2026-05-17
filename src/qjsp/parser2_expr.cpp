@@ -60,6 +60,15 @@ Span Parser::cur_span() const { return {current_.start, current_.end}; }
 
 bool Parser::is_ident_like() const { return tag_is_ident_like(current_.tag); }
 
+Token Parser::peek_ahead() {
+    uint32_t saved_cur = lexer_.cur_;
+    uint8_t saved_flags = lexer_.flags_;
+    Token next = lexer_.next_token();
+    lexer_.cur_ = saved_cur;
+    lexer_.flags_ = saved_flags;
+    return next;
+}
+
 NodeIndex Parser::wrap_chain(NodeIndex left, NodeIndex inner, Span sp) {
     if (kind(left) == NK_CHAIN_EXPR) {
         return tree_.alloc(NK_CHAIN_EXPR, sp, left, inner);
@@ -309,7 +318,7 @@ NodeIndex Parser::parse_expr(uint8_t min_prec) {
         uint8_t prec = infix_prec();
         if (prec < min_prec || prec == 0) break;
         if (prec > max_left_prec(left)) break;
-        if (!ctx_in_ && current_.tag == tok_in) break;
+        if (!ctx_.has(ParseCtx::In) && current_.tag == tok_in) break;
 
         left = parse_infix(prec, left);
         if (left == NodeNull) break;
@@ -354,7 +363,7 @@ NodeIndex Parser::parse_prefix() {
         return parse_paren_or_arrow();
     }
 
-    if (tag == tok_await && ctx_await_) {
+    if (tag == tok_await && ctx_.has(ParseCtx::Await)) {
         advance();
         if (current_.tag == tok_semi || current_.tag == tok_rbrace ||
             current_.tag == tok_rbrack || current_.tag == tok_rparen ||
@@ -368,7 +377,7 @@ NodeIndex Parser::parse_prefix() {
         return tree_.alloc(NK_AWAIT_EXPR, span_from(start), arg);
     }
 
-    if (tag == tok_yield && ctx_yield_) {
+    if (tag == tok_yield && ctx_.has(ParseCtx::Yield)) {
         advance();
         uint32_t delegate = 0;
         if (eat(tok_star)) delegate = NF::Delegate;
@@ -449,17 +458,15 @@ NodeIndex Parser::parse_prefix() {
         advance();
         if (at(tok_function)) {
             advance();
-            return parse_function(true, true);
+            return parse_function_with_flags(NF::IsExpr | NF::Async);
         }
         if (at(tok_ident) && !current_.has_newline_before()) {
             Token id_tok = current_;
             advance();
             if (at(tok_arrow) && !has_newline_before()) {
                 NodeIndex param = tree_.alloc(NK_BINDING_IDENT, {id_tok.start, id_tok.end});
-                bool saved_await = ctx_await_;
-                ctx_await_ = true;
+                CtxGuard guard(*this, ctx_.flags | ParseCtx::Await);
                 NodeIndex arrow = parse_simple_arrow(param);
-                ctx_await_ = saved_await;
                 tree_.d(arrow, 3) |= NF::Async;
                 tree_.nodes[arrow].span.start = async_tok.start;
                 return arrow;
@@ -467,10 +474,8 @@ NodeIndex Parser::parse_prefix() {
             return tree_.alloc(NK_IDENT_REF, {async_tok.start, async_tok.end});
         }
         if (at(tok_lparen) && !current_.has_newline_before()) {
-            bool saved_await = ctx_await_;
-            ctx_await_ = true;
+            CtxGuard guard(*this, ctx_.flags | ParseCtx::Await);
             NodeIndex arrow = parse_paren_or_arrow();
-            ctx_await_ = saved_await;
             if (tree_.kind(arrow) == NK_ARROW_FUNCTION) {
                 tree_.d(arrow, 3) |= NF::Async;
                 tree_.nodes[arrow].span.start = async_tok.start;
@@ -482,7 +487,7 @@ NodeIndex Parser::parse_prefix() {
 
     if (tag == tok_function) {
         advance();
-        return parse_function(true);
+        return parse_function_with_flags(NF::IsExpr);
     }
 
     if (tag == tok_class) {
@@ -590,10 +595,10 @@ NodeIndex Parser::parse_infix(uint8_t prec, NodeIndex left) {
 
     if (tag == tok_lbrack) {
         advance();
-        bool saved_in = ctx_in_;
-        ctx_in_ = true;
+        uint8_t saved = ctx_.flags;
+        ctx_.set(ParseCtx::In);
         NodeIndex prop = parse_expr();
-        ctx_in_ = saved_in;
+        ctx_.flags = saved;
         expect(tok_rbrack);
         NodeIndex mem = tree_.alloc(NK_MEMBER_EXPR, span_from(start),
                            left, prop, NF::Computed);
@@ -627,10 +632,10 @@ NodeIndex Parser::parse_infix(uint8_t prec, NodeIndex left) {
         NodeIndex chain;
         if (at(tok_lbrack)) {
             advance();
-            bool saved_in = ctx_in_;
-            ctx_in_ = true;
+            uint8_t saved = ctx_.flags;
+            ctx_.set(ParseCtx::In);
             NodeIndex prop = parse_expr();
-            ctx_in_ = saved_in;
+            ctx_.flags = saved;
             expect(tok_rbrack);
             NodeIndex member = tree_.alloc(NK_MEMBER_EXPR, span_from(start),
                                            left, prop, NF::Computed | NF::Optional);

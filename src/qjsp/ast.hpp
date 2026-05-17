@@ -153,7 +153,7 @@ namespace NF {
     constexpr uint32_t ExprBody = 1u << 3;
 }
 
-enum AstVarKind : uint32_t { VarVar, VarLet, VarConst };
+enum AstVarKind : uint32_t { VarVar, VarLet, VarConst, VarUsing, VarAwaitUsing };
 
 enum MethodKind : uint32_t { MethodInit, MethodGet, MethodSet, MethodCtor, MethodAsync };
 

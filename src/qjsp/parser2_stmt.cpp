@@ -11,8 +11,8 @@ void Parser::init(const uint8_t *source, uint32_t len) {
 
 NodeIndex Parser::parse() {
     current_ = lexer_.next_token();
-    ctx_await_ = true;
-    ctx_return_ = false;
+    ctx_.set(ParseCtx::Await);
+    ctx_.clear(ParseCtx::Return);
     NodeIndex program = parse_stmt_list_body();
     tree_.root = program;
     return program;
@@ -65,17 +65,39 @@ NodeIndex Parser::parse_stmt() {
     case tok_let:
     case tok_const: {
         NodeIndex d = parse_var_decl();
+        validate_using_init(d);
         validate_const_init(d);
         return d;
     }
-    case tok_function:  advance(); return parse_function(false);
+    case tok_using: {
+        if (!is_using_decl()) return parse_expr_or_label_or_directive();
+        uint32_t start = current_.start;
+        advance();
+        NodeIndex d = parse_var_decl_with_kind(VarUsing, start);
+        validate_using_init(d);
+        return d;
+    }
+    case tok_await: {
+        if (!ctx_.has(ParseCtx::Await)) return parse_expr_or_label_or_directive();
+        Token next = peek_ahead();
+        if (next.tag == tok_using && !next.has_newline_before()) {
+            uint32_t start = current_.start;
+            advance();
+            advance();
+            NodeIndex d = parse_var_decl_with_kind(VarAwaitUsing, start);
+            validate_using_init(d);
+            return d;
+        }
+        return parse_expr_or_label_or_directive();
+    }
+    case tok_function:  advance(); return parse_function_with_flags(0);
     case tok_async: {
         if (current_.has_newline_before()) return parse_expr_or_label_or_directive();
         uint32_t as = current_.start;
         advance();
         if (at(tok_function)) {
             advance();
-            NodeIndex fn = parse_function(false, true);
+            NodeIndex fn = parse_function_with_flags(NF::Async);
             tree_.d(fn, 3) |= NF::Async;
             tree_.nodes[fn].span.start = as;
             return fn;
@@ -86,10 +108,8 @@ NodeIndex Parser::parse_stmt() {
             advance();
             if (at(tok_arrow) && !has_newline_before()) {
                 NodeIndex param = tree_.alloc(NK_BINDING_IDENT, {id_tok.start, id_tok.end});
-                bool saved_await = ctx_await_;
-                ctx_await_ = true;
+                CtxGuard guard(*this, ctx_.flags | ParseCtx::Await);
                 NodeIndex arrow = parse_simple_arrow(param);
-                ctx_await_ = saved_await;
                 tree_.d(arrow, 3) |= NF::Async;
                 tree_.nodes[arrow].span.start = as;
                 eat_semi();
@@ -106,10 +126,8 @@ NodeIndex Parser::parse_stmt() {
             return tree_.alloc(NK_EXPR_STMT, span_from(as), seq);
         }
         if (at(tok_lparen) && !has_newline_before()) {
-            bool saved_await = ctx_await_;
-            ctx_await_ = true;
+            CtxGuard guard(*this, ctx_.flags | ParseCtx::Await);
             NodeIndex arrow = parse_paren_or_arrow();
-            ctx_await_ = saved_await;
             if (tree_.kind(arrow) == NK_ARROW_FUNCTION) {
                 tree_.d(arrow, 3) |= NF::Async;
                 tree_.nodes[arrow].span.start = as;
@@ -154,16 +172,15 @@ NodeIndex Parser::parse_block() {
     expect(tok_lbrace);
     auto cp = static_cast<uint32_t>(scratch_stmts_.size());
 
-    bool saved_single = ctx_single_stmt_;
-    ctx_single_stmt_ = false;
+    uint8_t block_ctx = ctx_.flags;
+    block_ctx &= ~ParseCtx::SingleStmt;
+    CtxGuard guard(*this, block_ctx);
 
     while (!at(tok_rbrace) && !at(tok_eof)) {
         NodeIndex s = parse_stmt();
         if (s != NodeNull) scratch_stmts_.push_back(s);
         else advance();
     }
-
-    ctx_single_stmt_ = saved_single;
 
     IndexRange body = flush_scratch(scratch_stmts_, cp);
     expect(tok_rbrace);
@@ -177,9 +194,11 @@ NodeIndex Parser::parse_expr_or_label_or_directive() {
 
     if (at(tok_colon) && tree_.kind(expr) == NK_IDENT_REF && !has_newline_before()) {
         advance();
-        ctx_single_stmt_ = true;
-        NodeIndex body = parse_stmt();
-        ctx_single_stmt_ = false;
+        NodeIndex body;
+        {
+            CtxGuard g(*this, ctx_.flags | ParseCtx::SingleStmt);
+            body = parse_stmt();
+        }
         return tree_.alloc(NK_LABELED_STMT, span_from(start), expr, body);
     }
 
@@ -194,14 +213,15 @@ NodeIndex Parser::parse_if_stmt() {
     expect(tok_lparen);
     NodeIndex test = parse_expr();
     expect(tok_rparen);
-    ctx_single_stmt_ = true;
-    NodeIndex consequent = parse_stmt();
-    ctx_single_stmt_ = false;
+    NodeIndex consequent;
+    {
+        CtxGuard g(*this, ctx_.flags | ParseCtx::SingleStmt);
+        consequent = parse_stmt();
+    }
     NodeIndex alternate = NodeNull;
     if (eat(tok_else)) {
-        ctx_single_stmt_ = true;
+        CtxGuard g(*this, ctx_.flags | ParseCtx::SingleStmt);
         alternate = parse_stmt();
-        ctx_single_stmt_ = false;
     }
     return tree_.alloc(NK_IF_STMT, span_from(start), test, consequent, alternate);
 }
@@ -248,36 +268,57 @@ NodeIndex Parser::parse_for_stmt() {
     advance();
 
     bool is_await = false;
-    if (ctx_await_ && at(tok_await) && !has_newline_before()) {
+    if (ctx_.has(ParseCtx::Await) && at(tok_await) && !has_newline_before()) {
         is_await = true;
         advance();
     } else if (at(tok_await) && !has_newline_before()) {
-        if (!ctx_await_) error("'for await' is only valid in async functions or modules");
+        if (!ctx_.has(ParseCtx::Await)) error("'for await' is only valid in async functions or modules");
         advance();
     }
 
     expect(tok_lparen);
 
-    bool saved_in = ctx_in_;
-    ctx_in_ = false;
+    NodeIndex result;
+    {
+        uint8_t for_init_ctx = ctx_.flags;
+        for_init_ctx &= ~ParseCtx::In;
+        CtxGuard guard(*this, for_init_ctx);
 
-    NodeIndex init = NodeNull;
-    bool init_is_decl = false;
+        NodeIndex init = NodeNull;
+        bool init_is_decl = false;
 
-    if (at(tok_var) || at(tok_let) || at(tok_const)) {
-        init = parse_var_decl(false);
-        init_is_decl = true;
-    } else if (!at(tok_semi)) {
-        init = parse_expr();
+        if (at(tok_var) || at(tok_let) || at(tok_const)) {
+            init = parse_var_decl(false);
+            init_is_decl = true;
+        } else if (at(tok_using) && is_using_decl()) {
+            uint32_t start = current_.start;
+            advance();
+            init = parse_var_decl_with_kind(VarUsing, start, false);
+            init_is_decl = true;
+        } else if (ctx_.has(ParseCtx::Await) && at(tok_await)) {
+            Token next = peek_ahead();
+            if (next.tag == tok_using && !next.has_newline_before()) {
+                uint32_t start = current_.start;
+                advance();
+                advance();
+                init = parse_var_decl_with_kind(VarAwaitUsing, start, false);
+                init_is_decl = true;
+            } else if (!at(tok_semi)) {
+                init = parse_expr();
+            }
+        } else if (!at(tok_semi)) {
+            init = parse_expr();
+        }
+
+        result = parse_for_rest(init, init_is_decl, is_await);
     }
 
-    NodeIndex result = parse_for_rest(init, init_is_decl, is_await);
-
-    ctx_in_ = saved_in;
     expect(tok_rparen);
-    ctx_single_stmt_ = true;
-    NodeIndex body = parse_stmt();
-    ctx_single_stmt_ = false;
+    NodeIndex body;
+    {
+        CtxGuard g(*this, ctx_.flags | ParseCtx::SingleStmt);
+        body = parse_stmt();
+    }
     tree_.d(result, 3) = body;
     tree_.nodes[result].span.end = prev_end_;
     return result;
@@ -286,6 +327,11 @@ NodeIndex Parser::parse_for_stmt() {
 NodeIndex Parser::parse_for_rest(NodeIndex init, bool init_is_decl, bool is_await) {
     if (at(tok_in)) {
         if (is_await) error("'for await' requires 'of', not 'in'");
+        if (init_is_decl && init != NodeNull) {
+            uint32_t vk = tree_.d(init, 2);
+            if (vk == VarUsing || vk == VarAwaitUsing)
+                error("the left-hand side of a for-in statement cannot be a using declaration");
+        }
         advance();
         if (!init_is_decl && init != NodeNull) {
             init = expr_to_binding(init);
@@ -330,9 +376,11 @@ NodeIndex Parser::parse_while_stmt() {
     expect(tok_lparen);
     NodeIndex test = parse_expr();
     expect(tok_rparen);
-    ctx_single_stmt_ = true;
-    NodeIndex body = parse_stmt();
-    ctx_single_stmt_ = false;
+    NodeIndex body;
+    {
+        CtxGuard g(*this, ctx_.flags | ParseCtx::SingleStmt);
+        body = parse_stmt();
+    }
     return tree_.alloc(NK_WHILE_STMT, span_from(start), test, body);
 }
 
@@ -355,9 +403,11 @@ NodeIndex Parser::parse_with_stmt() {
     expect(tok_lparen);
     NodeIndex obj = parse_expr();
     expect(tok_rparen);
-    ctx_single_stmt_ = true;
-    NodeIndex body = parse_stmt();
-    ctx_single_stmt_ = false;
+    NodeIndex body;
+    {
+        CtxGuard g(*this, ctx_.flags | ParseCtx::SingleStmt);
+        body = parse_stmt();
+    }
     return tree_.alloc(NK_WITH_STMT, span_from(start), obj, body);
 }
 
@@ -387,7 +437,7 @@ NodeIndex Parser::parse_continue_stmt() {
 
 NodeIndex Parser::parse_return_stmt() {
     uint32_t start = current_.start;
-    if (!ctx_return_) error("illegal return statement");
+    if (!ctx_.has(ParseCtx::Return)) error("illegal return statement");
     advance();
     NodeIndex arg = NodeNull;
     if (!at(tok_semi) && !at(tok_rbrace) && !at(tok_eof) && !has_newline_before()) {
@@ -458,8 +508,16 @@ NodeIndex Parser::parse_var_decl(bool eat_semi_) {
     if (at(tok_let)) kind = VarLet;
     else if (at(tok_const)) kind = VarConst;
     advance();
+    return parse_var_decl_body(kind, start, eat_semi_);
+}
 
-    if (ctx_single_stmt_ && (kind == VarLet || kind == VarConst)) {
+NodeIndex Parser::parse_var_decl_with_kind(uint32_t kind, uint32_t start, bool eat_semi_) {
+    return parse_var_decl_body(kind, start, eat_semi_);
+}
+
+NodeIndex Parser::parse_var_decl_body(uint32_t kind, uint32_t start, bool eat_semi_) {
+    if (ctx_.has(ParseCtx::SingleStmt) &&
+        (kind == VarLet || kind == VarConst || kind == VarUsing || kind == VarAwaitUsing)) {
         error("lexical declaration cannot appear in a single-statement context");
     }
 
@@ -471,6 +529,9 @@ NodeIndex Parser::parse_var_decl(bool eat_semi_) {
         if (eat(tok_assign)) {
             init = parse_expr(Prec::Assign);
         }
+        if ((kind == VarUsing || kind == VarAwaitUsing) && init == NodeNull) {
+            error_at(tree_.span(id), "using declaration must have an initializer");
+        }
         NodeIndex declarator = tree_.alloc(NK_VAR_DECLARATOR, span_from(decl_start),
                                            id, init);
         scratch_a_.push_back(declarator);
@@ -480,6 +541,11 @@ NodeIndex Parser::parse_var_decl(bool eat_semi_) {
 
     IndexRange decls = flush_scratch(scratch_a_, cp);
     return tree_.alloc(NK_VAR_DECL, span_from(start), decls.start, decls.len, kind);
+}
+
+bool Parser::is_using_decl() {
+    Token next = peek_ahead();
+    return tag_is_ident_like(next.tag) && !next.has_newline_before();
 }
 
 // ─── Import declarations ──────────────────────────────────────────────────────
@@ -615,14 +681,14 @@ NodeIndex Parser::parse_export_decl() {
         break;
     case tok_function:
         advance();
-        decl = parse_function(false);
+        decl = parse_function_with_flags(0);
         break;
     case tok_async: {
         uint32_t as = current_.start;
         advance();
         if (at(tok_function)) {
             advance();
-            decl = parse_function(false, true);
+            decl = parse_function_with_flags(NF::Async);
             tree_.d(decl, 3) |= NF::Async;
             tree_.nodes[decl].span.start = as;
         }
@@ -647,12 +713,12 @@ NodeIndex Parser::parse_export_default() {
 
     if (at(tok_function)) {
         advance();
-        decl = parse_function(true);
+        decl = parse_function_with_flags(NF::IsExpr);
     } else if (at(tok_async) && !has_newline_before()) {
         advance();
         if (at(tok_function)) {
             advance();
-            decl = parse_function(true, true);
+            decl = parse_function_with_flags(NF::IsExpr|NF::Async);
             tree_.d(decl, 3) |= NF::Async;
         }
     } else if (at(tok_class)) {
@@ -773,6 +839,19 @@ void Parser::validate_const_init(NodeIndex decl) {
         if (tree_.d(declarator, 1) == NodeNull) {
             error_at(tree_.span(declarator),
                 "missing initializer in const declaration");
+        }
+    }
+}
+
+void Parser::validate_using_init(NodeIndex decl) {
+    uint32_t var_kind = tree_.d(decl, 2);
+    if (var_kind != VarUsing && var_kind != VarAwaitUsing) return;
+    IndexRange declarators = tree_.range(decl, 0);
+    for (uint32_t i = 0; i < declarators.len; i++) {
+        NodeIndex declarator = tree_.extra(declarators)[i];
+        NodeIndex id = tree_.d(declarator, 0);
+        if (kind(id) == NK_ARRAY_PAT || kind(id) == NK_OBJECT_PAT) {
+            error_at(tree_.span(id), "using declaration cannot have destructuring patterns");
         }
     }
 }
