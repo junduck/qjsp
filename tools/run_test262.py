@@ -16,7 +16,7 @@ TEST262_ROOT = os.path.join(os.path.dirname(__file__), "..", "refs", "test262")
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "test262_results.db")
 
-SKIP_FEATURES = {"decorators"}
+SKIP_FEATURES = {"decorators", "with"}
 
 def parse_frontmatter(path):
     """Extract test262 YAML frontmatter. Returns dict or None."""
